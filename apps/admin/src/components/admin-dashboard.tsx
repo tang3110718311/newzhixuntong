@@ -2962,6 +2962,28 @@ export function AdminDashboard() {
                 </div>
               </div>
             </div>
+              </div>
+              <aside className="right-rail">
+                <div className="profile card">
+                  <span className="avatar large" />
+                  <div>
+                    <h2>{auth.user.name}</h2>
+                    <p>企业管理员</p>
+                    <p>培训负责人</p>
+                  </div>
+                </div>
+                <div className="sidecard card">
+                  <div className="sidecard-head"><h2>培训概况</h2><span>本年度</span></div>
+                  <strong>{completedRecordCount}</strong>
+                  <p>已完成培训任务</p>
+                  <div className="mini-stats"><span>对练<b>{records.length}</b></span><span>考试<b>0</b></span><span>合格率<b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></span></div>
+                </div>
+                <div className="sidecard card">
+                  <h2>通知消息</h2>
+                  <p>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息，系统将及时推送任务派发、培训安排及学习进度提醒。"}</p>
+                </div>
+              </aside>
+            </div>
           </section>
         )}
         {activeSection === "sys-roles" && (
@@ -2975,6 +2997,8 @@ export function AdminDashboard() {
         )}
         {activeSection === "sys-tenants" && (
           <section className="page-section">
+            <div className="home-grid">
+              <div className="home-main">
             <div className="page-header">
               <div>
                 <h1 className="page-title">租户管理</h1>
@@ -3018,6 +3042,28 @@ export function AdminDashboard() {
                   <div className="todo"><div><strong>场景额度</strong><span>{tenantForm.resourceQuota.sceneLimit}</span></div>{statusBadge("active")}</div>
                 </div>
               </div>
+            </div>
+              </div>
+              <aside className="right-rail">
+                <div className="profile card">
+                  <span className="avatar large" />
+                  <div>
+                    <h2>{auth.user.name}</h2>
+                    <p>企业管理员</p>
+                    <p>培训负责人</p>
+                  </div>
+                </div>
+                <div className="sidecard card">
+                  <div className="sidecard-head"><h2>培训概况</h2><span>本年度</span></div>
+                  <strong>{completedRecordCount}</strong>
+                  <p>已完成培训任务</p>
+                  <div className="mini-stats"><span>对练<b>{records.length}</b></span><span>考试<b>0</b></span><span>合格率<b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></span></div>
+                </div>
+                <div className="sidecard card">
+                  <h2>通知消息</h2>
+                  <p>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息，系统将及时推送任务派发、培训安排及学习进度提醒。"}</p>
+                </div>
+              </aside>
             </div>
           </section>
         )}
