@@ -168,8 +168,8 @@ export function SysPostsSection({ organizations }: { organizations: Organization
       </div>
 
       {showModal && (
-        <div className="modal-mask">
-          <form className="modal card" onSubmit={handleSubmit}>
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <form className="modal-card" onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()} style={{ width: 480 }}>
             <div className="modal-head">
               <h2>{editing ? "编辑岗位" : "新增岗位"}</h2>
               <button className="link-btn" type="button" onClick={() => setShowModal(false)}>关闭</button>

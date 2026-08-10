@@ -556,8 +556,8 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
 
       {/* ── 新建文件夹弹窗 ── */}
       {showModal && (
-        <div className="modal-mask">
-          <form className="modal card" onSubmit={handleSubmit}>
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <form className="modal-card" onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()} style={{ width: 480 }}>
             <div className="modal-head">
               <h2>新建文件夹</h2>
               <button className="link-btn" type="button" onClick={() => setShowModal(false)}>关闭</button>
