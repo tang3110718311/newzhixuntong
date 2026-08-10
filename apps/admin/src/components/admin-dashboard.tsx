@@ -2604,7 +2604,7 @@ export function AdminDashboard() {
                         {/* 右侧状态+操作 */}
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
                           <span style={{ padding: "2px 10px", borderRadius: 4, background: statusBg, color: statusColor, fontSize: 12, fontWeight: 600 }}>{statusLabel}</span>
-                          <button className="link-btn" type="button" style={{ color: "#4080ff", fontSize: 13, fontWeight: 600 }} onClick={() => viewTaskDetail(task.id)}>
+                          <button className="link-btn" type="button" style={{ color: "#4080ff", fontSize: 13, fontWeight: 600 }} onClick={() => { window.location.href = '/tasks/' + task.id; }}>
                             {actionLabel} &gt;
                           </button>
                         </div>
