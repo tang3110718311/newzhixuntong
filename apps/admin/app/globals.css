@@ -1417,13 +1417,16 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-end;
   flex: 1;
+  height: 160px;
 }
 
 .chart-col .chart-bar {
   width: 28px;
   border-radius: 4px 4px 0 0;
   background: linear-gradient(180deg, #93c5fd 0%, #4080ff 100%);
+  min-height: 4px;
 }
 
 .chart-label {

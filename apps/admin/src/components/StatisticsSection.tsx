@@ -333,7 +333,7 @@ export function StatisticsSection({
                     <div className="chart-bars chart-bars-labeled">
                       {topDepts.map((dept) => (
                         <div key={dept.name} className="chart-col">
-                          <div className="chart-bar" style={{ height: `${Math.max(dept.completionRate, 5)}%` }} />
+                          <div className="chart-bar" style={{ height: `${Math.max(dept.completionRate, 5) / 100 * 130}px` }} />
                           <span className="chart-label">{shortName(dept.name)}</span>
                         </div>
                       ))}
@@ -386,7 +386,7 @@ export function StatisticsSection({
                     <div className="chart-bars chart-bars-labeled">
                       {topLearners.map((l) => (
                         <div key={l.id} className="chart-col">
-                          <div className="chart-bar" style={{ height: `${Math.max(l.score, 5)}%` }} />
+                          <div className="chart-bar" style={{ height: `${Math.max(l.score, 5) / 100 * 130}px` }} />
                           <span className="chart-label">{shortName(l.name, 4)}</span>
                         </div>
                       ))}
