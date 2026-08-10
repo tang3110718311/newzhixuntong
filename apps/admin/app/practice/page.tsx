@@ -716,6 +716,97 @@ export default function PracticePage() {
           </div>
         )}
 
+        {view === "chat" && selectedScene && (
+          <section className="pc-chat">
+            <div className="pc-chat-head">
+              <div className="pc-chat-title">
+                <strong>{selectedScene.name || "对练中"}</strong>
+                <span className="pc-mode">
+                  <button className={voiceMode ? "active" : ""} type="button" onClick={() => setVoiceMode(true)}>语音模式</button>
+                  <button className={!voiceMode ? "active" : ""} type="button" onClick={() => setVoiceMode(false)}>文本模式</button>
+                </span>
+              </div>
+              <button className="pc-back-mini" type="button" onClick={backToHistory}>← 返回历史</button>
+            </div>
+
+            <div className="pc-messages">
+              {chatMessages.length === 0 && (
+                <div className="pc-empty">正在等待 AI 教练开场…</div>
+              )}
+              {chatMessages.map((m, idx) => (
+                <div className={`pc-bubble ${m.role}`} key={`${m.role}-${idx}`}>
+                  <span className="pc-bubble-role">{m.role === "ai" ? "AI" : "我"}</span>
+                  <p className="pc-bubble-text">{m.content}</p>
+                  {m.role === "ai" && (
+                    <button
+                      className="pc-replay-tts-btn"
+                      type="button"
+                      onClick={() => void playTts(m.content, m.emotion, ttsVoice || undefined)}
+                    >
+                      🔊 重播
+                    </button>
+                  )}
+                </div>
+              ))}
+              {chatSending && (
+                <div className="pc-bubble ai">
+                  <span className="pc-bubble-role">AI</span>
+                  <p className="pc-bubble-text" style={{ color: "#86909c" }}>正在思考…</p>
+                </div>
+              )}
+            </div>
+
+            {coachTip && (
+              <div className="pc-coachtip-float">
+                <span className="pc-coachtip-icon">💡</span>
+                <span className="pc-coachtip-text">{coachTip}</span>
+              </div>
+            )}
+
+            {chatFinished && chatResult ? (
+              <ScoreCard
+                result={chatResult}
+                sceneRules={sceneRules}
+                passScore={selectedScene.passScore}
+                onBack={backToHistory}
+                onRestart={() => void enterChat(selectedScene)}
+              />
+            ) : (
+              <div className="pc-inputbar">
+                <div className="pc-inputrow">
+                  <input
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void sendChatMessage(chatInput); }}
+                    placeholder={isRecording ? "正在录音…" : "输入你的回复，或点麦克风说话"}
+                    disabled={chatSending}
+                  />
+                  <button
+                    className="pc-mic"
+                    type="button"
+                    onClick={toggleRecording}
+                    disabled={chatSending}
+                    title={isRecording ? "停止录音并识别" : "按住说话"}
+                  >
+                    {isRecording ? "⏹" : "🎤"}
+                  </button>
+                  <button
+                    className="pc-btn-primary"
+                    type="button"
+                    onClick={() => void sendChatMessage(chatInput)}
+                    disabled={chatSending || !chatInput.trim()}
+                  >
+                    发送
+                  </button>
+                </div>
+                <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+                  {isRecording ? "录音中…点击停止后自动识别" : "支持语音输入（自动识别转文字）或直接打字"}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
         {view === "history" && (
           <section className="pc-history">
             <div className="pc-history-head">
