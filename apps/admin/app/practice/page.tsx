@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./practice.css";
+import AppShell, { type RightRailData } from "@/components/AppShell";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -78,12 +79,12 @@ type HistoryDetail = {
   scores: ScoreDetail[];
 };
 
-type View = "scenes" | "chat" | "history";
+type View = "chat" | "history";
 
-// edge-tts 微软云端中文声音池（自然沉稳，男女各2，整场随机固定）
+// edge-tts 微软云端中文声音（统一单一音色，避免同场多次发言音色不一致）
+// 统一固定音色：云扬（edge-male-0，央视新闻联播风格的沉稳广播男声）
 const CHAT_TTS_VOICES = [
-  "edge-female-0", "edge-female-1",
-  "edge-male-0", "edge-male-1",
+  "edge-male-0",
 ];
 
 function readStoredAuth(): AuthSession | null {
@@ -113,12 +114,15 @@ function modeLabel(mode: string) {
 
 export default function PracticePage() {
   const [auth, setAuth] = useState<AuthSession | null>(null);
-  const [view, setView] = useState<View>("scenes");
+  // 有 URL sceneId 时，初始直接进 chat 视图（避免闪现场景选择页）
+  const [initialSceneId] = useState(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("sceneId");
+  });
+  const [view, setView] = useState<View>(initialSceneId ? "chat" : "history");
 
-  // 场景选择视图
+  // 场景列表（仅用于历史记录筛选下拉 + 对练对话加载）
   const [scenes, setScenes] = useState<Scene[]>([]);
-  const [sceneKeyword, setSceneKeyword] = useState("");
-  const [sceneProgress, setSceneProgress] = useState<Map<string, { attemptCount: number; bestScore: number }>>(new Map());
 
   // 对话视图
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
@@ -253,24 +257,12 @@ export default function PracticePage() {
     [apiPost, stopAudio, ttsVoice],
   );
 
-  // ===== 加载场景 + 个人进度 =====
+  // ===== 加载场景列表（供历史记录筛选下拉 + 对练场景查找用） =====
   const loadScenes = useCallback(async () => {
     try {
       const data = await apiGet<{ items: Scene[]; total: number }>(`/scenes?pageSize=50&status=published`);
       const published = (data.items || []).filter((s) => s.status === "published");
       setScenes(published);
-
-      // 个人练习进度：按当前用户聚合训练记录
-      const me = readStoredAuth();
-      const records = await apiGet<{ items: Array<{ sceneId: string; score: number }> }>(`/training-records?pageSize=100&userId=${encodeURIComponent(me?.user.id || "")}`);
-      const progress = new Map<string, { attemptCount: number; bestScore: number }>();
-      (records.items || []).forEach((r) => {
-        const cur = progress.get(r.sceneId) || { attemptCount: 0, bestScore: 0 };
-        cur.attemptCount += 1;
-        cur.bestScore = Math.max(cur.bestScore, r.score);
-        progress.set(r.sceneId, cur);
-      });
-      setSceneProgress(progress);
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载场景失败");
     }
@@ -396,6 +388,17 @@ export default function PracticePage() {
   // ===== STT + 语音采集 =====
   const startRecording = useCallback(async () => {
     if (recordingRef.current) return;
+    setError("");
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof window === "undefined" ||
+      !window.isSecureContext ||
+      typeof window.MediaRecorder === "undefined"
+    ) {
+      setError(getMicrophoneErrorMessage());
+      return;
+    }
     // 学员开始说话时，立即停止 AI 语音播报
     stopAudio();
     try {
@@ -425,8 +428,10 @@ export default function PracticePage() {
       recorder.start();
       recordingRef.current = true;
       setIsRecording(true);
-    } catch {
-      setError("无法访问麦克风，请检查浏览器权限。");
+    } catch (err) {
+      recordingRef.current = false;
+      setIsRecording(false);
+      setError(getMicrophoneErrorMessage(err));
     }
   }, [apiPost, sendChatMessage, stopAudio]);
 
@@ -445,14 +450,20 @@ export default function PracticePage() {
     }
   }, [isRecording, startRecording, stopRecording]);
 
-  // ===== 返回场景列表（中途退出，丢弃对话） =====
-  const backToScenes = useCallback(() => {
+  // ===== 返回历史记录（中途退出，丢弃对话） =====
+  const backToHistory = useCallback(() => {
     if (!chatFinished && chatMessages.length > 0) {
       const ok = window.confirm("中途退出将丢弃当前对话，不保存、不计分。确认退出？");
       if (!ok) return;
     }
     stopAudio();
-    setView("scenes");
+    // 如果从任务详情页跳来，返回任务详情页
+    const storedTaskId = window.sessionStorage.getItem("zxt-practice-taskId");
+    if (storedTaskId) {
+      window.location.href = `/tasks/${storedTaskId}`;
+      return;
+    }
+    setView("history");
     setSelectedScene(null);
     setChatMessages([]);
     setCoachTip(null);
@@ -516,10 +527,16 @@ export default function PracticePage() {
       return;
     }
     setAuth(stored);
-    void loadScenes();
 
     const params = new URLSearchParams(window.location.search);
     const sceneId = params.get("sceneId");
+    const taskId = params.get("taskId");
+    // 记住来源任务，对练结束后跳回
+    if (taskId) {
+      try { window.sessionStorage.setItem("zxt-practice-taskId", taskId); } catch {}
+    } else {
+      try { window.sessionStorage.removeItem("zxt-practice-taskId"); } catch {}
+    }
     const tab = params.get("tab");
     if (tab === "history") {
       setView("history");
@@ -527,20 +544,30 @@ export default function PracticePage() {
       if (isAdmin) void loadUsers();
     }
     if (sceneId) {
-      // 等待场景加载完成后自动进入对话
-      const timer = window.setTimeout(async () => {
+      // 有 sceneId 时直接进对话，不闪现场景选择页
+      void (async () => {
         try {
           const data = await apiGet<{ items: Scene[] }>(`/scenes?pageSize=50`);
           const list = data.items || [];
           const scene = list.find((s) => s.id === sceneId);
           if (scene) void enterChat(scene);
-          else setError("未找到指定场景，已显示全部场景。");
+          else {
+            setError("未找到指定场景，已返回历史记录。");
+            setView("history");
+            void loadHistory();
+          }
         } catch (err) {
           setError(err instanceof Error ? err.message : "加载指定场景失败");
+          setView("history");
+          void loadHistory();
         }
-      }, 300);
-      return () => window.clearTimeout(timer);
+      })();
+      return;
     }
+    // 无 sceneId：显示历史记录 + 预加载场景列表供下拉
+    void loadScenes();
+    void loadHistory();
+    if (isAdmin) void loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -549,11 +576,20 @@ export default function PracticePage() {
     if (view === "history") {
       void loadHistory();
       if (isAdmin) void loadUsers();
-    } else if (view === "scenes") {
-      void loadScenes();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
+
+  // 对练结束后，如果从任务详情页跳来，3 秒后自动跳回
+  useEffect(() => {
+    if (!chatFinished) return;
+    const storedTaskId = window.sessionStorage.getItem("zxt-practice-taskId");
+    if (!storedTaskId) return;
+    const timer = window.setTimeout(() => {
+      window.location.href = `/tasks/${storedTaskId}`;
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [chatFinished]);
 
   // 离开页面/卸载时停止音频播放
   useEffect(() => {
@@ -567,68 +603,48 @@ export default function PracticePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyFilterScene, historyFilterUser]);
 
-  const filteredScenes = scenes.filter((s) => s.name.toLowerCase().includes(sceneKeyword.trim().toLowerCase()));
+
+  const rightRail: RightRailData = (() => {
+    // 场景进度已移除，右侧面板用基础数据
+    return {
+      userName: auth?.user.name || "学员",
+      completedRecordCount: 0,
+      practiceRecordCount: 0,
+      examCount: 0,
+      passRate: "0%",
+      pendingAppealCount: 0,
+      tenantName: "",
+    };
+  })();
 
   // ================= 渲染 =================
   return (
-    <div className="practice-shell">
-      <header className="practice-topbar">
-        <div className="practice-brand">
-          <div className="brand-mark">智</div>
-          <div>
-            <p className="brand-title">AI 智训通 · 对练中心</p>
-            <p className="brand-subtitle">{auth?.user.name || "学员"} · {isAdmin ? "管理员" : "学员"}</p>
-          </div>
-        </div>
-        <button className="pc-back" onClick={() => { stopAudio(); window.location.href = "/"; }}>返回主页</button>
-      </header>
-
+    <AppShell
+      activeNavKey="practice"
+      onNavClick={(key: string) => { stopAudio(); window.location.href = "/?section=" + key; }}
+      rightRail={rightRail}
+      breadcrumb={{ label: "对练中心" }}
+    >
       {error ? <div className="pc-error" onClick={() => setError("")}>{error}（点击关闭）</div> : null}
 
+      {/* 对话视图顶部导航：只在非 chat 时显示 */}
       {view !== "chat" && (
         <nav className="practice-tabs">
-          <button className={view === "scenes" ? "active" : ""} onClick={() => { stopAudio(); setView("scenes"); }}>场景选择</button>
-          <button className={view === "history" ? "active" : ""} onClick={() => { stopAudio(); setView("history"); }}>历史记录</button>
+          <button className="active">历史记录</button>
         </nav>
       )}
 
       <main className="practice-main">
-        {view === "scenes" && (
-          <section className="pc-scenes">
-            <div className="pc-scenes-head">
-              <h2>选择对练场景</h2>
-              <input className="pc-search" placeholder="按场景名搜索…" value={sceneKeyword} onChange={(e) => setSceneKeyword(e.target.value)} />
-            </div>
-            {filteredScenes.length === 0 ? (
-              <div className="pc-empty">暂无已发布场景。</div>
-            ) : (
-              <div className="pc-scene-grid">
-                {filteredScenes.map((scene) => {
-                  const prog = sceneProgress.get(scene.id);
-                  return (
-                    <div className="pc-scene-card" key={scene.id}>
-                      <div className="pc-scene-tags">
-                        <span className="pc-tag">{scene.sceneType || "对话"}</span>
-                        <span className="pc-tag ghost">{modeLabel(scene.mode)}</span>
-                      </div>
-                      <h3 className="pc-scene-name">{scene.name}</h3>
-                      <p className="pc-scene-desc">{scene.description || "暂无描述"}</p>
-                      <div className="pc-scene-progress">
-                        已对练 <strong>{prog?.attemptCount ?? 0}</strong> 次 / 最高 <strong>{prog?.bestScore ?? 0}</strong> 分
-                      </div>
-                      <button className="pc-start" onClick={() => void enterChat(scene)}>开始对练</button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
+        {view === "chat" && !selectedScene && (
+          <div className="pc-empty" style={{ padding: "60px 0", textAlign: "center", color: "#86909c" }}>
+            正在加载场景…
+          </div>
         )}
 
         {view === "chat" && selectedScene && (
           <section className="pc-chat">
             <div className="pc-chat-head">
-              <button className="pc-back-mini" onClick={backToScenes}>‹ 返回</button>
+              <button className="pc-back-mini" onClick={backToHistory}>‹ 返回</button>
               <div className="pc-chat-title">
                 <span className="pc-tag ghost">{modeLabel(selectedScene.mode)}</span>
                 <strong>{selectedScene.name}</strong>
@@ -642,7 +658,7 @@ export default function PracticePage() {
                   <span className="pc-bubble-role">{m.role === "ai" ? "AI" : "我"}</span>
                   <div className="pc-bubble-text">
                     {m.content}
-                    {m.role === "ai" && <button className="pc-speaker-btn" title="播放语音" onClick={() => void playTts(m.content, m.emotion || "default", ttsVoice || undefined)}>&#128266;</button>}
+                    {m.role === "ai" && <button className="pc-speaker-btn" title="播放语音" onClick={() => void playTts(m.content, m.emotion || "default", ttsVoice || pickSceneVoice(selectedScene?.id))}>&#128266;</button>}
                   </div>
                 </div>
               ))}
@@ -654,7 +670,7 @@ export default function PracticePage() {
                 result={chatResult}
                 sceneRules={sceneRules}
                 passScore={selectedScene.passScore}
-                onBack={backToScenes}
+                onBack={backToHistory}
                 onRestart={restartChat}
               />
             ) : (
@@ -744,7 +760,7 @@ export default function PracticePage() {
           </section>
         )}
       </main>
-    </div>
+    </AppShell>
   );
 }
 
@@ -811,7 +827,9 @@ function ScoreCard({
       ) : null}
 
       <div className="pc-score-actions">
-        <button className="pc-btn-ghost" onClick={onBack}>返回场景列表</button>
+        <button className="pc-btn-ghost" onClick={onBack}>
+          {window.sessionStorage.getItem("zxt-practice-taskId") ? "返回任务详情" : "返回历史记录"}
+        </button>
         <button className="pc-btn-primary" onClick={onRestart}>再来一次</button>
       </div>
     </div>
@@ -867,4 +885,34 @@ function blobToBase64(blob: Blob): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+function getMicrophoneErrorMessage(err?: unknown) {
+  if (typeof window !== "undefined" && !window.isSecureContext) {
+    return "当前页面不是安全访问地址，浏览器会禁止麦克风。请使用 https:// 域名访问，或在本机用 localhost 测试。";
+  }
+
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    return "当前浏览器不支持麦克风采集，请使用新版 Chrome/Edge，并确认页面通过 https 或 localhost 打开。";
+  }
+
+  if (typeof window !== "undefined" && typeof window.MediaRecorder === "undefined") {
+    return "当前浏览器不支持录音组件 MediaRecorder，请使用新版 Chrome/Edge。";
+  }
+
+  const name = err instanceof DOMException ? err.name : "";
+  if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+    return "麦克风权限被浏览器拒绝。请点击地址栏左侧权限图标，将麦克风改为允许后刷新页面。";
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return "没有检测到可用麦克风，请检查耳机/麦克风是否连接，并确认系统录音设备可用。";
+  }
+  if (name === "NotReadableError" || name === "TrackStartError") {
+    return "麦克风正在被其他软件占用，请关闭会议、录音或浏览器其他标签页后重试。";
+  }
+  if (name === "OverconstrainedError") {
+    return "当前麦克风不满足浏览器采集要求，请切换录音设备后重试。";
+  }
+
+  return "无法访问麦克风，请检查浏览器权限、系统录音权限或设备占用情况。";
 }

@@ -1,7 +1,8 @@
 // 企业知识库区块：调用真实后端 API 加载文件夹列表，统计卡用真实数据，支持新建/查看/删除文件夹
+// 点击"查看"在文件夹列表下方展开文件详情面板（原型设计）
 "use client";
 
-import { Plus, Folder, Eye, Trash2 } from "lucide-react";
+import { Plus, Folder, Eye, Trash2, ChevronUp } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { DataTable, Field, type AuthSession, type TrainingRecord } from "./dashboard-shared";
 
@@ -27,6 +28,44 @@ type Folder = {
   createdAt: string;
   updatedAt: string;
 };
+
+// 模拟文件数据（第二阶段将接真实 knowledge_files API）
+type KnowledgeFile = {
+  id: string;
+  name: string;
+  folderName: string;
+  fileType: string;
+  fileSize: number;
+  uploader: string;
+  uploadedAt: string;
+};
+
+const MOCK_FILES: Record<string, KnowledgeFile[]> = {
+  // folder id -> files（key 用文件夹 id，seed 数据里可对应）
+};
+
+// 为每个文件夹生成模拟文件
+function getMockFiles(folder: Folder): KnowledgeFile[] {
+  if (MOCK_FILES[folder.id]) return MOCK_FILES[folder.id];
+  if (folder.fileCount === 0) return [];
+  // 根据文件夹名称智能生成示例文件
+  const files: KnowledgeFile[] = [];
+  if (folder.name.includes("安全")) {
+    files.push({ id: "f1", name: "安全生产基础知识培训视频.mp4", folderName: folder.name, fileType: "视频", fileSize: 186 * 1024 * 1024, uploader: "智训通管理员", uploadedAt: "2026-08-05 17:58" });
+    files.push({ id: "f2", name: "企业安全生产管理制度.pdf", folderName: folder.name, fileType: "PDF", fileSize: 2621440, uploader: "智训通管理员", uploadedAt: "2026-08-05 17:58" });
+  } else if (folder.name.includes("投诉") || folder.name.includes("客诉")) {
+    files.push({ id: "f3", name: "客户投诉处理标准话术.docx", folderName: folder.name, fileType: "Word", fileSize: 512000, uploader: "智训通管理员", uploadedAt: "2026-08-06 10:20" });
+    files.push({ id: "f4", name: "投诉应对培训视频.mp4", folderName: folder.name, fileType: "视频", fileSize: 210 * 1024 * 1024, uploader: "智训通管理员", uploadedAt: "2026-08-06 14:35" });
+  } else if (folder.name.includes("套餐") || folder.name.includes("资费")) {
+    files.push({ id: "f5", name: "套餐资费FAQ问答手册.xlsx", folderName: folder.name, fileType: "Excel", fileSize: 1048576, uploader: "智训通管理员", uploadedAt: "2026-08-07 09:15" });
+  } else if (folder.name.includes("网络") || folder.name.includes("故障")) {
+    files.push({ id: "f6", name: "网络故障排查流程.pptx", folderName: folder.name, fileType: "PPT", fileSize: 8388608, uploader: "智训通管理员", uploadedAt: "2026-08-07 11:00" });
+    files.push({ id: "f7", name: "故障处理视频教程.mp4", folderName: folder.name, fileType: "视频", fileSize: 350 * 1024 * 1024, uploader: "智训通管理员", uploadedAt: "2026-08-07 11:30" });
+  } else {
+    files.push({ id: "f8", name: `${folder.name}培训资料.pdf`, folderName: folder.name, fileType: "PDF", fileSize: 3145728, uploader: "智训通管理员", uploadedAt: "2026-08-08 09:00" });
+  }
+  return files.slice(0, folder.fileCount || 2);
+}
 
 function getStoredAuthToken() {
   if (typeof window === "undefined") return "";
@@ -86,7 +125,8 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [showModal, setShowModal] = useState(false);
-  const [showDetail, setShowDetail] = useState<Folder | null>(null);
+  const [expandedFolder, setExpandedFolder] = useState<Folder | null>(null);
+  const [fileSearchText, setFileSearchText] = useState("");
   const [form, setForm] = useState(emptyForm);
 
   // Search & filter state
@@ -138,7 +178,12 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
   }
 
   function handleView(folder: Folder) {
-    setShowDetail(folder);
+    if (expandedFolder?.id === folder.id) {
+      setExpandedFolder(null); // 收起
+    } else {
+      setExpandedFolder(folder);
+      setFileSearchText("");
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -160,6 +205,7 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
     try {
       await apiFetch<{ id: string }>(`/knowledge/${folder.id}`, { method: "DELETE" });
       setMessage("文件夹已删除。");
+      if (expandedFolder?.id === folder.id) setExpandedFolder(null);
       await loadFolders();
     } catch (err) {
       setError(err instanceof Error ? err.message : "删除失败");
@@ -170,6 +216,12 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
     setSearchText("");
     setFilterFolder("all");
   }
+
+  // 文件详情面板的文件列表（模拟数据 + 搜索过滤）
+  const detailFiles = expandedFolder ? getMockFiles(expandedFolder) : [];
+  const filteredFiles = fileSearchText
+    ? detailFiles.filter((f) => f.name.toLowerCase().includes(fileSearchText.toLowerCase()))
+    : detailFiles;
 
   return (
     <section className="page-section">
@@ -288,6 +340,103 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
               </div>
             )}
           </div>
+
+          {/* ── 文件详情面板（展开在文件夹列表下方） ── */}
+          {expandedFolder && (
+            <div className="card section" style={{ marginTop: 16 }}>
+              {/* 标题区 */}
+              <div className="section-head compact" style={{ marginBottom: 16 }}>
+                <div>
+                  <h2 className="section-title" style={{ fontSize: 18 }}>
+                    {expandedFolder.name}·文件详情
+                  </h2>
+                  <p className="section-note">{expandedFolder.description || "暂无说明"}</p>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn" type="button" onClick={() => setExpandedFolder(null)}>
+                    <ChevronUp size={14} /> 收起详情
+                  </button>
+                  <button className="btn primary" type="button" onClick={() => setMessage("新建文件功能开发中，将在第二阶段上线。")}>
+                    <Plus size={14} /> 新建文件
+                  </button>
+                </div>
+              </div>
+
+              {/* 搜索区 */}
+              <div className="filter-bar" style={{ padding: "12px 0", marginBottom: 12 }}>
+                <div className="filter-row">
+                  <div className="filter-item">
+                    <input
+                      className="filter-input"
+                      style={{ width: 300 }}
+                      placeholder="搜索当前文件夹中的文件"
+                      value={fileSearchText}
+                      onChange={(e) => setFileSearchText(e.target.value)}
+                    />
+                  </div>
+                  <button className="btn primary" type="button">查询</button>
+                  <button className="btn" type="button" onClick={() => setFileSearchText("")}>重置</button>
+                </div>
+              </div>
+
+              {/* 文件列表 */}
+              <DataTable headers={["文件名称", "文件类型", "文件大小", "上传人", "上传时间", "操作"]}>
+                {filteredFiles.map((file) => {
+                  const isVideo = file.fileType === "视频";
+                  // 原型：视频=淡紫底#f0edff+深紫#7b61ff三角，PDF=淡红底#ffeceb+红色#ed2633
+                  const iconBg = isVideo ? "#f0edff" : "#ffeceb";
+                  const iconColor = isVideo ? "#7b61ff" : "#ed2633";
+                  const iconLabel = isVideo ? "▶" : "PDF";
+                  return (
+                    <tr key={file.id}>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 20,
+                            height: 20,
+                            borderRadius: 3,
+                            background: iconBg,
+                            color: iconColor,
+                            fontSize: isVideo ? 10 : 7,
+                            fontWeight: 700,
+                            flexShrink: 0,
+                          }}>{iconLabel}</span>
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{file.name}</div>
+                            <div style={{ color: "#86909c", fontSize: 12, marginTop: 2 }}>文件夹: {file.folderName}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span style={{
+                          display: "inline-block",
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                          background: "#eaf2ff",
+                          color: "#4080ff",
+                          fontSize: 12,
+                        }}>{file.fileType}</span>
+                      </td>
+                      <td>{formatSize(file.fileSize)}</td>
+                      <td className="muted-text">{file.uploader}</td>
+                      <td className="muted-text">{file.uploadedAt}</td>
+                      <td>
+                        <button className="link-btn" type="button" style={{ color: "#4080ff" }}>查看</button>
+                        <button className="link-btn danger" type="button" style={{ color: "#ed2633" }}>删除</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!filteredFiles.length && <tr><td colSpan={6}><div className="empty">暂无文件</div></td></tr>}
+              </DataTable>
+              <div style={{ padding: "10px 0 4px", color: "#8b98aa", fontSize: 14 }}>
+                共 {filteredFiles.length} 个文件
+              </div>
+            </div>
+          )}
         </div>
 
         <aside className="right-rail">
@@ -327,34 +476,6 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
               <button className="btn primary" type="submit">创建</button>
             </div>
           </form>
-        </div>
-      )}
-
-      {/* ── 查看文件夹弹窗 ── */}
-      {showDetail && (
-        <div className="modal-mask">
-          <div className="modal card">
-            <div className="modal-head">
-              <h2>查看文件夹</h2>
-              <button className="link-btn" type="button" onClick={() => setShowDetail(null)}>关闭</button>
-            </div>
-            <div style={{ display: "grid", gap: 12, padding: "8px 0" }}>
-              <div><span style={{ color: "#73839a", fontSize: 14 }}>文件夹名称</span><div style={{ fontWeight: 600, marginTop: 4 }}>{showDetail.name}</div></div>
-              <div><span style={{ color: "#73839a", fontSize: 14 }}>文件夹说明</span><div style={{ marginTop: 4 }}>{showDetail.description || "—"}</div></div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-                <div><span style={{ color: "#73839a", fontSize: 14 }}>文件数量</span><div style={{ fontWeight: 600, marginTop: 4 }}>{showDetail.fileCount}个文件</div></div>
-                <div><span style={{ color: "#73839a", fontSize: 14 }}>占用空间</span><div style={{ fontWeight: 600, marginTop: 4 }}>{formatSize(showDetail.totalSize)}</div></div>
-                <div><span style={{ color: "#73839a", fontSize: 14 }}>创建人</span><div style={{ fontWeight: 600, marginTop: 4 }}>{showDetail.creatorName || "—"}</div></div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div><span style={{ color: "#73839a", fontSize: 14 }}>创建时间</span><div style={{ marginTop: 4 }}>{formatTime(showDetail.createdAt)}</div></div>
-                <div><span style={{ color: "#73839a", fontSize: 14 }}>更新时间</span><div style={{ marginTop: 4 }}>{formatTime(showDetail.updatedAt)}</div></div>
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button className="btn" type="button" onClick={() => setShowDetail(null)}>关闭</button>
-            </div>
-          </div>
         </div>
       )}
     </section>

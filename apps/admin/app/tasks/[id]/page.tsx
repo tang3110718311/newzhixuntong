@@ -299,58 +299,64 @@ export default function TaskDetailPage() {
           <h2 style={{ margin: 0, fontSize: 15, color: "#172b4d", fontWeight: 600 }}>场景学习</h2>
           <span style={{ color: "#8b98aa", fontSize: 13 }}>选择场景进行学习，按顺序完成</span>
         </div>
-        {detail.scenes.map((scene, i) => {
-          const active = scene.id === currentScene?.id;
-          const sceneStatus = scene.completedTrainCount >= scene.requiredTrainTimes ? "已完成" : "进行中";
-          return (
-            <div
-              key={scene.id}
-              onClick={() => setSelectedSceneId(scene.id)}
-              style={{
-                borderRadius: 10,
-                padding: 16,
-                marginBottom: 12,
-                cursor: "pointer",
-                background: active
-                  ? "linear-gradient(135deg, #4E63F0 0%, #6B7FF0 100%)"
-                  : "#f7f8fa",
-                color: active ? "#fff" : "#172b4d",
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                border: active ? "none" : "1px solid #e4e7ed",
-                transition: "all 0.2s",
-              }}
-            >
-              <span style={{
-                width: 28, height: 28, borderRadius: "50%",
-                background: active ? "rgba(255,255,255,0.25)" : "#d9d9d9",
-                color: active ? "#fff" : "#8b98aa",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 13, fontWeight: 700,
-              }}>
-                {i + 1}
-              </span>
-              <div style={{ flex: 1 }}>
-                <strong style={{ display: "block", fontSize: 14 }}>{scene.sceneName || "场景名称"}</strong>
-                {active && (
-                  <span style={{ fontSize: 12, opacity: 0.8, marginTop: 2, display: "block" }}>
-                    {scene.sceneType === "投诉处理" || scene.sceneType === "资费咨询" || scene.sceneType === "故障报修"
-                      ? `${scene.sceneType}场景对练训练`
-                      : "识别常见问题，掌握处理方法。"}
-                  </span>
-                )}
-              </div>
-              <span style={{
-                padding: "2px 10px", borderRadius: 4, fontSize: 12,
-                background: active ? "rgba(255,255,255,0.2)" : sceneStatus === "已完成" ? "#f6ffed" : "#e6f4ff",
-                color: active ? "#fff" : sceneStatus === "已完成" ? "#52c41a" : "#4E63F0",
-              }}>
-                {sceneStatus}
-              </span>
-            </div>
-          );
-        })}
+        {/* 标签条：一行最多3个，超出换行，必须按顺序完成 */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 8, width: "100%" }}>
+          {detail.scenes.map((scene, i) => {
+            const active = scene.id === currentScene?.id;
+            const completed = scene.completedTrainCount >= scene.requiredTrainTimes;
+            // 顺序锁定：第0个始终可点；后面的只有前一个已完成才解锁
+            const prevScene = i > 0 ? detail.scenes[i - 1] : null;
+            const locked = i > 0 && (prevScene?.completedTrainCount ?? 0) < (prevScene?.requiredTrainTimes ?? 1);
+            return (
+              <button
+                key={scene.id}
+                type="button"
+                onClick={() => { if (!locked) setSelectedSceneId(scene.id); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "8px 14px", borderRadius: 8,
+                  fontSize: 13, fontWeight: active ? 600 : 400,
+                  cursor: locked ? "not-allowed" : "pointer",
+                  border: "none", outline: "none",
+                  minWidth: 0, opacity: locked ? 0.45 : 1,
+                  background: completed
+                    ? (active ? "#52c41a" : "#f6ffed")
+                    : (active ? "linear-gradient(135deg, #4E63F0 0%, #6B7FF0 100%)" : "#f7f8fa"),
+                  color: locked
+                    ? "#bfbfbf"
+                    : completed
+                      ? (active ? "#fff" : "#52c41a")
+                      : (active ? "#fff" : "#52657f"),
+                  boxShadow: active && !locked ? "0 2px 8px rgba(78,99,240,0.25)" : "0 1px 2px rgba(0,0,0,0.04)",
+                  transition: "all 0.2s",
+                  width: "calc(33.33% - 8px)",
+                  flexShrink: 0,
+                }}
+              >
+                <span style={{
+                  width: 22, height: 22, borderRadius: "50%",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700, flexShrink: 0,
+                  background: locked
+                    ? "#e8e8e8"
+                    : completed
+                      ? (active ? "rgba(255,255,255,0.3)" : "#52c41a")
+                      : (active ? "rgba(255,255,255,0.25)" : "#d9d9d9"),
+                  color: locked
+                    ? "#bfbfbf"
+                    : completed
+                      ? "#fff"
+                      : (active ? "#fff" : "#8b98aa"),
+                }}>
+                  {locked ? "🔒" : completed ? "✓" : i + 1}
+                </span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {scene.sceneName || "场景名称"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* ===== 4. 场景详情 ===== */}

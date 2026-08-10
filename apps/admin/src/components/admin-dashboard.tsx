@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { AppealsSection } from "./AppealsSection";
 import { KnowledgeSection } from "./KnowledgeSection";
+import { HomeSection } from "./HomeSection";
 import { StatisticsSection } from "./StatisticsSection";
 import { SysMenusSection } from "./SysMenusSection";
 import { SysPostsSection } from "./SysPostsSection";
@@ -1499,83 +1500,7 @@ export function AdminDashboard() {
         {message ? <div className="success"><CheckCircle2 size={16} /> {message}</div> : null}
 
         {(activeSection === "overview" || loading) && (
-          <div className="prototype-home">
-            <div className="home-grid">
-              <div className="home-main">
-                <section className="hero-card card">
-                  <div>
-                    <p>智训通 · 企业智能培训平台</p>
-                    <h1>数据概览，让每一次培训都有数据可循</h1>
-                  </div>
-                  <button className="hero-action" onClick={() => setActiveSection("my-tasks")} type="button">查看我的任务 &gt;</button>
-                </section>
-
-                <section className="notice-strip card">
-                  <strong>通知消息</strong>
-                  <span>请按时完成已派发的培训、对练与考试任务，系统将同步记录学习结果。</span>
-                </section>
-
-                <section className="overview card">
-                  <div className="overview-head">
-                    <div>
-                      <h2>数据概览</h2>
-                      <span>{tenantForm.name || overview?.tenantName || "智训通本地验证租户"} · 2026年度</span>
-                    </div>
-                  </div>
-                  <div className="overview-filters">
-                    <button type="button">部门: {tenantForm.name || overview?.tenantName || "智训通本地验证租户"} ⌄</button>
-                    <button type="button">时间: 2026年度 ⌄</button>
-                  </div>
-                  <div className="stats prototype-stats">
-                    <div className="metric card"><span>任务数</span><strong>{publishedTaskCount}</strong><small>已发布培训任务</small></div>
-                    <div className="metric card"><span>派发人数</span><strong className="text-blue">{learnerCount}</strong><small>参与培训学员</small></div>
-                    <div className="metric card"><span>任务参与率</span><strong>{publishedTaskCount && learnerCount ? "100%" : "0%"}</strong><small>任务完成进度</small></div>
-                    <div className="metric card"><span>对练人数</span><strong>{completedRecordCount}</strong><small>参与对练学员</small></div>
-                    <div className="metric card"><span>对练合格率</span><strong>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</strong><small>对练结果统计</small></div>
-                    <div className="metric card"><span>考试合格率</span><strong>0%</strong><small>考试结果统计</small></div>
-                  </div>
-                </section>
-
-                <section className="home-bottom-grid">
-                  <div className="chart card">
-                    <h2>年度整体趋势</h2>
-                    <div className="chart-bars">
-                      {[35, 55, 42, 68, 50, 75, 60, 45].map((h, i) => (
-                        <div key={i} className="chart-bar" style={{ height: `${h}%` }} />
-                      ))}
-                    </div>
-                  </div>
-                  <div className="rankcard card">
-                    <h2>任务参与度排名</h2>
-                    <div className="rank-row"><span className="rank-label">暂无部门数据</span><span className="rank-dash" /></div>
-                    <div className="rank-row"><span className="rank-label">各部门考试情况</span><strong className="text-blue">0%</strong></div>
-                    <div className="rank-row"><span className="rank-label">考试合格率排名</span><span className="rank-dash" /></div>
-                  </div>
-                </section>
-              </div>
-
-              <aside className="right-rail">
-                <div className="profile card">
-                  <span className="avatar large" />
-                  <div>
-                    <h2>{auth.user.name}</h2>
-                    <p>企业管理员</p>
-                    <p>培训负责人</p>
-                  </div>
-                </div>
-                <div className="sidecard card">
-                  <div className="sidecard-head"><h2>培训概况</h2><span>本年度</span></div>
-                  <strong>{completedRecordCount}</strong>
-                  <p>已完成培训任务</p>
-                  <div className="mini-stats"><span>对练<b>{records.length}</b></span><span>考试<b>0</b></span><span>合格率<b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></span></div>
-                </div>
-                <div className="sidecard card">
-                  <h2>通知消息</h2>
-                  <p>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息，系统将及时推送任务派发、培训安排及学习进度提醒。"}</p>
-                </div>
-              </aside>
-            </div>
-          </div>
+          <HomeSection auth={auth} submitting={submitting} onRefresh={() => loadData()} />
         )}
 
         {activeSection === "scenes" && (

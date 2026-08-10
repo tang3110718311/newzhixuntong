@@ -1266,6 +1266,17 @@ body {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+/* 5张统计卡的页面：一排5列（首页公司数据看板） */
+.prototype-stats.stats-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+/* 管理层行动洞察卡 */
+.insight-card {
+  padding: 20px 24px;
+  background: rgba(255, 255, 255, 0.85);
+}
+
 .prototype-stats .metric {
   min-height: 122px;
   padding: 20px 18px;
