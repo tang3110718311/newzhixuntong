@@ -1363,8 +1363,6 @@ export function AdminDashboard() {
     if (storedAuth) {
       setAuth(storedAuth);
       void loadData();
-    } else {
-      setLoading(false);
     }
   }, []);
 
@@ -1387,17 +1385,11 @@ export function AdminDashboard() {
             </div>
           </div>
           {error ? <div className="notice"><AlertCircle size={16} /> {error}</div> : null}
-          {loading ? (
-            <div className="empty">正在检查登录状态</div>
-          ) : (
-            <>
-              <Field label="租户编码"><input value={loginForm.tenantCode} onChange={(e) => setLoginForm({ ...loginForm, tenantCode: e.target.value })} required /></Field>
+          <Field label="租户编码"><input value={loginForm.tenantCode} onChange={(e) => setLoginForm({ ...loginForm, tenantCode: e.target.value })} required /></Field>
               <Field label="手机号"><input value={loginForm.mobile} onChange={(e) => setLoginForm({ ...loginForm, mobile: e.target.value })} required /></Field>
               <Field label="密码"><input value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} type="password" required /></Field>
               <button className="btn primary full" disabled={submitting} type="submit"><LockKeyhole size={16} /> 登录</button>
-              <p className="login-hint">本地验证默认账号：zxt-demo / 13800000000 / Zxt@2026</p>
-            </>
-          )}
+            <p className="login-hint">本地验证默认账号：zxt-demo / 13800000000 / Zxt@2026</p>
         </form>
       </div>
     );
