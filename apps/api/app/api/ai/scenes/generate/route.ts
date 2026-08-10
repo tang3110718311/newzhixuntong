@@ -1,6 +1,6 @@
 import { createOpenAiCompatibleLlmProvider } from "@zxt/ai-provider";
 import { generateSceneSchema } from "@zxt/shared";
-import { createGeneratedScene, getDefaultAiProvider, getIndustryPackage, logAiCall } from "@zxt/database/client";
+import { createGeneratedScene, getDefaultAiProvider, getIndustryPackage, listKnowledgeSummaries, logAiCall } from "@zxt/database/client";
 import { createTraceId, fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 
@@ -33,6 +33,7 @@ export async function POST(request: Request) {
     }
 
     const industry = getIndustryPackage(tenantId, body.industryPackageId);
+    const knowledgeSummaries = listKnowledgeSummaries(tenantId, 20);
     const provider = createOpenAiCompatibleLlmProvider({
       baseUrl: config.baseUrl,
       apiKey: config.apiKeyEncrypted,
@@ -45,7 +46,7 @@ export async function POST(request: Request) {
       targetRole: body.targetRole,
       mode: body.mode,
       sceneDescription: body.sceneDescription,
-      attachmentSummaries: [],
+      attachmentSummaries: knowledgeSummaries.map((k) => `【${k.folderName}】${k.name}\n${k.summary}`),
     });
     const scene = createGeneratedScene(tenantId, {
       industryPackageId: body.industryPackageId,
