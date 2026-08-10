@@ -3,10 +3,10 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '4227350f-156e-4d8d-b096-3273badd9820'
-  PropagateID: '4227350f-156e-4d8d-b096-3273badd9820'
-  ReservedCode1: '06668fd3-4285-4789-80bf-2a264d7acf15'
-  ReservedCode2: '06668fd3-4285-4789-80bf-2a264d7acf15'
+  ProduceID: '4cfb8b61-0957-4390-9e4a-33fe53e72a37'
+  PropagateID: '4cfb8b61-0957-4390-9e4a-33fe53e72a37'
+  ReservedCode1: 'a7e95b59-3ed6-4199-ad4e-cddd4b4cd119'
+  ReservedCode2: 'a7e95b59-3ed6-4199-ad4e-cddd4b4cd119'
 ---
 
 # 企业知识库文件上传 + AI 解析 + 出题联动 实现计划
@@ -221,8 +221,25 @@ git commit -m "chore(api): 安装文档解析依赖 pdf-parse/mammoth/xlsx/jszip
 
 **文件：**
 - 创建：`apps/api/src/lib/document-parser.ts`
+- 创建：`apps/api/src/types/pdf-parse.d.ts`（pdf-parse 无内置类型，strict 模式需声明）
 
-- [ ] **步骤 1：编写解析器**
+- [ ] **步骤 1：编写类型声明 pdf-parse.d.ts**
+
+```ts
+declare module "pdf-parse" {
+  interface PdfParseData {
+    text: string;
+    numpages: number;
+    info: unknown;
+    metadata: unknown;
+    version: string;
+  }
+  function pdfParse(buffer: Buffer, options?: Record<string, unknown>): Promise<PdfParseData>;
+  export default pdfParse;
+}
+```
+
+- [ ] **步骤 2：编写解析器**
 
 ```ts
 import { readFileSync } from "node:fs";
@@ -311,14 +328,14 @@ export function mimeFromExtension(filename: string): string {
 }
 ```
 
-- [ ] **步骤 2：验证编译**
+- [ ] **步骤 3：验证编译**
 
 运行：`npx tsc --noEmit`（apps/api）预期 0 错误。
 
-- [ ] **步骤 3：Commit**
+- [ ] **步骤 4：Commit**
 
 ```bash
-git add apps/api/src/lib/document-parser.ts
+git add apps/api/src/lib/document-parser.ts apps/api/src/types/pdf-parse.d.ts
 git commit -m "feat(api): 文档解析器（PDF/Word/Excel/PPT/TXT）"
 ```
 
