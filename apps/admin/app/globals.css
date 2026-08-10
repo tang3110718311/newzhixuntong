@@ -63,18 +63,6 @@ textarea {
   font-weight: 800;
 }
 
-.brand-title {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 800;
-}
-
-.brand-subtitle {
-  margin: 3px 0 0;
-  color: #cbd5e1;
-  font-size: 12px;
-}
-
 .nav {
   display: grid;
   gap: 6px;
@@ -759,18 +747,91 @@ textarea:focus {
   min-height: 100vh;
   place-items: center;
   padding: 24px;
-  background: linear-gradient(135deg, #f8fafc 0%, #eef2f7 48%, #fff5f5 100%);
+  background:
+    radial-gradient(1200px 600px at 15% 10%, #a5b4fc 0%, transparent 60%),
+    radial-gradient(1000px 500px at 85% 90%, #c4b5fd 0%, transparent 60%),
+    linear-gradient(135deg, #eef2ff 0%, #ede9fe 50%, #fce7f3 100%);
 }
 
 .login-card {
   display: grid;
-  gap: 16px;
+  gap: 18px;
   width: min(440px, 100%);
-  padding: 26px;
+  padding: 32px 28px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.65);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: 0 24px 60px rgba(76, 29, 149, 0.18);
+}
+
+.login-card .login-hint {
+  margin: 4px 0 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.login-card .login-title h1 {
+  font-size: 22px;
+  margin: 0;
+}
+
+.login-card .login-title p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.login-card .btn.primary.full {
+  margin-top: 4px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border: 0;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.35);
+}
+
+.login-card .btn.primary.full:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-card input {
+  width: 100%;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--panel);
-  box-shadow: var(--shadow);
+  background: rgba(255, 255, 255, 0.85);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.login-card input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.login-brand .brand-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #fff;
+  font-weight: 800;
+  font-size: 18px;
+  box-shadow: 0 8px 18px rgba(99, 102, 241, 0.35);
+}
+
+.login-brand .brand-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1f2937;
+  letter-spacing: 0;
 }
 
 .login-brand,
