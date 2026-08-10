@@ -1,5 +1,6 @@
 /** @type {import("next").NextConfig} */
 const nextConfig = {
+  serverExternalPackages: ["pdf-parse"],
   transpilePackages: ["@zxt/database", "@zxt/shared", "@zxt/ai-provider"],
   webpack: (config, { isServer }) => {
     if (isServer) {
