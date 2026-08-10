@@ -2077,4 +2077,106 @@ export function deleteKnowledgeFolder(tenantId: string, id: string) {
   run(`update knowledge_folders set deleted_at = datetime('now'), updated_at = datetime('now') where tenant_id = ? and id = ?`, [tenantId, id]);
 }
 
+// ===== 知识库文件 =====
+
+export type KnowledgeFileRow = {
+  id: string;
+  folderId: string;
+  fileId: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  content: string;
+  summary: string;
+  parseStatus: string;
+  parseError: string;
+  uploaderName: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function createKnowledgeFile(
+  tenantId: string,
+  input: {
+    folderId: string;
+    fileId: string;
+    name: string;
+    mimeType: string;
+    size: number;
+    content: string;
+    summary: string;
+    parseStatus: string;
+    parseError?: string;
+    createdBy?: string | null;
+  },
+) {
+  const id = createId("kf");
+  run(
+    `insert into knowledge_files (id, tenant_id, folder_id, file_id, name, mime_type, size, content, summary, parse_status, parse_error, created_by, created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+    [id, tenantId, input.folderId, input.fileId, input.name, input.mimeType, input.size, input.content, input.summary, input.parseStatus, input.parseError ?? "", input.createdBy ?? null],
+  );
+  return get<KnowledgeFileRow>(
+    `select kf.id, kf.folder_id as folderId, kf.file_id as fileId, kf.name, kf.mime_type as mimeType, kf.size,
+            kf.content, kf.summary, kf.parse_status as parseStatus, kf.parse_error as parseError,
+            u.name as uploaderName, kf.created_at as createdAt, kf.updated_at as updatedAt
+     from knowledge_files kf
+     left join users u on u.id = kf.created_by and u.tenant_id = kf.tenant_id
+     where kf.tenant_id = ? and kf.id = ?`,
+    [tenantId, id],
+  );
+}
+
+export function listKnowledgeFiles(tenantId: string, folderId: string) {
+  return all<KnowledgeFileRow>(
+    `select kf.id, kf.folder_id as folderId, kf.file_id as fileId, kf.name, kf.mime_type as mimeType, kf.size,
+            kf.content, kf.summary, kf.parse_status as parseStatus, kf.parse_error as parseError,
+            u.name as uploaderName, kf.created_at as createdAt, kf.updated_at as updatedAt
+     from knowledge_files kf
+     left join users u on u.id = kf.created_by and u.tenant_id = kf.tenant_id
+     where kf.tenant_id = ? and kf.folder_id = ? and kf.deleted_at is null
+     order by kf.created_at desc`,
+    [tenantId, folderId],
+  );
+}
+
+export function getKnowledgeFile(tenantId: string, id: string) {
+  return get<KnowledgeFileRow>(
+    `select kf.id, kf.folder_id as folderId, kf.file_id as fileId, kf.name, kf.mime_type as mimeType, kf.size,
+            kf.content, kf.summary, kf.parse_status as parseStatus, kf.parse_error as parseError,
+            u.name as uploaderName, kf.created_at as createdAt, kf.updated_at as updatedAt
+     from knowledge_files kf
+     left join users u on u.id = kf.created_by and u.tenant_id = kf.tenant_id
+     where kf.tenant_id = ? and kf.id = ? and kf.deleted_at is null`,
+    [tenantId, id],
+  );
+}
+
+export function deleteKnowledgeFile(tenantId: string, id: string) {
+  run(`update knowledge_files set deleted_at = datetime('now'), updated_at = datetime('now') where tenant_id = ? and id = ?`, [tenantId, id]);
+}
+
+// 文件夹 file_count / total_size 联动
+export function bumpKnowledgeFolderStats(tenantId: string, folderId: string, deltaCount: number, deltaSize: number) {
+  run(
+    `update knowledge_folders
+     set file_count = max(0, file_count + ?), total_size = max(0, total_size + ?), updated_at = datetime('now')
+     where tenant_id = ? and id = ?`,
+    [deltaCount, deltaSize, tenantId, folderId],
+  );
+}
+
+// 出题联动：拉取已解析知识文件摘要
+export function listKnowledgeSummaries(tenantId: string, limit = 20) {
+  return all<{ folderName: string; name: string; summary: string }>(
+    `select kf.name, kf.summary, kfolder.name as folderName
+     from knowledge_files kf
+     left join knowledge_folders kfolder on kfolder.id = kf.folder_id and kfolder.tenant_id = kf.tenant_id
+     where kf.tenant_id = ? and kf.parse_status = 'done' and kf.deleted_at is null and kf.summary <> ''
+     order by kf.created_at desc limit ?`,
+    [tenantId, limit],
+  );
+}
+
+
 
