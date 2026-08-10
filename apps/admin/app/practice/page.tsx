@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./practice.css";
 import AppShell, { type RightRailData } from "@/components/AppShell";
+import { navigateTo } from "@/lib/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -75,7 +76,7 @@ type HistoryDetail = {
     score: number;
     finishedAt?: string | null;
   };
-  turns: Array<{ id: string; speaker: string; text: string; durationMs: number }>;
+  turns: Array<{ id: string; speaker: string; text: string; durationMs: number; emotion?: string }>;
   scores: ScoreDetail[];
 };
 
@@ -115,11 +116,10 @@ function modeLabel(mode: string) {
 export default function PracticePage() {
   const [auth, setAuth] = useState<AuthSession | null>(null);
   // 有 URL sceneId 时，初始直接进 chat 视图（避免闪现场景选择页）
-  const [initialSceneId] = useState(() => {
-    if (typeof window === "undefined") return null;
-    return new URLSearchParams(window.location.search).get("sceneId");
-  });
-  const [view, setView] = useState<View>(initialSceneId ? "chat" : "history");
+  // 注意：不能直接在 useState 初始值里读 window.location（SSR 阶段 window 不存在，
+  // 会导致 SSR 渲染 history、客户端 hydration 渲染 chat，触发 React 水合错误 #418 页面空白），
+  // 必须挂载后再用 useEffect 读取并设置 view。
+  const [view, setView] = useState<View>("history");
 
   // 场景列表（仅用于历史记录筛选下拉 + 对练对话加载）
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -143,6 +143,9 @@ export default function PracticePage() {
   // 历史记录视图
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyPage, setHistoryPage] = useState(1);
+  const historyPageSize = 20;
+  const historyTotalPages = Math.max(1, Math.ceil(historyTotal / historyPageSize));
   const [historyFilterScene, setHistoryFilterScene] = useState("");
   const [historyFilterUser, setHistoryFilterUser] = useState("");
   const [userOptions, setUserOptions] = useState<Array<{ id: string; name: string }>>([]);
@@ -167,6 +170,10 @@ export default function PracticePage() {
   const sceneVoiceRef = useRef<string | null>(null);
   // 记录当前已由哪个 sceneId 锁定了声音，避免重复进入时换声
   const sceneVoiceSceneIdRef = useRef<string | null>(null);
+  // 对练会话 ID：进入场景时生成，整个会话共享，用于训练记录幂等与评分轮询
+  const sessionIdRef = useRef<string>("");
+  // 评分轮询定时器（组件卸载时清理）
+  const pollTimerRef = useRef<number | null>(null);
 
   const isFirstAiRef = useRef(true);
 
@@ -241,6 +248,29 @@ export default function PracticePage() {
     [],
   );
 
+  // ===== 评分结果轮询（结束回合后评分在后台执行，轮询 by-session 接口取结果） =====
+  const pollTrainingResult = useCallback(
+    async (sessionId: string, attempt = 1) => {
+      try {
+        const data = await apiGet<TrainingRecordResult | null>(`/training-records/by-session/${encodeURIComponent(sessionId)}`);
+        if (data) {
+          setChatResult(data);
+          return;
+        }
+      } catch {
+        // 轮询失败静默重试，不打断用户
+      }
+      if (attempt >= 15) {
+        setError("评分生成较慢，可稍后在历史记录中查看本次对练结果。");
+        return;
+      }
+      pollTimerRef.current = window.setTimeout(() => {
+        void pollTrainingResult(sessionId, attempt + 1);
+      }, 2000);
+    },
+    [apiGet],
+  );
+
   // ===== TTS（在进入对话前定义，供首问播报使用） =====
   const playTts = useCallback(
     async (text: string, emotion: string = "default", voice?: string) => {
@@ -308,6 +338,10 @@ export default function PracticePage() {
       setCoachTip(null);
       setChatFinished(false);
       setChatResult(null);
+      // 新会话生成唯一 sessionId（幂等/评分轮询用）
+      sessionIdRef.current = typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
       setView("chat");
       try {
         const detail = await apiGet<{ scene: { passScore: number; mode: string }; scoringRules: Array<{ id: string; name: string; score: number }> }>(`/scenes/${scene.id}`);
@@ -325,9 +359,10 @@ export default function PracticePage() {
     async (scene: Scene, _rules: Array<{ id: string; name: string; score: number }>) => {
       setChatSending(true);
       try {
-        const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; coachTip: string | null; emotion: string }>(`/ai/chat`, {
+        const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; coachTip: string | null; emotion: string }>(`/ai/chat`, {
           sceneId: scene.id,
           messages: [],
+          sessionId: sessionIdRef.current || undefined,
         });
         const emotion = data.emotion || "default";
         const voice = ttsVoice || pickSceneVoice(scene.id);
@@ -336,9 +371,10 @@ export default function PracticePage() {
         // AI 先开口默认自动语音播报
         isFirstAiRef.current = true;
         if (voiceMode) void playTts(data.aiReply, emotion, voice);
-        if (data.isFinished && data.trainingRecord) {
-          setChatResult(data.trainingRecord);
+        if (data.isFinished) {
           setChatFinished(true);
+          if (data.trainingRecord) setChatResult(data.trainingRecord);
+          else if (data.recordPending && sessionIdRef.current) void pollTrainingResult(sessionIdRef.current);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "AI 首问失败");
@@ -346,7 +382,7 @@ export default function PracticePage() {
         setChatSending(false);
       }
     },
-    [apiPost, pickSceneVoice, playTts, ttsVoice, voiceMode],
+    [apiPost, pickSceneVoice, playTts, ttsVoice, voiceMode, pollTrainingResult],
   );
 
   // ===== 发送消息 =====
@@ -360,9 +396,10 @@ export default function PracticePage() {
       setChatSending(true);
       setCoachTip(null);
       try {
-        const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; coachTip: string | null; emotion: string }>(`/ai/chat`, {
+        const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; coachTip: string | null; emotion: string }>(`/ai/chat`, {
           sceneId: selectedScene.id,
           messages: nextMessages,
+          sessionId: sessionIdRef.current || undefined,
         });
         const emotion = data.emotion || "default";
         const voice = ttsVoice || pickSceneVoice(selectedScene.id);
@@ -370,9 +407,10 @@ export default function PracticePage() {
         setCoachTip(data.coachTip || null);
         // 仅在语音模式下且未录音时自动播放 AI 语音
         if (voiceMode && !recordingRef.current) void playTts(data.aiReply, emotion, voice);
-        if (data.isFinished && data.trainingRecord) {
-          setChatResult(data.trainingRecord);
+        if (data.isFinished) {
           setChatFinished(true);
+          if (data.trainingRecord) setChatResult(data.trainingRecord);
+          else if (data.recordPending && sessionIdRef.current) void pollTrainingResult(sessionIdRef.current);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "对话失败");
@@ -380,7 +418,7 @@ export default function PracticePage() {
         setChatSending(false);
       }
     },
-    [apiPost, chatMessages, chatSending, pickSceneVoice, playTts, selectedScene, ttsVoice, voiceMode],
+    [apiPost, chatMessages, chatSending, pickSceneVoice, playTts, selectedScene, ttsVoice, voiceMode, pollTrainingResult],
   );
 
   // ===== 结束训练（主动） =====
@@ -389,15 +427,18 @@ export default function PracticePage() {
     setChatSending(true);
     setError("");
     try {
-      const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; coachTip: string | null }>(`/ai/chat`, {
+      const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; coachTip: string | null }>(`/ai/chat`, {
         sceneId: selectedScene.id,
         messages: chatMessages,
         finishTraining: true,
+        sessionId: sessionIdRef.current || undefined,
       });
       if (data.aiReply) setChatMessages((prev) => [...prev, { role: "ai", content: data.aiReply }]);
+      setChatFinished(true);
       if (data.trainingRecord) {
         setChatResult(data.trainingRecord);
-        setChatFinished(true);
+      } else if (data.recordPending && sessionIdRef.current) {
+        void pollTrainingResult(sessionIdRef.current);
       } else {
         setError("训练记录保存失败，请重试。");
       }
@@ -406,7 +447,7 @@ export default function PracticePage() {
     } finally {
       setChatSending(false);
     }
-  }, [apiPost, chatMessages, chatSending, selectedScene]);
+  }, [apiPost, chatMessages, chatSending, selectedScene, pollTrainingResult]);
 
   // ===== STT + 语音采集 =====
   const startRecording = useCallback(async () => {
@@ -483,7 +524,7 @@ export default function PracticePage() {
     // 如果从任务详情页跳来，返回任务详情页
     const storedTaskId = window.sessionStorage.getItem("zxt-practice-taskId");
     if (storedTaskId) {
-      window.location.href = `/tasks/${storedTaskId}`;
+      navigateTo(`/tasks/${storedTaskId}`);
       return;
     }
     setView("history");
@@ -504,10 +545,11 @@ export default function PracticePage() {
   }, [enterChat, selectedScene]);
 
   // ===== 历史记录 =====
-  const loadHistory = useCallback(async () => {
+  const loadHistory = useCallback(async (page = 1) => {
     try {
       const params = new URLSearchParams();
-      params.set("pageSize", "50");
+      params.set("pageSize", String(historyPageSize));
+      params.set("page", String(page));
       params.set("status", "completed");
       if (historyFilterScene) params.set("sceneId", historyFilterScene);
       const me = readStoredAuth();
@@ -516,6 +558,7 @@ export default function PracticePage() {
       const data = await apiGet<{ items: HistoryItem[]; total: number }>(`/training-records?${params.toString()}`);
       setHistoryItems(data.items || []);
       setHistoryTotal(data.total || 0);
+      setHistoryPage(page);
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载历史记录失败");
     }
@@ -546,7 +589,7 @@ export default function PracticePage() {
   useEffect(() => {
     const stored = readStoredAuth();
     if (!stored) {
-      window.location.href = "/";
+      navigateTo("/");
       return;
     }
     setAuth(stored);
@@ -568,6 +611,7 @@ export default function PracticePage() {
     }
     if (sceneId) {
       // 有 sceneId 时直接进对话，不闪现场景选择页
+      setView("chat");
       void (async () => {
         try {
           const data = await apiGet<{ items: Scene[] }>(`/scenes?pageSize=50`);
@@ -609,20 +653,26 @@ export default function PracticePage() {
     const storedTaskId = window.sessionStorage.getItem("zxt-practice-taskId");
     if (!storedTaskId) return;
     const timer = window.setTimeout(() => {
-      window.location.href = `/tasks/${storedTaskId}`;
+      navigateTo(`/tasks/${storedTaskId}`);
     }, 3000);
     return () => window.clearTimeout(timer);
   }, [chatFinished]);
 
-  // 离开页面/卸载时停止音频播放
+  // 离开页面/卸载时停止音频播放 + 清理评分轮询定时器
   useEffect(() => {
-    return () => stopAudio();
+    return () => {
+      stopAudio();
+      if (pollTimerRef.current) {
+        window.clearTimeout(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 历史筛选变化时重载
+  // 历史筛选变化时重载（回到第1页）
   useEffect(() => {
-    if (view === "history") void loadHistory();
+    if (view === "history") void loadHistory(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyFilterScene, historyFilterUser]);
 
@@ -643,7 +693,7 @@ export default function PracticePage() {
   return (
     <AppShell
       activeNavKey="practice"
-      onNavClick={(key: string) => { stopAudio(); window.location.href = "/?section=" + key; }}
+      onNavClick={(key: string) => { stopAudio(); navigateTo("/?section=" + key); }}
       rightRail={rightRail}
       breadcrumb={{ label: "对练中心" }}
     >
@@ -661,101 +711,6 @@ export default function PracticePage() {
           <div className="pc-empty" style={{ padding: "60px 0", textAlign: "center", color: "#86909c" }}>
             正在加载场景…
           </div>
-        )}
-
-        {view === "chat" && selectedScene && (
-          <section className="pc-chat">
-            <div className="pc-chat-head">
-              <button className="pc-back-mini" onClick={backToHistory}>‹ 返回</button>
-              <div className="pc-chat-title">
-                <span className="pc-tag ghost">{modeLabel(selectedScene.mode)}</span>
-                <strong>{selectedScene.name}</strong>
-              </div>
-              <button className="pc-end" onClick={() => void endTraining()} disabled={chatSending || chatFinished}>结束训练</button>
-            </div>
-
-            {/* 场景信息卡：合格线 + 评分维度 */}
-            <div className="pc-scene-info">
-              <div className="pc-scene-info-row">
-                <span className="pc-scene-info-label">合格线</span>
-                <span className="pc-scene-info-value">{selectedScene.passScore} 分</span>
-              </div>
-              {sceneRules.length > 0 && (
-                <div className="pc-scene-info-row">
-                  <span className="pc-scene-info-label">评分维度</span>
-                  <div className="pc-scene-info-tags">
-                    {sceneRules.map((r) => (
-                      <span key={r.id} className="pc-scene-info-tag">{r.name}({r.score}分)</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="pc-messages">
-              {chatMessages.map((m, idx) => (
-                <div className={`pc-bubble ${m.role === "ai" ? "ai" : "learner"}`} key={idx}>
-                  <span className="pc-bubble-role">{m.role === "ai" ? "AI" : "我"}</span>
-                  <div className="pc-bubble-text">
-                    {m.content}
-                    {m.role === "ai" && <button className="pc-speaker-btn" title="播放语音" onClick={() => void playTts(m.content, m.emotion || "default", ttsVoice || pickSceneVoice(selectedScene?.id))}>&#128266;</button>}
-                  </div>
-                </div>
-              ))}
-              {chatSending && <div className="pc-bubble ai"><span className="pc-bubble-role">AI</span><div className="pc-bubble-text pc-typing">正在输入…</div></div>}
-            </div>
-
-            {/* 教练提示 — 醒目浮层 */}
-            {coachTip && !chatFinished && (
-              <div className="pc-coachtip-float">
-                <span className="pc-coachtip-icon">💡</span>
-                <div className="pc-coachtip-body">
-                  <span className="pc-coachtip-label">教练提示</span>
-                  <span className="pc-coachtip-text">{coachTip}</span>
-                </div>
-              </div>
-            )}
-
-            {chatFinished && chatResult ? (
-              <ScoreCard
-                result={chatResult}
-                sceneRules={sceneRules}
-                passScore={selectedScene.passScore}
-                onBack={backToHistory}
-                onRestart={restartChat}
-              />
-            ) : (
-              <div className="pc-inputbar">
-                <div className="pc-inputrow">
-                  {voiceMode ? (
-                    <button
-                      className={`pc-mic ${isRecording ? "recording" : ""}`}
-                      onClick={toggleRecording}
-                      disabled={chatSending}
-                    >
-                      {isRecording ? "结束说话" : "点击说话"}
-                    </button>
-                  ) : (
-                    <>
-                      <input
-                        className="pc-text"
-                        placeholder="输入你的回复，回车发送…"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendChatMessage(chatInput); } }}
-                        disabled={chatSending}
-                      />
-                      <button className="pc-send" onClick={() => void sendChatMessage(chatInput)} disabled={chatSending}>发送</button>
-                    </>
-                  )}
-                  <div className="pc-mode">
-                    <button className={!voiceMode ? "active" : ""} onClick={() => setVoiceMode(false)}>文本</button>
-                    <button className={voiceMode ? "active" : ""} onClick={() => setVoiceMode(true)}>语音</button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </section>
         )}
 
         {view === "history" && (
@@ -805,6 +760,15 @@ export default function PracticePage() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+            {historyTotalPages > 1 && (
+              <div className="pc-pagination">
+                <button className="pc-page-btn" disabled={historyPage <= 1} onClick={() => void loadHistory(1)}>首页</button>
+                <button className="pc-page-btn" disabled={historyPage <= 1} onClick={() => void loadHistory(historyPage - 1)}>上一页</button>
+                <span className="pc-page-info">{historyPage} / {historyTotalPages}</span>
+                <button className="pc-page-btn" disabled={historyPage >= historyTotalPages} onClick={() => void loadHistory(historyPage + 1)}>下一页</button>
+                <button className="pc-page-btn" disabled={historyPage >= historyTotalPages} onClick={() => void loadHistory(historyTotalPages)}>末页</button>
               </div>
             )}
           </section>
@@ -888,6 +852,45 @@ function ScoreCard({
 
 // ================= 历史详情 =================
 function HistoryDetailView({ detail, passScore }: { detail: HistoryDetail | null; passScore: number }) {
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const audioRef = useRef<AudioContext | null>(null);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
+
+  // 播放回放 TTS
+  const playReplayTts = async (turnId: string, text: string, emotion?: string) => {
+    // 停止当前播放
+    if (audioElRef.current) {
+      audioElRef.current.pause();
+      audioElRef.current = null;
+    }
+    if (playingId === turnId) {
+      setPlayingId(null);
+      return;
+    }
+    setPlayingId(turnId);
+    try {
+      const token = readStoredAuth()?.token || "";
+      const response = await fetch(`${API_BASE}/ai/tts/synthesize`, {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ text, emotion: emotion || "default", voice: "edge-male-0" }),
+      });
+      const payload = await response.json() as { success: boolean; data?: { audioBase64: string; format: string } };
+      if (!payload.success || !payload.data?.audioBase64) throw new Error("TTS failed");
+      const audio = new Audio(`data:audio/${payload.data.format || "mp3"};base64,${payload.data.audioBase64}`);
+      audioElRef.current = audio;
+      audio.onended = () => { if (audioElRef.current === audio) audioElRef.current = null; setPlayingId(null); };
+      audio.onerror = () => { setPlayingId(null); };
+      await audio.play().catch(() => { setPlayingId(null); });
+    } catch {
+      setPlayingId(null);
+    }
+  };
+
   if (!detail) return <div className="pc-detail-loading">加载中…</div>;
   return (
     <div className="pc-detail">
@@ -912,7 +915,18 @@ function HistoryDetailView({ detail, passScore }: { detail: HistoryDetail | null
             {detail.turns.map((t, i) => (
               <div className={`pc-bubble ${t.speaker === "ai" ? "ai" : "learner"}`} key={t.id || i}>
                 <span className="pc-bubble-role">{t.speaker === "ai" ? "AI" : "学员"}</span>
-                <div className="pc-bubble-text">{t.text}</div>
+                <div className="pc-bubble-text">
+                  {t.text}
+                  {t.speaker === "ai" && (
+                    <button
+                      className={`pc-replay-tts-btn ${playingId === t.id ? "playing" : ""}`}
+                      onClick={() => playReplayTts(t.id, t.text, t.emotion)}
+                      title={playingId === t.id ? "停止播放" : "播放语音"}
+                    >
+                      {playingId === t.id ? "\u25A0" : "\u25B6"}
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

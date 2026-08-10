@@ -69,6 +69,44 @@ function saveToFile() {
   }
 }
 
+/**
+ * 落盘节流：写操作只标记"脏"，由定时器统一落盘，避免每次 INSERT/UPDATE
+ * 都全量 export 写盘（一次对练保存会触发数十次全量落盘，阻塞事件循环）。
+ * 进程退出前通过 process.on("exit") 同步兜底 flush，保证数据不丢。
+ */
+const PERSIST_DEBOUNCE_MS = 500;
+let persistTimer: NodeJS.Timeout | null = null;
+let persistDirty = false;
+
+function schedulePersist() {
+  persistDirty = true;
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    if (persistDirty) {
+      persistDirty = false;
+      saveToFile();
+    }
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+/** 同步落盘（供进程退出/运维脚本显式调用） */
+export function persistNow() {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  if (persistDirty) {
+    persistDirty = false;
+    saveToFile();
+  }
+}
+
+// 进程退出前兜底落盘（exit 事件只能执行同步代码，saveToFile 是同步的）
+process.on("exit", () => {
+  persistNow();
+});
+
 let initPromise: Promise<SqlJsDatabase> | null = null;
 
 // Idempotent schema migrations. Applied after the DB loads so existing
@@ -218,6 +256,25 @@ function applyMigrations() {
     db.run(sql);
   }
   ensureColumn("tasks", "description", "text not null default ''");
+  ensureColumn("training_records", "session_id", "text");
+  ensureColumn("training_records", "suggestions", "text not null default '[]'");
+  ensureColumn("training_turns", "emotion", "text not null default ''");
+  // 核心表索引（已有库同样补齐，与 init.mjs 保持一致）
+  db.run("create index if not exists idx_tr_tenant_user_status on training_records(tenant_id, user_id, status)");
+  db.run("create index if not exists idx_tr_tenant_scene on training_records(tenant_id, scene_id)");
+  db.run("create index if not exists idx_tr_session on training_records(tenant_id, session_id)");
+  db.run("create index if not exists idx_tr_tenant_created on training_records(tenant_id, created_at)");
+  db.run("create index if not exists idx_tt_record on training_turns(record_id)");
+  db.run("create index if not exists idx_sd_record on score_details(record_id)");
+  db.run("create index if not exists idx_tp_tenant_task on task_participants(tenant_id, task_id)");
+  db.run("create index if not exists idx_tp_tenant_user on task_participants(tenant_id, user_id)");
+  db.run("create index if not exists idx_sr_tenant_scene on scoring_rules(tenant_id, scene_id)");
+  db.run("create index if not exists idx_sceneroles_tenant_scene on scene_roles(tenant_id, scene_id)");
+  db.run("create index if not exists idx_kf_folder on knowledge_files(folder_id)");
+  db.run("create index if not exists idx_aicall_tenant_created on ai_call_logs(tenant_id, created_at)");
+  db.run("create index if not exists idx_tasks_tenant on tasks(tenant_id, deleted_at)");
+  db.run("create index if not exists idx_users_tenant on users(tenant_id, deleted_at)");
+  db.run("create index if not exists idx_scenes_tenant on scenes(tenant_id, deleted_at)");
   saveToFile();
 }
 
@@ -311,10 +368,10 @@ export function run(sql: string, params: unknown[] = []): { changes: number; las
       database.run(sql);
     }
     const changes = database.getRowsModified();
-    saveToFile();
+    schedulePersist();
     return { changes, lastInsertRowid: 0 };
   } catch (err) {
-    saveToFile();
+    schedulePersist();
     throw err;
   }
 }
@@ -322,7 +379,7 @@ export function run(sql: string, params: unknown[] = []): { changes: number; las
 export function exec(sql: string) {
   const database = getDb();
   database.exec(sql);
-  saveToFile();
+  schedulePersist();
 }
 
 export function createId(prefix: string) {

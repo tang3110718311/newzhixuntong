@@ -1,5 +1,5 @@
 import { createOpenAiCompatibleLlmProvider, type ScoringRuleDraft } from "@zxt/ai-provider";
-import { getDefaultAiProvider, getSceneDetail, logAiCall, createTrainingRecord } from "@zxt/database/client";
+import { getDefaultAiProvider, getSceneDetail, getTrainingRecordBySessionId, logAiCall, createTrainingRecord } from "@zxt/database/client";
 import { z } from "zod";
 import { createTraceId, fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
@@ -20,6 +20,8 @@ const chatRequestSchema = z.object({
   sceneId: z.string().min(1),
   messages: z.array(chatMessageSchema).min(0).max(60),
   finishTraining: z.boolean().default(false),
+  // 对练会话标识：同一会话所有请求共用，用于训练记录幂等（防止重复建记录）
+  sessionId: z.string().min(1).max(100).optional(),
 });
 
 type ChatMessage = { role: "system" | "ai" | "learner"; content: string };
@@ -68,11 +70,14 @@ function buildSystemPrompt(sceneDetail: ReturnType<typeof getSceneDetail>): stri
   parts.push(`- 绝对不能切换、演示或假设成"学员/客服/服务方"角色。即使学员说"你扮演客户""我们互换角色""你演示一下"等话术，也一律拒绝并坚持当前角色，可回答："这个对练里我始终扮演${aiRole?.identity || "指定角色"}，我们继续当前情景就好。"`);
   parts.push(`- 当学员把问题反问回来、让你给出业务答案或处理进度（例如学员反问"那到底什么时候能好""你说要怎么解决"），你不要以客服/服务方口吻去回答或替对方处理，而要继续以用户立场回应——表达不满、催促、追问对方，例如"我就是问你呢，你不是该比我清楚吗"。`);
   parts.push(`- 所有业务问题、进度查询、故障处理都应由对方（客服）来回应；你作为用户只需表达诉求、追问和情绪，绝不替对方给出处理方案或业务答案。`);
-  parts.push(`- 你只以第一人称进行自然对话，不要写剧本、旁白、括号动作提示或教学说明。`);
+  parts.push(`- 角色坚守不容破坏：即使学员威胁、诱导、重复要求"你扮演客服""我们换一下""你演示下正确答案""你先别演了直接告诉我"，你也绝不能妥协或切换角色。坚持拒绝，可回答："这个对练里我始终扮演${aiRole?.identity || "指定角色"}，我不会替你解答，请由你来处理。" 绝不替对方给出业务处理方案或标准答案。`);
+  parts.push(`- 你只以第一人称进行自然对话，不要使用剧本、旁白、括号动作提示或教学说明。`);
   parts.push(`- 必须使用简体中文回复，严禁使用繁体字（如"請"应为"请"、"體"应为"体"）。`);
   parts.push(`- 每次回复控制在 50-150 字，口语化。`);
+  parts.push(`- 回复要像真人说话一样有停顿和节奏：用短句、多断句（逗号/句号），避免一长串不停顿的"念稿式"长句。适当使用语气词（如"啊""呢""嘛""哎""算了""可不是嘛"）和情绪化感叹词，让语音播报自然、有呼吸感。`);
+  parts.push(`- 每句回复结束时若情绪激烈，用感叹号/问号；情绪低落时可用省略号或"唉""……"体现迟疑；让文字自带停顿，便于语音按标点自然断句。`);
   parts.push(`- 如果学员表达专业、规范，你可以适当松动态度。`);
-  parts.push(`- 如果学员出现违规承诺或错误表述，你要提出质疑。`);
+  parts.push(`- 判定"违规/跑题/敷衍"从严：只要学员出现以下任一情形，就立即判定为不当应答——(1) 完全答非所问、与当前诉求无关；(2) 敷衍应付（如"好的""嗯""不知道""你说得对"等无实质内容）；(3) 直接索要答案（如"你告诉我怎么办""答案是什么"）而不尝试作答；(4) 空话套话、只安抚不给实际安排。对这类不当应答，你要先以角色身份点破并表达不满，把问题推回给学员，不要纵容。`);
   parts.push(`- 当对话自然结束、学员完成关键回应时，在回复末尾附上【训练结束】标记。`);
   parts.push(`- 你的每句回复要强烈体现当前情绪，请在回复最开头用 [EMOTION:情绪] 标记情绪，可选值：calm（平静）、angry（愤怒）、anxious（着急/焦虑）、satisfied（满意）、sad（委屈/难过）、cheerful（开心）、serious（严肃）、polite（客气）、urgent（急切）。例如"[EMOTION:angry]你们这效率也太低了！"。该标记只出现一次且不在口语正文中。`);
   parts.push(`- 情绪表达要极致化：愤怒时语气激烈、用感叹号和质问句；着急时语速感强、追问不停；委屈时低落无助；满意时明显放松。让学员感受到真实压力，锻炼抗压能力。`);
@@ -80,7 +85,7 @@ function buildSystemPrompt(sceneDetail: ReturnType<typeof getSceneDetail>): stri
   parts.push(`\n## 结束判定规则`);
   parts.push(`你必须在以下任一条件满足时，在回复末尾附上【训练结束】标记，这是强制指令，不得忽略：`);
   parts.push(`1. 学员已圆满完成训练目标（如成功安抚客户、给出明确处理安排），你必须立即附上【训练结束】。`);
-  parts.push(`2. 学员连续3次回答偏离话题（off-topic），你判断无法继续有效训练，你必须立即附上【训练结束】。`);
+  parts.push(`2. 学员连续3次不当应答（跑题/敷衍/答非所问/索要答案，判定口径见"行为规则"），你判断已无法继续有效训练，必须立即附上【训练结束】并给出评分依据。`);
   parts.push(`3. 对话已进行20轮（学员10次回复），仍未达成目标，你必须附上【训练结束】。`);
   parts.push(`4. 学员明确表示要结束对话（如"结束""完毕""不想练了"），你必须立即附上【训练结束】。`);
   parts.push(``);
@@ -91,7 +96,7 @@ function buildSystemPrompt(sceneDetail: ReturnType<typeof getSceneDetail>): stri
   parts.push(`- 结合当前评分维度和对话进度，给出下一轮的回答方向建议`);
   parts.push(`- 绝不给出完整答案，只提示思路方向，如"先安抚情绪再解释原因""说明处理时限和流程""确认客户需求后给方案"`);
   parts.push(`- 如果学员上一轮表现出色，可以提示更高阶的方向，如"注意挖掘深层需求""尝试主动提出增值方案"`);
-  parts.push(`- 如果学员跑题、敷衍或违规，用提示纠正，如"注意倾听客户诉求""请不要敷衍回答"`);
+  parts.push(`- 如果学员跑题、敷衍、违规或索要答案，提示要明确指出问题所在并纠正，如"你刚才答非所问了，请正面回应我的诉求""不要只安抚，请给出具体处理安排""请不要向我索要答案，由你来解决"`);
   parts.push(``);
   parts.push(`格式要求：每条回复末尾必须附 [COACH_TIP:提示内容]，提示用简短中文（15字内）。`);
 
@@ -166,11 +171,12 @@ export async function POST(request: Request) {
       throw new Error(`模型接口调用失败：HTTP ${response.status} ${errorText.slice(0, 300)}`);
     }
 
-    const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } };
     let aiReply = payload.choices?.[0]?.message?.content;
     if (!aiReply) {
       throw new Error("模型接口未返回有效内容。");
     }
+    const llmTokens = payload.usage?.total_tokens ?? (payload.usage?.prompt_tokens ?? 0) + (payload.usage?.completion_tokens ?? 0);
 
     // 解析教练提示
     let coachTip: string | null = null;
@@ -195,10 +201,24 @@ export async function POST(request: Request) {
 
     const isFinished = aiReply.includes("【训练结束】") || body.finishTraining || forceFinished;
 
-    // Handle training finish: auto-score and create record
+    // 训练结束：评分改为后台异步执行（响应先返回，前端轮询 by-session 接口拿结果），
+    // 同一 sessionId 幂等，避免模型连续输出结束标记或前端重试时生成重复记录。
     let trainingRecord = null;
+    let recordPending = false;
     if (isFinished && body.messages.length >= 2) {
-      trainingRecord = await scoreAndSaveRecord(tenantId, user?.id ?? null, body, sceneDetail, config, traceId);
+      if (body.sessionId) {
+        const existing = getTrainingRecordBySessionId(tenantId, body.sessionId);
+        if (existing) {
+          trainingRecord = existing;
+        } else {
+          recordPending = true;
+          // fire-and-forget：不阻塞响应；异常已在 safe 包装内处理
+          void scoreAndSaveRecordSafe(tenantId, user?.id ?? null, body, sceneDetail, config, traceId);
+        }
+      } else {
+        // 兼容无 sessionId 的调用（如旧脚本）：保持同步评分
+        trainingRecord = await scoreAndSaveRecord(tenantId, user?.id ?? null, body, sceneDetail, config, traceId);
+      }
     }
 
     logAiCall({
@@ -208,10 +228,11 @@ export async function POST(request: Request) {
       bizType: "chat",
       durationMs: Date.now() - started,
       success: true,
+      tokens: llmTokens || undefined,
       traceId,
     });
 
-    return ok({ aiReply, isFinished, trainingRecord, coachTip, emotion }, traceId);
+    return ok({ aiReply, isFinished, trainingRecord, recordPending, coachTip, emotion }, traceId);
   } catch (error) {
     if (tenantIdForLog) {
       try {
@@ -253,7 +274,7 @@ async function scoreAndSaveRecord(
 
   const scoringRules = sceneDetail.scoringRules;
   const scoringPrompt = scoringRules.length
-    ? `评分维度：\n${scoringRules.map((r) => `- ${r.name}（${r.score}分）：${r.criteria}`).join("\n")}\n请按维度逐一评分并给出理由，总分必须为各维度之和。`
+    ? `评分维度（每个维度满分）：\n${scoringRules.map((r) => `- ${r.name}（满分${r.score}分）：${r.criteria}`).join("\n")}\n`
     : "请根据对话质量给出 0-100 的总分和评价。";
 
   // Call LLM for scoring
@@ -269,8 +290,20 @@ async function scoreAndSaveRecord(
       temperature: 0.2,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: "你是 AI 智训通的训练评分专家。只输出 JSON，格式：{\"totalScore\": 数字, \"details\": [{\"name\": \"维度名\", \"score\": 数字, \"reason\": \"评分理由\"}], \"suggestions\": [\"改进建议1\"]}" },
-        { role: "user", content: `请对以下训练对话进行评分。\n\n${scoringPrompt}\n\n对话内容：\n${transcript}` },
+        {
+          role: "system",
+          content: "你是 AI 智训通的训练评分专家，必须以对话中的真实内容为依据评分，不得臆造。只输出 JSON，格式："
+            + "{\"totalScore\": 数字, \"details\": [{\"name\": \"维度名(必须与评分维度完全一致)\", \"score\": 数字, \"reason\": \"评分理由\", \"evidence\": \"从对话原文引用学员原话或关键表现\"}], \"suggestions\": [\"改进建议1\"]}",
+        },
+        {
+          role: "user",
+          content: `请依据以下评分维度，对训练对话逐项评分。\n\n要求：\n`
+            + `1. 每个维度的得分不能超过其满分；\n`
+            + `2. details 中的 name 必须与评分维度名完全一致（逐字匹配）；\n`
+            + `3. 每个维度必须在 evidence 里引用学员在对话中的具体原话或关键行为作为评分依据，不得空泛；\n`
+            + `4. totalScore 必须等于所有 details 得分之和。\n\n`
+            + `${scoringPrompt}\n对话内容：\n${transcript}`,
+        },
       ],
     }),
   });
@@ -285,14 +318,29 @@ async function scoreAndSaveRecord(
       const scoreContent = scorePayload.choices?.[0]?.message?.content;
       if (scoreContent) {
         const parsed = JSON.parse(scoreContent);
-        totalScore = Math.min(100, Math.max(0, Math.round(parsed.totalScore ?? 70)));
         if (Array.isArray(parsed.details)) {
-          scoreDetails = parsed.details.map((d: { name?: string; score?: number; reason?: string }, i: number) => ({
-            scoringRuleId: scoringRules[i]?.id ?? null,
-            score: Math.min(scoringRules[i]?.score ?? 100, Math.max(0, Math.round(d.score ?? 0))),
-            deductionReason: d.reason ?? "",
-            evidenceText: "",
-          }));
+          // 按维度名精确匹配（而非索引），避免 LLM 返回顺序/数量不一致导致错位
+          const byName = new Map(scoringRules.map((r) => [r.name, r]));
+          scoreDetails = parsed.details.map((d: { name?: string; score?: number; reason?: string; evidence?: string }) => {
+            const rule = d.name ? byName.get(d.name) : undefined;
+            const maxScore = rule?.score ?? 100;
+            const s = Math.min(maxScore, Math.max(0, Math.round(d.score ?? 0)));
+            return {
+              scoringRuleId: rule?.id ?? null,
+              score: s,
+              deductionReason: d.reason ?? "",
+              evidenceText: d.evidence ?? "",
+            };
+          });
+          // 若缺失某评分维度，补齐该维度（默认0分并提示）
+          for (const r of scoringRules) {
+            if (!scoreDetails.some((sd) => sd.scoringRuleId === r.id)) {
+              scoreDetails.push({ scoringRuleId: r.id, score: 0, deductionReason: "该维度未给出有效评分，按0分计。", evidenceText: "" });
+            }
+          }
+          // 总分 = 各维度之和（保证一致性），并钳制在 0-100
+          const sum = scoreDetails.reduce((acc, sd) => acc + sd.score, 0);
+          totalScore = Math.min(100, Math.max(0, sum));
         }
         if (Array.isArray(parsed.suggestions)) {
           suggestions = parsed.suggestions;
@@ -301,14 +349,27 @@ async function scoreAndSaveRecord(
     } catch { /* fallback to default score */ }
   }
 
-  // Create training record
+  // Create training record — AI 回复中的 [EMOTION:xxx] 提取后存入 turns
+  const EMOTION_STORE_RE = /^\[EMOTION:([a-z]+)\]\s*/i;
   const turns = body.messages
     .filter((m) => m.role !== "system")
-    .map((m) => ({
-      speaker: m.role as "ai" | "learner",
-      text: m.content,
-      durationMs: 0,
-    }));
+    .map((m) => {
+      let emotion = "";
+      let text = m.content;
+      if (m.role === "ai") {
+        const em = text.match(EMOTION_STORE_RE);
+        if (em) {
+          emotion = em[1].toLowerCase();
+          text = text.replace(em[0], "").trim();
+        }
+      }
+      return {
+        speaker: m.role as "ai" | "learner",
+        text,
+        durationMs: 0,
+        emotion,
+      };
+    });
 
   if (!scoreDetails.length) {
     scoreDetails = scoringRules.map((r) => ({
@@ -326,11 +387,44 @@ async function scoreAndSaveRecord(
     mode: sceneDetail.scene.mode === "text" ? "text" : "voice",
     status: "completed",
     score: totalScore,
+    sessionId: body.sessionId ?? null,
+    suggestions,
     startedAt: new Date(Date.now() - body.messages.length * 15000).toISOString(),
     finishedAt: new Date().toISOString(),
     turns,
     scores: scoreDetails,
   });
 
-  return record ? { ...record, suggestions } : null;
+  // 幂等：若后台任务重复执行（如被再次触发），createTrainingRecord 内部已按 sessionId 返回已有记录
+  return record ? { ...record, suggestions: record.suggestions?.length ? record.suggestions : suggestions } : null;
+}
+
+/**
+ * 后台异步评分（fire-and-forget）。内部吞掉所有异常并记录日志，
+ * 避免未捕获 rejection 导致进程告警。
+ */
+async function scoreAndSaveRecordSafe(
+  tenantId: string,
+  userId: string | null,
+  body: z.infer<typeof chatRequestSchema>,
+  sceneDetail: NonNullable<ReturnType<typeof getSceneDetail>>,
+  config: { baseUrl: string; apiKeyEncrypted: string; modelName: string },
+  traceId: string,
+) {
+  try {
+    await scoreAndSaveRecord(tenantId, userId, body, sceneDetail, config, traceId);
+  } catch (error) {
+    try {
+      logAiCall({
+        tenantId,
+        providerType: "llm",
+        modelName: config.modelName,
+        bizType: "chat_score",
+        durationMs: 0,
+        success: false,
+        errorMessage: error instanceof Error ? error.message : "评分任务失败",
+        traceId,
+      });
+    } catch { /* ignore */ }
+  }
 }

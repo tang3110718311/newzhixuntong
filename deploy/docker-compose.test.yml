@@ -9,6 +9,8 @@ services:
       dockerfile: /data/zxt-next/deploy/Dockerfile
       args:
         NODE_IMAGE: ${NODE_IMAGE}
+        NEXT_BASE_PATH: ${NEXT_BASE_PATH}
+        NEXT_PUBLIC_APP_BASE_PATH: ${NEXT_PUBLIC_APP_BASE_PATH}
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
     restart: unless-stopped
     working_dir: /app

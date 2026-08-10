@@ -20,7 +20,11 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages edge-tts==7.2.
   || python3 -m pip install --no-cache-dir edge-tts==7.2.8
 
 FROM deps AS builder
+ARG NEXT_BASE_PATH=
+ARG NEXT_PUBLIC_APP_BASE_PATH=
 ARG NEXT_PUBLIC_API_BASE_URL=http://171.111.198.77:14000/api
+ENV NEXT_BASE_PATH=${NEXT_BASE_PATH}
+ENV NEXT_PUBLIC_APP_BASE_PATH=${NEXT_PUBLIC_APP_BASE_PATH}
 ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 
 COPY . .

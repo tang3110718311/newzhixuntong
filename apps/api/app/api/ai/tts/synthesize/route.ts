@@ -172,13 +172,14 @@ function safeParse(s: string): TtsEngineResult | null {
   try { return JSON.parse(s.trim()); } catch { return null; }
 }
 
-// 前端 voice 名 -> edge-tts 中文声音名（沉稳、自然，男女各若干）
+// 前端 voice 名 -> edge-tts 中文声音名
+// 注：云希(Yunxi)虽口语化，但平静/开心情绪下合成失败率高，故男声统一用云扬(所有情绪稳定)
 const EDGE_VOICE_MAP: Record<string, string> = {
-  // 女声（沉稳）
+  // 女声（自然亲切）
   "edge-female-0": "zh-CN-XiaoyiNeural",   // 晓伊：沉稳女声
   "edge-female-1": "zh-CN-XiaoxiaoNeural", // 晓晓：清亮女声
-  // 男声（沉稳）
-  "edge-male-0": "zh-CN-YunyangNeural",    // 云扬：沉稳男声
+  // 男声（沉稳、稳定）
+  "edge-male-0": "zh-CN-YunyangNeural",    // 云扬：沉稳男声（所有情绪合成稳定）
   "edge-male-1": "zh-CN-YunjianNeural",    // 云健：刚毅男声
 };
 

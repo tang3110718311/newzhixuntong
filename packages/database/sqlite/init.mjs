@@ -280,6 +280,8 @@ create table if not exists training_records (
   mode text not null default 'voice',
   status text not null default 'completed',
   score integer not null default 0,
+  session_id text,
+  suggestions text not null default '[]',
   started_at text,
   finished_at text,
   created_at text not null default current_timestamp,
@@ -516,6 +518,25 @@ ensureColumn("users", "password_must_change", "integer not null default 1");
 ensureColumn("users", "last_login_at", "text");
 ensureColumn("tasks", "description", "text not null default ''");
 ensureColumn("scenes", "pass_score", "integer not null default 80");
+ensureColumn("training_records", "session_id", "text");
+ensureColumn("training_records", "suggestions", "text not null default '[]'");
+
+// ---- 核心表索引（查询以 tenant_id + deleted_at 过滤，按 record/scene/user/task join）----
+exec(`create index if not exists idx_tr_tenant_user_status on training_records(tenant_id, user_id, status)`);
+exec(`create index if not exists idx_tr_tenant_scene on training_records(tenant_id, scene_id)`);
+exec(`create index if not exists idx_tr_session on training_records(tenant_id, session_id)`);
+exec(`create index if not exists idx_tr_tenant_created on training_records(tenant_id, created_at)`);
+exec(`create index if not exists idx_tt_record on training_turns(record_id)`);
+exec(`create index if not exists idx_sd_record on score_details(record_id)`);
+exec(`create index if not exists idx_tp_tenant_task on task_participants(tenant_id, task_id)`);
+exec(`create index if not exists idx_tp_tenant_user on task_participants(tenant_id, user_id)`);
+exec(`create index if not exists idx_sr_tenant_scene on scoring_rules(tenant_id, scene_id)`);
+exec(`create index if not exists idx_sceneroles_tenant_scene on scene_roles(tenant_id, scene_id)`);
+exec(`create index if not exists idx_kf_folder on knowledge_files(folder_id)`);
+exec(`create index if not exists idx_aicall_tenant_created on ai_call_logs(tenant_id, created_at)`);
+exec(`create index if not exists idx_tasks_tenant on tasks(tenant_id, deleted_at)`);
+exec(`create index if not exists idx_users_tenant on users(tenant_id, deleted_at)`);
+exec(`create index if not exists idx_scenes_tenant on scenes(tenant_id, deleted_at)`);
 function hashPassword(password) {
   const salt = randomBytes(16).toString("base64url");
   const iterations = 210000;
@@ -593,8 +614,8 @@ run(`insert into task_participants (id, tenant_id, task_id, user_id, org_id, sta
 run(`insert or replace into training_records (id, tenant_id, record_no, task_id, scene_id, user_id, mode, status, score, started_at, finished_at, created_at, updated_at)
      values (?, ?, 'TR-CS-001', ?, 'scene_complaint', ?, 'voice', 'completed', 86, '2026-08-05T10:00:00+08:00', '2026-08-05T10:08:00+08:00', datetime('now'), datetime('now'))`, [recordId, tenantId, taskId, learnerId]);
 run("delete from training_turns where tenant_id = ? and record_id = ?", [tenantId, recordId]);
-run(`insert into training_turns (id, tenant_id, record_id, speaker, text, duration_ms, created_at, updated_at) values ('turn_001', ?, ?, 'ai', '我前两天已经反映过宽带问题，现在还是没解决，你们到底什么时候处理？', 8000, datetime('now'), datetime('now'))`, [tenantId, recordId]);
-run(`insert into training_turns (id, tenant_id, record_id, speaker, text, duration_ms, created_at, updated_at) values ('turn_002', ?, ?, 'learner', '非常抱歉给您带来不便，我先帮您核实前一次工单记录，并为您确认这次处理时限。', 9000, datetime('now'), datetime('now'))`, [tenantId, recordId]);
+run(`insert into training_turns (id, tenant_id, record_id, speaker, text, duration_ms, emotion, created_at, updated_at) values ('turn_001', ?, ?, 'ai', '我前两天已经反映过宽带问题，现在还是没解决，你们到底什么时候处理？', 8000, 'angry', datetime('now'), datetime('now'))`, [tenantId, recordId]);
+    run(`insert into training_turns (id, tenant_id, record_id, speaker, text, duration_ms, emotion, created_at, updated_at) values ('turn_002', ?, ?, 'learner', '非常抱歉给您带来不便，我先帮您核实前一次工单记录，并为您确认这次处理时限。', 9000, '', datetime('now'), datetime('now'))`, [tenantId, recordId]);
 run("delete from score_details where tenant_id = ? and record_id = ?", [tenantId, recordId]);
 [
   ["sd_001", 22, "诉求识别较完整，但未复述客户等待时间。", "核实前一次工单记录"],

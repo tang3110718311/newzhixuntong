@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { ApiResponse, AuthSession } from "@zxt/shared";
 import { ArrowLeft, Edit } from "lucide-react";
 import AppShell, { type RightRailData } from "@/components/AppShell";
+import { getPathId, navigateTo } from "@/lib/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -90,7 +91,7 @@ export default function SceneDetailPage() {
   const [rightRail, setRightRail] = useState<RightRailData | undefined>(undefined);
 
   const sceneId = typeof window !== "undefined"
-    ? new URL(window.location.href).pathname.split("/").pop() || ""
+    ? getPathId("scenes")
     : "";
 
   useEffect(() => {
@@ -109,7 +110,7 @@ export default function SceneDetailPage() {
   return (
     <AppShell
       activeNavKey="scenes"
-      onNavClick={(key: string) => { window.location.href = "/?section=" + key; }}
+      onNavClick={(key: string) => { navigateTo("/?section=" + key); }}
       rightRail={rightRail}
       breadcrumb={{ label: "场景管理", childLabel: "场景详情" }}
     >
@@ -132,7 +133,7 @@ export default function SceneDetailPage() {
                 <button className="btn" type="button" onClick={() => window.history.back()}>
                   <ArrowLeft size={16} /> 返回列表
                 </button>
-                <button className="btn primary" type="button" onClick={() => { window.location.href = '/scenes/' + detail.scene.id + '/edit'; }}>
+                <button className="btn primary" type="button" onClick={() => { navigateTo('/scenes/' + detail.scene.id + '/edit'); }}>
                   <Edit size={16} /> 编辑
                 </button>
               </div>

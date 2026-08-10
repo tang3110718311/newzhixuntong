@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { ApiResponse, AuthSession } from "@zxt/shared";
 import { ArrowLeft, Clock, BarChart3, Building2 } from "lucide-react";
 import AppShell, { type RightRailData } from "@/components/AppShell";
+import { getPathId, navigateTo } from "@/lib/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -179,7 +180,7 @@ export default function TaskDetailPage() {
   const [trainingRecords, setTrainingRecords] = useState<TrainingRecord[]>([]);
 
   const taskId = typeof window !== "undefined"
-    ? new URL(window.location.href).pathname.split("/")[2] || ""
+    ? getPathId("tasks")
     : "";
 
   useEffect(() => {
@@ -207,14 +208,14 @@ export default function TaskDetailPage() {
   function startPractice(scene: TaskSceneRow) {
     if (!scene?.sceneId) return;
     const params = new URLSearchParams({ sceneId: scene.sceneId, taskId: detail!.task.id });
-    window.location.href = `/practice?${params.toString()}`;
+    navigateTo(`/practice?${params.toString()}`);
   }
 
   if (!detail) {
     return (
       <AppShell
         activeNavKey="my-tasks"
-        onNavClick={(key: string) => { window.location.href = "/?section=" + key; }}
+        onNavClick={(key: string) => { navigateTo("/?section=" + key); }}
         rightRail={rightRail}
         breadcrumb={{ label: "我的任务", childLabel: "任务详情" }}
       >
@@ -229,7 +230,7 @@ export default function TaskDetailPage() {
   return (
     <AppShell
       activeNavKey="my-tasks"
-      onNavClick={(key: string) => { window.location.href = "/?section=" + key; }}
+      onNavClick={(key: string) => { navigateTo("/?section=" + key); }}
       rightRail={rightRail}
       breadcrumb={{ label: "我的任务", childLabel: "任务详情" }}
     >
@@ -250,7 +251,7 @@ export default function TaskDetailPage() {
           </div>
           <button
             type="button"
-            onClick={() => { window.location.href = "/?section=my-tasks"; }}
+            onClick={() => { navigateTo("/?section=my-tasks"); }}
             style={{
               padding: "6px 16px", borderRadius: 6, fontSize: 13,
               border: "1px solid #d9d9d9", background: "#fff", color: "#52657f", cursor: "pointer",

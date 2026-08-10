@@ -245,6 +245,7 @@ export type TrainingTurnRow = {
   text: string;
   durationMs: number;
   startedAt: string | null;
+  emotion: string;
 };
 
 export type ScoreDetailRow = {
@@ -273,7 +274,7 @@ export type CreateTrainingRecordInput = {
   suggestions?: string[];
   startedAt?: string | null;
   finishedAt?: string | null;
-  turns: Array<{ speaker: "ai" | "learner"; text: string; durationMs?: number; startedAt?: string | null }>;
+  turns: Array<{ speaker: "ai" | "learner"; text: string; durationMs?: number; startedAt?: string | null; emotion?: string }>;
   scores: Array<{ scoringRuleId?: string | null; score: number; deductionReason?: string; evidenceText?: string }>;
 };
 
@@ -1164,9 +1165,9 @@ export function createTrainingRecord(tenantId: string, input: CreateTrainingReco
   );
   input.turns.forEach((turn) => {
     run(
-      `insert into training_turns (id, tenant_id, record_id, speaker, text, duration_ms, started_at, created_at, updated_at)
-       values (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      [createId("turn"), tenantId, id, turn.speaker, turn.text, turn.durationMs ?? 0, turn.startedAt ?? null],
+      `insert into training_turns (id, tenant_id, record_id, speaker, text, duration_ms, emotion, started_at, created_at, updated_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [createId("turn"), tenantId, id, turn.speaker, turn.text, turn.durationMs ?? 0, turn.emotion ?? "", turn.startedAt ?? null],
     );
   });
   input.scores.forEach((score) => {
@@ -1199,7 +1200,7 @@ export function getTrainingRecordDetail(tenantId: string, recordId: string): Tra
   );
   if (!record) return undefined;
   const turns = all<TrainingTurnRow>(
-    `select id, speaker, text, duration_ms as durationMs, started_at as startedAt
+    `select id, speaker, text, duration_ms as durationMs, started_at as startedAt, emotion
      from training_turns where tenant_id = ? and record_id = ? and deleted_at is null order by created_at asc`,
     [tenantId, recordId],
   );
