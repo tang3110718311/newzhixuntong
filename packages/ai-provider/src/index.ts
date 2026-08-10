@@ -49,6 +49,16 @@ export type ScoreTrainingInput = {
   scoringRules: ScoringRuleDraft[];
 };
 
+export type SummarizeKnowledgeInput = {
+  tenantId: string;
+  fileName: string;
+  content: string;
+};
+
+export type SummarizeKnowledgeResult = {
+  summary: string;
+};
+
 export type TrainingScoreResult = {
   score: number;
   details: Array<{ name: string; score: number; evidenceText: string; deductionReason: string }>;
@@ -81,6 +91,7 @@ export interface LlmProvider {
   generateScene(input: GenerateSceneInput): Promise<GeneratedSceneDraft>;
   generateScoringRules(input: GenerateScoringInput): Promise<ScoringRuleDraft[]>;
   scoreTraining(input: ScoreTrainingInput): Promise<TrainingScoreResult>;
+  summarizeKnowledge(input: SummarizeKnowledgeInput): Promise<SummarizeKnowledgeResult>;
 }
 
 export interface SttProvider {
@@ -238,6 +249,36 @@ export function createOpenAiCompatibleLlmProvider(config: OpenAiCompatibleConfig
       });
       return scene.scoringRules || [];
     },
+    async summarizeKnowledge(input) {
+      const prompt = [
+        "你是企业培训知识库整理专家。请从以下培训资料中提炼出适合作为 AI 出题依据的知识点。",
+        "要求：按要点分条列出，覆盖核心概念、关键流程、重要数据/条款、常见错误或易混淆点；表达简洁，每条不超过 60 字。",
+        `文件名：${input.fileName}`,
+        "资料内容：",
+        input.content.slice(0, 8000),
+      ].join("\n");
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
+        body: JSON.stringify({
+          model: config.modelName,
+          temperature: 0.3,
+          messages: [
+            { role: "system", content: "你是知识提炼助手，直接输出要点列表，不要多余解释。" },
+            { role: "user", content: prompt },
+          ],
+        }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`模型接口调用失败：HTTP ${response.status} ${errorText.slice(0, 300)}`);
+      }
+      const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      const content = payload.choices?.[0]?.message?.content;
+      if (!content) throw new Error("模型接口未返回有效内容。");
+      return { summary: content.trim() };
+    },
     async scoreTraining() {
       throw new Error("训练评分模型适配器待接入。");
     },
@@ -253,6 +294,9 @@ export function createUnconfiguredLlmProvider(): LlmProvider {
       throw new AiProviderNotConfiguredError();
     },
     async scoreTraining() {
+      throw new AiProviderNotConfiguredError();
+    },
+    async summarizeKnowledge() {
       throw new AiProviderNotConfiguredError();
     },
   };
