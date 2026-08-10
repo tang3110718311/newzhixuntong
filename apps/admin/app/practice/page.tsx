@@ -124,6 +124,10 @@ export default function PracticePage() {
   // 场景列表（仅用于历史记录筛选下拉 + 对练对话加载）
   const [scenes, setScenes] = useState<Scene[]>([]);
 
+  // 右侧面板聚合数据
+  const [practiceCount, setPracticeCount] = useState(0);
+  const [passRate, setPassRate] = useState("0%");
+
   // 对话视图
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -257,12 +261,31 @@ export default function PracticePage() {
     [apiPost, stopAudio, ttsVoice],
   );
 
-  // ===== 加载场景列表（供历史记录筛选下拉 + 对练场景查找用） =====
+  // ===== 加载场景列表 + 聚合训练记录 =====
   const loadScenes = useCallback(async () => {
     try {
       const data = await apiGet<{ items: Scene[]; total: number }>(`/scenes?pageSize=50&status=published`);
       const published = (data.items || []).filter((s) => s.status === "published");
       setScenes(published);
+
+      // 聚合当前用户的训练记录，更新右侧面板数据
+      const me = readStoredAuth();
+      if (me?.user.id) {
+        try {
+          const recData = await apiGet<{ items: Array<{ sceneId: string; score: number; status: string }> }>(
+            `/training-records?pageSize=200&userId=${encodeURIComponent(me.user.id)}`
+          );
+          const records = recData.items || [];
+          const completed = records.filter((r) => r.status === "completed");
+          setPracticeCount(completed.length);
+          if (completed.length > 0) {
+            const passed = completed.filter((r) => r.score >= 60).length;
+            setPassRate(`${Math.round((passed / completed.length) * 100)}%`);
+          }
+        } catch {
+          // 训练记录加载失败不影响主流程
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载场景失败");
     }
@@ -605,13 +628,12 @@ export default function PracticePage() {
 
 
   const rightRail: RightRailData = (() => {
-    // 场景进度已移除，右侧面板用基础数据
     return {
       userName: auth?.user.name || "学员",
       completedRecordCount: 0,
-      practiceRecordCount: 0,
+      practiceRecordCount: practiceCount,
       examCount: 0,
-      passRate: "0%",
+      passRate,
       pendingAppealCount: 0,
       tenantName: "",
     };
@@ -650,6 +672,24 @@ export default function PracticePage() {
                 <strong>{selectedScene.name}</strong>
               </div>
               <button className="pc-end" onClick={() => void endTraining()} disabled={chatSending || chatFinished}>结束训练</button>
+            </div>
+
+            {/* 场景信息卡：合格线 + 评分维度 */}
+            <div className="pc-scene-info">
+              <div className="pc-scene-info-row">
+                <span className="pc-scene-info-label">合格线</span>
+                <span className="pc-scene-info-value">{selectedScene.passScore} 分</span>
+              </div>
+              {sceneRules.length > 0 && (
+                <div className="pc-scene-info-row">
+                  <span className="pc-scene-info-label">评分维度</span>
+                  <div className="pc-scene-info-tags">
+                    {sceneRules.map((r) => (
+                      <span key={r.id} className="pc-scene-info-tag">{r.name}({r.score}分)</span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="pc-messages">

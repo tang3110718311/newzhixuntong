@@ -85,12 +85,20 @@ function buildSystemPrompt(sceneDetail: ReturnType<typeof getSceneDetail>): stri
   parts.push(`4. 学员明确表示要结束对话（如"结束""完毕""不想练了"）。`);
   parts.push(``);
   parts.push(`## 教练提示规则`);
-  parts.push(`当学员出现以下情况时，你需要在回复中嵌入 [COACH_TIP:提示内容] 标记：`);
+  parts.push(`你需要在回复中嵌入 [COACH_TIP:提示内容] 标记，在以下两种情况下使用：`);
+  parts.push(``);
+  parts.push(`**纠偏提示**（学员表现异常时）：`);
   parts.push(`- 回答偏离话题（跑题）`);
   parts.push(`- 回答过于敷衍（如"不知道""随便"）`);
   parts.push(`- 回答包含严重违规内容`);
-  parts.push(`教练提示用简短中文（10字内），如"注意倾听客户诉求""请不要敷衍回答"。`);
-  parts.push(`正常对话不需要返回教练提示。`);
+  parts.push(``);
+  parts.push(`**方向引导提示**（学员卡住或表现不佳时，主动给出回答方向）：`);
+  parts.push(`- 学员连续2轮回复内容空洞、没有实质进展时，提示可以往哪个方向回应`);
+  parts.push(`- 学员明显不知道该说什么时，用提示引导思路，但绝不给出完整答案`);
+  parts.push(`- 方向引导应结合当前评分维度，如"尝试先安抚情绪再给出方案""注意说明处理时限"`);
+  parts.push(``);
+  parts.push(`教练提示用简短中文（15字内），纠偏类如"注意倾听客户诉求""请不要敷衍回答"；引导类如"先安抚情绪再解释""说明处理时限和流程"。`);
+  parts.push(`正常流畅对话不需要返回教练提示。`);
 
   return parts.join("\n");
 }
