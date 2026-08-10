@@ -120,8 +120,8 @@ export function StatisticsSection({
     Promise.all([
       apiFetch<DashboardOverview>("/dashboard/overview").catch(() => null),
       apiFetch<{ items: OrgRow[] }>("/organizations?pageSize=100").catch(() => ({ items: [] })),
-      apiFetch<{ items: RecordRow[] }>("/training-records?pageSize=100").catch(() => ({ items: [] })),
-      apiFetch<{ items: UserRow[] }>("/users?pageSize=100").catch(() => ({ items: [] })),
+      apiFetch<{ items: RecordRow[] }>("/training-records?pageSize=1000").catch(() => ({ items: [] })),
+      apiFetch<{ items: UserRow[] }>("/users?pageSize=1000").catch(() => ({ items: [] })),
     ])
       .then(([overviewData, orgData, recordData, userData]) => {
         const ov = overviewData as DashboardOverview | null;
@@ -204,8 +204,11 @@ export function StatisticsSection({
   // ---- 部门视图数据 ----
   const deptTaskCount = overview?.publishedTaskCount ?? 0;
   const deptLearnerCount = users.filter((u) => u.roleCode === "learner").length;
-  const deptCompletionRate = overview?.completedTaskCount && overview?.publishedTaskCount
-    ? Math.round(((overview.completedTaskCount) / overview.publishedTaskCount) * 100) : 0;
+  // 任务完成率：以训练记录口径计算（与部门列表一致）；fallback 用 overview
+  const deptCompletionRate = trainingRecords.length > 0
+    ? Math.round((trainingRecords.filter((r) => r.status === "completed").length / trainingRecords.length) * 100)
+    : (overview?.completedTaskCount && overview?.publishedTaskCount
+      ? Math.round((overview.completedTaskCount / overview.publishedTaskCount) * 100) : 0);
   const deptExamPassRate = overview?.examPassRate ?? 0;
 
   // 按完成率排序的部门（取前5做柱状图/排名）
@@ -215,7 +218,10 @@ export function StatisticsSection({
 
   // ---- 学员视图数据 ----
   const learnerTotal = learnerAgg.length;
-  const learnerAvgHours = overview?.studyDurationHours ?? 0;
+  // 人均学习时长：训练记录数 × 单次约8分钟（480秒）转小时，保留1位小数
+  const learnerAvgHours = trainingRecords.length > 0
+    ? Math.round((trainingRecords.length * 8 / 60) * 10) / 10
+    : Math.round((overview?.studyDurationHours ?? 0) * 10) / 10;
   const learnerCompletionRate = trainingRecords.length > 0
     ? Math.round((trainingRecords.filter((r) => r.status === "completed").length / trainingRecords.length) * 100) : 0;
   const learnerExcellentRate = learnerAgg.length > 0

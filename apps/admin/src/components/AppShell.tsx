@@ -156,9 +156,9 @@ export default function AppShell({
           </div>
           <div className="top-actions">
             <span className="top-message">◌ 消息通知</span>
-            <span className="tenant-selector">{rightRail?.tenantName || auth?.user?.name || "智训通本地验证租户"} ⌄</span>
+            <span className="tenant-selector" suppressHydrationWarning>{rightRail?.tenantName || auth?.user?.name || "智训通本地验证租户"} ⌄</span>
             <span className="avatar" />
-            <button className="user-menu" type="button">
+            <button className="user-menu" type="button" suppressHydrationWarning>
               {auth?.user?.name || "管理员"}⌄
             </button>
           </div>
