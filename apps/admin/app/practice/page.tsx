@@ -476,9 +476,12 @@ export default function PracticePage() {
         stream.getTracks().forEach((t) => t.stop());
         setIsRecording(false);
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const base64 = await blobToBase64(blob);
+        // 优先转 16kHz/16bit PCM 走自有 FunASR 桥接服务;解码失败回退 webm 走 Whisper
+        const pcmBase64 = await blobToPcm16Base64(blob);
+        const audioBase64 = pcmBase64 ?? (await blobToBase64(blob));
+        const format = pcmBase64 ? "pcm16" : "webm";
         try {
-          const data = await apiPost<{ text: string }>(`/ai/stt/transcribe`, { audioBase64: base64, format: "webm" });
+          const data = await apiPost<{ text: string }>(`/ai/stt/transcribe`, { audioBase64, format });
           if (data.text && data.text.trim()) {
             void sendChatMessage(data.text);
           } else {
@@ -949,6 +952,64 @@ function blobToBase64(blob: Blob): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+function floatToInt16(value: number): number {
+  const s = Math.max(-1, Math.min(1, value));
+  return s < 0 ? s * 0x8000 : s * 0x7fff;
+}
+
+function bytesToBase64(bytes: Uint8Array): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = reject;
+    const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    reader.readAsDataURL(new Blob([arrayBuffer], { type: "application/octet-stream" }));
+  });
+}
+
+/**
+ * 将录音 blob(webm/opus)解码并重采样为 16kHz/16bit 小端 PCM 的 base64。
+ * 旧版智训通桥接服务(FunASR)要求的正是该格式。失败返回 null,由调用方回退 webm。
+ */
+async function blobToPcm16Base64(blob: Blob, targetRate = 16000): Promise<string | null> {
+  try {
+    if (typeof window === "undefined") return null;
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return null;
+    const arrayBuffer = await blob.arrayBuffer();
+    const ctx = new AudioCtx();
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    await ctx.close().catch(() => undefined);
+    const sourceRate = audioBuffer.sampleRate;
+    const channelData = audioBuffer.getChannelData(0);
+    const targetLen = Math.round((channelData.length * targetRate) / sourceRate);
+    const pcm = new Int16Array(targetLen);
+    if (sourceRate === targetRate) {
+      for (let i = 0; i < targetLen; i++) pcm[i] = floatToInt16(channelData[i]);
+    } else {
+      for (let i = 0; i < targetLen; i++) {
+        const pos = (i * sourceRate) / targetRate;
+        const i0 = Math.floor(pos);
+        const i1 = Math.min(i0 + 1, channelData.length - 1);
+        const frac = pos - i0;
+        pcm[i] = floatToInt16(channelData[i0] * (1 - frac) + channelData[i1] * frac);
+      }
+    }
+    const bytes = new Uint8Array(pcm.length * 2);
+    for (let i = 0; i < pcm.length; i++) {
+      bytes[i * 2] = pcm[i] & 0xff;
+      bytes[i * 2 + 1] = (pcm[i] >> 8) & 0xff;
+    }
+    return await bytesToBase64(bytes);
+  } catch {
+    return null;
+  }
 }
 
 function getMicrophoneErrorMessage(err?: unknown) {

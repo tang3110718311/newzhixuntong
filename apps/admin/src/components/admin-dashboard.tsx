@@ -28,6 +28,7 @@ import {
   Sparkles,
   Trash2,
   Users,
+  Mic,
   Wand2,
 } from "lucide-react";
 import { AppealsSection } from "./AppealsSection";
@@ -338,7 +339,8 @@ type ActiveSection =
   | "sys-departments"
   | "sys-posts"
   | "sys-tenants"
-  | "records";
+  | "records"
+  | "practice";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -1399,6 +1401,7 @@ export function AdminDashboard() {
     { id: "student-home", key: "student-home", label: "学员首页", icon: <Users size={18} /> },
     { id: "my-tasks", key: "my-tasks", label: "我的任务", icon: <ClipboardList size={18} />, badge: tasks.filter((task) => task.status !== "completed").length },
     { id: "my-exams", key: "my-exams", label: "我的考试", icon: <FileText size={18} />, badge: 0 },
+    { id: "practice", key: "practice", label: "对练中心", icon: <Mic size={18} /> },
     { id: "scenes", key: "scenes", label: "场景管理", icon: <Bot size={18} /> },
     { id: "knowledge", key: "knowledge", label: "企业知识库", icon: <Database size={18} /> },
     { id: "tasks", key: "tasks", label: "任务管理", icon: <ClipboardList size={18} /> },
@@ -1540,6 +1543,58 @@ export function AdminDashboard() {
 
         {(activeSection === "overview" || loading) && (
           <HomeSection auth={auth} submitting={submitting} onRefresh={() => loadData()} />
+        )}
+
+        {activeSection === "practice" && (
+          <section className="page-section">
+            <div className="page-header">
+              <div>
+                <h1 className="page-title">对练中心</h1>
+                <p className="page-desc">选择场景开始 AI 对练，或查看历史训练记录。</p>
+              </div>
+            </div>
+            <div className="home-grid">
+              <div className="home-main">
+                <div className="card section" style={{ padding: 20 }}>
+                  <h3 style={{ margin: "0 0 16px" }}>可对练场景</h3>
+                  {scenes.length === 0 ? (
+                    <div className="empty">暂无可用场景，请先在「场景管理」创建。</div>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+                      {scenes.map((scene) => (
+                        <div key={scene.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 16, background: "var(--panel)" }}>
+                          <strong style={{ display: "block", marginBottom: 6 }}>{scene.name}</strong>
+                          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+                            类型：{scene.sceneType || "—"} · 合格线 80
+                          </div>
+                          <button className="btn primary full" type="button" onClick={() => navigateTo(`/practice?sceneId=${scene.id}`)}>
+                            开始对练 →
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <aside className="home-side">
+                <div className="card section" style={{ padding: 20 }}>
+                  <h3 style={{ margin: "0 0 12px" }}>最近训练</h3>
+                  {records.length === 0 ? (
+                    <div className="empty">暂无训练记录。</div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 10 }}>
+                      {records.slice(0, 5).map((r) => (
+                        <div key={r.id} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{r.sceneName || "—"}</div>
+                          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{r.score} 分 · {formatDate(r.finishedAt)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </aside>
+            </div>
+          </section>
         )}
 
         {activeSection === "scenes" && (

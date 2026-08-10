@@ -9,7 +9,7 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
-  serverExternalPackages: ["pdf-parse"],
+  serverExternalPackages: ["pdf-parse", "ws"],
   transpilePackages: ["@zxt/database", "@zxt/shared", "@zxt/ai-provider"],
   experimental: {
     // 上传文件（知识库附件）最大 50MB，middleware 存在时默认请求体限制 10MB，需放宽
