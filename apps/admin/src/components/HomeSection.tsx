@@ -384,7 +384,7 @@ export function HomeSection({ auth, submitting, onRefresh }: HomeProps) {
             <div key={t.date} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, height: "100%", justifyContent: "flex-end" }}>
               <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 100 }}>
                 <div style={{ width: 12, height: `${Math.max((t.participants / maxP) * 100, 4)}%`, background: C.teal, borderRadius: "3px 3px 0 0", minHeight: 4 }} title={`参与人数 ${t.participants}`} />
-                <div style={{ width: 12, height: `${Math.max(t.completionRate, 4)}%`, background: C.brand, borderRadius: "3px 3px 0 0`, minHeight: 4 }} title={`完成率 ${t.completionRate}%`} />
+                <div style={{ width: 12, height: `${Math.max(t.completionRate, 4)}%`, background: C.brand, borderRadius: "3px 3px 0 0", minHeight: 4 }} title={`完成率 ${t.completionRate}%`} />
               </div>
               <span style={{ fontSize: 11, color: C.text3, marginTop: 4 }}>{t.date}</span>
             </div>

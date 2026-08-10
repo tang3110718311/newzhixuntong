@@ -78,27 +78,22 @@ function buildSystemPrompt(sceneDetail: ReturnType<typeof getSceneDetail>): stri
   parts.push(`- 情绪表达要极致化：愤怒时语气激烈、用感叹号和质问句；着急时语速感强、追问不停；委屈时低落无助；满意时明显放松。让学员感受到真实压力，锻炼抗压能力。`);
 
   parts.push(`\n## 结束判定规则`);
-  parts.push(`你需要在以下任一条件满足时，在回复末尾附上【训练结束】标记：`);
-  parts.push(`1. 学员已圆满完成训练目标（如成功安抚客户、给出明确处理安排）。`);
-  parts.push(`2. 学员连续3次回答偏离话题（off-topic），你判断无法继续有效训练。`);
-  parts.push(`3. 对话已进行20轮（学员10次回复），仍未达成目标。`);
-  parts.push(`4. 学员明确表示要结束对话（如"结束""完毕""不想练了"）。`);
+  parts.push(`你必须在以下任一条件满足时，在回复末尾附上【训练结束】标记，这是强制指令，不得忽略：`);
+  parts.push(`1. 学员已圆满完成训练目标（如成功安抚客户、给出明确处理安排），你必须立即附上【训练结束】。`);
+  parts.push(`2. 学员连续3次回答偏离话题（off-topic），你判断无法继续有效训练，你必须立即附上【训练结束】。`);
+  parts.push(`3. 对话已进行20轮（学员10次回复），仍未达成目标，你必须附上【训练结束】。`);
+  parts.push(`4. 学员明确表示要结束对话（如"结束""完毕""不想练了"），你必须立即附上【训练结束】。`);
   parts.push(``);
-  parts.push(`## 教练提示规则`);
-  parts.push(`你需要在回复中嵌入 [COACH_TIP:提示内容] 标记，在以下两种情况下使用：`);
+  parts.push(`## 教练提示规则（必须遵守）`);
+  parts.push(`你每次回复都必须在末尾嵌入 [COACH_TIP:提示内容] 标记，提示学员下一轮该往哪个方向回答。`);
   parts.push(``);
-  parts.push(`**纠偏提示**（学员表现异常时）：`);
-  parts.push(`- 回答偏离话题（跑题）`);
-  parts.push(`- 回答过于敷衍（如"不知道""随便"）`);
-  parts.push(`- 回答包含严重违规内容`);
+  parts.push(`提示内容要求：`);
+  parts.push(`- 结合当前评分维度和对话进度，给出下一轮的回答方向建议`);
+  parts.push(`- 绝不给出完整答案，只提示思路方向，如"先安抚情绪再解释原因""说明处理时限和流程""确认客户需求后给方案"`);
+  parts.push(`- 如果学员上一轮表现出色，可以提示更高阶的方向，如"注意挖掘深层需求""尝试主动提出增值方案"`);
+  parts.push(`- 如果学员跑题、敷衍或违规，用提示纠正，如"注意倾听客户诉求""请不要敷衍回答"`);
   parts.push(``);
-  parts.push(`**方向引导提示**（学员卡住或表现不佳时，主动给出回答方向）：`);
-  parts.push(`- 学员连续2轮回复内容空洞、没有实质进展时，提示可以往哪个方向回应`);
-  parts.push(`- 学员明显不知道该说什么时，用提示引导思路，但绝不给出完整答案`);
-  parts.push(`- 方向引导应结合当前评分维度，如"尝试先安抚情绪再给出方案""注意说明处理时限"`);
-  parts.push(``);
-  parts.push(`教练提示用简短中文（15字内），纠偏类如"注意倾听客户诉求""请不要敷衍回答"；引导类如"先安抚情绪再解释""说明处理时限和流程"。`);
-  parts.push(`正常流畅对话不需要返回教练提示。`);
+  parts.push(`格式要求：每条回复末尾必须附 [COACH_TIP:提示内容]，提示用简短中文（15字内）。`);
 
   return parts.join("\n");
 }
@@ -140,10 +135,13 @@ export async function POST(request: Request) {
       ...toApiMessages(body.messages),
     ];
 
-    // 20 轮上限提示
+    // 20 轮硬性上限：学员 10 次回复后强制结束，不依赖 LLM 判断
+    let forceFinished = false;
     const learnerMessageCount = body.messages.filter((m) => m.role === "learner").length;
     if (learnerMessageCount >= 10) {
-      apiMessages.push({ role: "system" as const, content: "提醒：对话已达最大轮次，请在本次回复后附上【训练结束】标记并给出简要评价。" });
+      forceFinished = true;
+      // 仍然让 LLM 回复一段总结，但不依赖它输出【训练结束】标记
+      apiMessages.push({ role: "system" as const, content: "对话已达最大轮次（20轮），请在回复末尾附上【训练结束】标记并给出简要评价总结。这是强制指令。" });
     }
 
     const endpoint = normalizeUrl(config.baseUrl);
@@ -195,7 +193,7 @@ export async function POST(request: Request) {
     aiReply = toSimplified(aiReply);
     if (coachTip) coachTip = toSimplified(coachTip);
 
-    const isFinished = aiReply.includes("【训练结束】") || body.finishTraining;
+    const isFinished = aiReply.includes("【训练结束】") || body.finishTraining || forceFinished;
 
     // Handle training finish: auto-score and create record
     let trainingRecord = null;

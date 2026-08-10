@@ -705,6 +705,17 @@ export default function PracticePage() {
               {chatSending && <div className="pc-bubble ai"><span className="pc-bubble-role">AI</span><div className="pc-bubble-text pc-typing">正在输入…</div></div>}
             </div>
 
+            {/* 教练提示 — 醒目浮层 */}
+            {coachTip && !chatFinished && (
+              <div className="pc-coachtip-float">
+                <span className="pc-coachtip-icon">💡</span>
+                <div className="pc-coachtip-body">
+                  <span className="pc-coachtip-label">教练提示</span>
+                  <span className="pc-coachtip-text">{coachTip}</span>
+                </div>
+              </div>
+            )}
+
             {chatFinished && chatResult ? (
               <ScoreCard
                 result={chatResult}
@@ -715,7 +726,6 @@ export default function PracticePage() {
               />
             ) : (
               <div className="pc-inputbar">
-                {coachTip ? <div className="pc-coachtip">教练提示：{coachTip}</div> : null}
                 <div className="pc-inputrow">
                   {voiceMode ? (
                     <button
