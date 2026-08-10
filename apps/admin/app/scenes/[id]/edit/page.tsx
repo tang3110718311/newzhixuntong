@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ApiResponse, AuthSession } from "@zxt/shared";
-import { ArrowLeft, Save, Plus, X } from "lucide-react";
+import { ArrowLeft, Save, Plus, X, Paperclip, Trash2, Loader2 } from "lucide-react";
 import AppShell, { type RightRailData } from "@/components/AppShell";
+import { getPathId, navigateTo } from "@/lib/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -54,9 +55,10 @@ type SceneDetail = {
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const raw = typeof window !== "undefined" ? window.localStorage.getItem(AUTH_STORAGE_KEY) : null;
   const token = raw ? (JSON.parse(raw) as { token: string }).token : "";
+  const isFormData = init?.body instanceof FormData;
   const response = await fetch(`${API_BASE}${path}`, {
     ...init, cache: "no-store",
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers || {}) },
+    headers: { ...(isFormData ? {} : { "Content-Type": "application/json" }), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers || {}) },
   });
   const payload = (await response.json()) as ApiResponse<T>;
   if (!payload.success) throw new Error(payload.message || payload.code);
@@ -91,9 +93,12 @@ export default function SceneEditPage() {
   const [dialogEndCondition, setDialogEndCondition] = useState("");
   const [dialogInterrupt, setDialogInterrupt] = useState("");
   const [scoringRuleForms, setScoringRuleForms] = useState<SceneDetail["scoringRules"]>([]);
+  const editAttachmentInputRef = useRef<HTMLInputElement>(null);
+  const [editAttachments, setEditAttachments] = useState<Array<{ name: string; status: "uploading" | "done" | "failed"; error?: string }>>([]);
+  const [editAttachmentsUploading, setEditAttachmentsUploading] = useState(false);
 
   const sceneId = typeof window !== "undefined"
-    ? new URL(window.location.href).pathname.split("/")[2] || ""
+    ? getPathId("scenes")
     : "";
 
   useEffect(() => {
@@ -123,6 +128,42 @@ export default function SceneEditPage() {
     setDialogEndCondition(d.rule?.endCondition || "");
     setDialogInterrupt(d.rule?.interruptCondition || "");
     setScoringRuleForms(d.scoringRules.map((r) => ({ ...r })));
+  }
+
+  async function handleEditAttachmentsSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!files.length) return;
+    setEditAttachmentsUploading(true);
+    let folderId = "";
+    try {
+      const data = await apiFetch<{ items: Array<{ id: string; name: string }> }>("/knowledge?pageSize=1");
+      folderId = data.items?.[0]?.id || "";
+    } catch {
+      folderId = "";
+    }
+    if (!folderId) {
+      setError("知识库暂无文件夹，请先在企业知识库中创建文件夹。");
+      setEditAttachmentsUploading(false);
+      return;
+    }
+    for (const file of files) {
+      setEditAttachments((prev) => [...prev, { name: file.name, status: "uploading" }]);
+      try {
+        const formData = new FormData();
+        formData.append("folderId", folderId);
+        formData.append("file", file);
+        await apiFetch<{ parseStatus: string }>("/knowledge/files", { method: "POST", body: formData });
+        setEditAttachments((prev) => prev.map((item) => (item.name === file.name ? { ...item, status: "done" } : item)));
+      } catch (err) {
+        setEditAttachments((prev) => prev.map((item) => (item.name === file.name ? { ...item, status: "failed", error: err instanceof Error ? err.message : "上传失败" } : item)));
+      }
+    }
+    setEditAttachmentsUploading(false);
+  }
+
+  function removeEditAttachment(name: string) {
+    setEditAttachments((prev) => prev.filter((item) => item.name !== name));
   }
 
   async function handleSave() {
@@ -160,7 +201,7 @@ export default function SceneEditPage() {
   return (
     <AppShell
       activeNavKey="scenes"
-      onNavClick={(key: string) => { window.location.href = "/?section=" + key; }}
+      onNavClick={(key: string) => { navigateTo("/?section=" + key); }}
       rightRail={rightRail}
       breadcrumb={{ label: "场景管理", childLabel: "编辑场景" }}
     >
@@ -184,7 +225,7 @@ export default function SceneEditPage() {
               </div>
               <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                 <span style={{ color: "#73839a", fontSize: 13 }}>*为必填项</span>
-                <button className="btn" type="button" onClick={() => window.location.href = '/scenes/' + sceneId}>
+                <button className="btn" type="button" onClick={() => navigateTo('/scenes/' + sceneId)}>
                   <ArrowLeft size={16} /> 取消
                 </button>
                 <button className="btn primary" type="button" disabled={submitting} onClick={handleSave}>
@@ -218,8 +259,35 @@ export default function SceneEditPage() {
                   </div>
                   <div className="field">
                     <span className="field-label">上传附件</span>
-                    <button className="btn" type="button" style={{ width: "auto" }}>选择附件</button>
-                    <span style={{ marginLeft: 8, color: "#8b98aa", fontSize: 12 }}>支持多文件，单文件≤20MB</span>
+                    <input
+                      ref={editAttachmentInputRef}
+                      type="file"
+                      multiple
+                      accept=".pdf,.docx,.xlsx,.pptx,.txt,.md"
+                      style={{ display: "none" }}
+                      onChange={handleEditAttachmentsSelected}
+                    />
+                    <button className="btn" type="button" style={{ width: "auto" }} onClick={() => editAttachmentInputRef.current?.click()} disabled={editAttachmentsUploading}>
+                      {editAttachmentsUploading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite", verticalAlign: "middle", marginRight: 4 }} /> : <Paperclip size={14} style={{ verticalAlign: "middle", marginRight: 4 }} />}
+                      {editAttachmentsUploading ? "上传解析中…" : "选择附件"}
+                    </button>
+                    <span style={{ marginLeft: 8, color: "#8b98aa", fontSize: 12 }}>支持多文件，单文件≤20MB；上传后自动存入企业知识库</span>
+                    {editAttachments.length > 0 && (
+                      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                        {editAttachments.map((item) => (
+                          <div key={item.name} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#3d4d66", background: "#f7f9fc", border: "1px solid #e6eaf2", borderRadius: 6, padding: "6px 10px" }}>
+                            <Paperclip size={14} style={{ color: "#8b98aa", flexShrink: 0 }} />
+                            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
+                            {item.status === "uploading" && <span style={{ color: "#b08a00" }}>上传解析中…</span>}
+                            {item.status === "done" && <span style={{ color: "#22c55e" }}>已入库</span>}
+                            {item.status === "failed" && <span style={{ color: "#ed2633" }} title={item.error}>解析失败</span>}
+                            <button className="link-btn" type="button" style={{ color: "#ed2633" }} onClick={() => removeEditAttachment(item.name)} aria-label={`删除附件 ${item.name}`}>
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
                 {/* 右列 */}
@@ -332,7 +400,7 @@ export default function SceneEditPage() {
               display: "flex", justifyContent: "flex-end", gap: 10,
               padding: "16px 28px", borderTop: "1px solid rgba(115,131,154,0.1)",
             }}>
-              <button className="btn" type="button" onClick={() => window.location.href = '/scenes/' + sceneId} disabled={submitting}>
+              <button className="btn" type="button" onClick={() => navigateTo('/scenes/' + sceneId)} disabled={submitting}>
                 取消
               </button>
               <button className="btn primary" type="button" disabled={submitting} onClick={handleSave}>

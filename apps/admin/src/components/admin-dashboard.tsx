@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import type { ApiResponse, AuthSession, DashboardOverview, PageResult } from "@zxt/shared";
 import {
   AlertCircle,
@@ -14,9 +14,11 @@ import {
   FileText,
   KeyRound,
   Landmark,
+  Loader2,
   LockKeyhole,
   LogOut,
   Menu,
+  Paperclip,
   Plus,
   RefreshCcw,
   Save,
@@ -24,6 +26,7 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Trash2,
   Users,
   Wand2,
 } from "lucide-react";
@@ -34,6 +37,7 @@ import { StatisticsSection } from "./StatisticsSection";
 import { SysMenusSection } from "./SysMenusSection";
 import { SysPostsSection } from "./SysPostsSection";
 import { SysRolesSection } from "./SysRolesSection";
+import { navigateTo } from "@/lib/navigation";
 
 type NavChild = { id: string; key: ActiveSection; label: string; icon: React.ReactNode };
 type NavItem = {
@@ -502,11 +506,13 @@ const initialRecordForm = {
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getStoredAuthToken();
+  const isFormData = init?.body instanceof FormData;
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     cache: "no-store",
     headers: {
-      "Content-Type": "application/json",
+      // multipart 上传时浏览器自动生成 boundary，不能手动设置 Content-Type
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers || {}),
     },
@@ -633,6 +639,9 @@ export function AdminDashboard() {
   const [error, setError] = useState("");
   const [showSceneWizard, setShowSceneWizard] = useState(false);
   const [sceneWizardStep, setSceneWizardStep] = useState(1);
+  const sceneAttachmentInputRef = useRef<HTMLInputElement>(null);
+  const [sceneAttachments, setSceneAttachments] = useState<Array<{ name: string; status: "uploading" | "done" | "failed"; error?: string }>>([]);
+  const [sceneAttachmentsUploading, setSceneAttachmentsUploading] = useState(false);
   const [sceneFilter, setSceneFilter] = useState({ status: "all", mode: "all", org: "all", keyword: "" });
   const [wizardRoleForm, setWizardRoleForm] = useState({
     aiIdentity: "",
@@ -995,6 +1004,44 @@ export function AdminDashboard() {
   }
 
 
+  async function handleSceneAttachmentsSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!files.length) return;
+    setSceneAttachmentsUploading(true);
+    // 附件归属知识库：用第一个文件夹
+    let folderId = "";
+    try {
+      const data = await apiFetch<{ items: Array<{ id: string; name: string }> }>("/knowledge?pageSize=1");
+      folderId = data.items?.[0]?.id || "";
+    } catch {
+      folderId = "";
+    }
+    if (!folderId) {
+      setError("知识库暂无文件夹，请先在企业知识库中创建文件夹。");
+      setSceneAttachmentsUploading(false);
+      return;
+    }
+    for (const file of files) {
+      const entry = { name: file.name, status: "uploading" as const };
+      setSceneAttachments((prev) => [...prev, entry]);
+      try {
+        const formData = new FormData();
+        formData.append("folderId", folderId);
+        formData.append("file", file);
+        await apiFetch<{ parseStatus: string }>("/knowledge/files", { method: "POST", body: formData });
+        setSceneAttachments((prev) => prev.map((item) => item.name === file.name ? { ...item, status: "done" as const } : item));
+      } catch (err) {
+        setSceneAttachments((prev) => prev.map((item) => item.name === file.name ? { ...item, status: "failed" as const, error: err instanceof Error ? err.message : "上传失败" } : item));
+      }
+    }
+    setSceneAttachmentsUploading(false);
+  }
+
+  function removeSceneAttachment(name: string) {
+    setSceneAttachments((prev) => prev.filter((item) => item.name !== name));
+  }
+
   async function handleAiGenerateAndNext() {
     setSubmitting(true);
     setError("");
@@ -1173,7 +1220,7 @@ export function AdminDashboard() {
       sceneId: taskScene.sceneId,
       taskId: task.id,
     });
-    window.location.href = `/practice?${params.toString()}`;
+    navigateTo(`/practice?${params.toString()}`);
   }
 
   async function viewRecordDetail(recordId: string) {
@@ -1567,15 +1614,15 @@ export function AdminDashboard() {
                         <td className="muted-text">—</td>
                         <td>
                           <div className="action-row">
-                            <button className="link-btn" type="button" onClick={() => { window.location.href = '/scenes/' + scene.id; }}>预览</button>
-                            <button className="link-btn" type="button" onClick={() => { window.location.href = '/scenes/' + scene.id + '/edit'; }}>编辑</button>
+                            <button className="link-btn" type="button" onClick={() => { navigateTo('/scenes/' + scene.id); }}>预览</button>
+                            <button className="link-btn" type="button" onClick={() => { navigateTo('/scenes/' + scene.id + '/edit'); }}>编辑</button>
                             {scene.status === "published" || scene.status === "enabled" ? (
                               <button className="link-btn" type="button" onClick={() => disableScene(scene.id)} disabled={submitting}>禁用</button>
                             ) : (
                               <button className="link-btn" type="button" onClick={() => publishScene(scene.id)} disabled={submitting}>启用</button>
                             )}
                             <button className="link-btn" type="button">复制</button>
-                            <button className="link-btn" type="button" onClick={() => { window.location.href = `/practice?sceneId=${scene.id}`; }}>创建任务</button>
+                            <button className="link-btn" type="button" onClick={() => { navigateTo(`/practice?sceneId=${scene.id}`); }}>创建任务</button>
                           </div>
                         </td>
                       </tr>
@@ -1613,11 +1660,52 @@ export function AdminDashboard() {
                   {sceneWizardStep === 1 && (
                     <div className="wizard-body">
                       <h2>你需要创建什么场景？</h2>
-                      <div className="upload-area">
-                        <Plus size={24} />
-                        <span>选择附件</span>
-                        <small>支持同时选择多个附件，单个文件不超过 20MB</small>
+                      <input
+                        ref={sceneAttachmentInputRef}
+                        type="file"
+                        multiple
+                        accept=".pdf,.docx,.xlsx,.pptx,.txt,.md"
+                        style={{ display: "none" }}
+                        onChange={handleSceneAttachmentsSelected}
+                      />
+                      <div
+                        className="upload-area"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => sceneAttachmentInputRef.current?.click()}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") sceneAttachmentInputRef.current?.click(); }}
+                        style={{ cursor: "pointer" }}
+                      >
+                        {sceneAttachmentsUploading ? (
+                          <Loader2 size={24} style={{ animation: "spin 1s linear infinite" }} />
+                        ) : (
+                          <Plus size={24} />
+                        )}
+                        <span>{sceneAttachmentsUploading ? "附件上传解析中…" : "选择附件"}</span>
+                        <small>支持同时选择多个附件，单个文件不超过 20MB；上传后自动存入企业知识库并作为生成依据</small>
                       </div>
+                      {sceneAttachments.length > 0 && (
+                        <div style={{ margin: "10px 0 0", display: "flex", flexDirection: "column", gap: 6 }}>
+                          {sceneAttachments.map((item) => (
+                            <div key={item.name} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#3d4d66", background: "#f7f9fc", border: "1px solid #e6eaf2", borderRadius: 6, padding: "6px 10px" }}>
+                              <Paperclip size={14} style={{ color: "#8b98aa", flexShrink: 0 }} />
+                              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
+                              {item.status === "uploading" && <span style={{ color: "#b08a00" }}>上传解析中…</span>}
+                              {item.status === "done" && <span style={{ color: "#22c55e" }}>已入库</span>}
+                              {item.status === "failed" && <span style={{ color: "#ed2633" }} title={item.error}>解析失败</span>}
+                              <button
+                                className="link-btn"
+                                type="button"
+                                style={{ color: "#ed2633" }}
+                                onClick={() => removeSceneAttachment(item.name)}
+                                aria-label={`删除附件 ${item.name}`}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <Field label="场景描述">
                         <textarea
                           value={aiGenerateForm.sceneDescription}
@@ -2529,7 +2617,7 @@ export function AdminDashboard() {
                         {/* 右侧状态+操作 */}
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
                           <span style={{ padding: "2px 10px", borderRadius: 4, background: statusBg, color: statusColor, fontSize: 12, fontWeight: 600 }}>{statusLabel}</span>
-                          <button className="link-btn" type="button" style={{ color: "#4080ff", fontSize: 13, fontWeight: 600 }} onClick={() => { window.location.href = '/tasks/' + task.id; }}>
+                          <button className="link-btn" type="button" style={{ color: "#4080ff", fontSize: 13, fontWeight: 600 }} onClick={() => { navigateTo('/tasks/' + task.id); }}>
                             {actionLabel} &gt;
                           </button>
                         </div>
