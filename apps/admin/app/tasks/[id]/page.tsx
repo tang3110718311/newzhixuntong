@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { ApiResponse, AuthSession } from "@zxt/shared";
-import { ArrowLeft, Play, MessageSquare, FileCheck, ChevronRight, Shield } from "lucide-react";
+import { ArrowLeft, Clock, BarChart3, Building2 } from "lucide-react";
 import AppShell, { type RightRailData } from "@/components/AppShell";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
@@ -102,9 +102,12 @@ function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
   try {
     const d = new Date(dateStr);
-    return d.toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" })
-      + " "
-      + d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const h = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    return `${y}-${m}-${day} ${h}:${min}`;
   } catch {
     return dateStr;
   }
@@ -112,12 +115,8 @@ function formatDate(dateStr: string | null | undefined): string {
 
 function statusLabel(status: string) {
   const map: Record<string, string> = {
-    completed: "已完成",
-    draft: "待发布",
-    published: "进行中",
-    overdue: "已逾期",
-    in_progress: "进行中",
-    not_started: "未开始",
+    completed: "已完成", draft: "待发布", published: "进行中",
+    overdue: "已逾期", in_progress: "进行中", not_started: "未开始",
   };
   return map[status] || status;
 }
@@ -127,6 +126,46 @@ function statusBadgeClass(status: string) {
   if (status === "overdue") return "danger";
   if (status === "published" || status === "in_progress") return "info";
   return "default";
+}
+
+// ---------- 学习步骤组件 ----------
+
+function StepItem({ num, title, desc, actionLabel, onAction, disabled }: {
+  num: number; title: string; desc: string;
+  actionLabel: string; onAction?: () => void; disabled?: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 0", borderTop: "1px solid #f0f0f0" }}>
+      {/* 左侧蓝色圆形数字 */}
+      <span style={{
+        width: 32, height: 32, borderRadius: "50%",
+        background: disabled ? "#d9d9d9" : "#4E63F0",
+        color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 14, fontWeight: 700, flexShrink: 0,
+      }}>
+        {num}
+      </span>
+      {/* 中间文字 */}
+      <div style={{ flex: 1 }}>
+        <strong style={{ display: "block", fontSize: 14, color: "#172b4d" }}>{title}</strong>
+        <span style={{ fontSize: 12, color: "#8b98aa" }}>{desc}</span>
+      </div>
+      {/* 右侧按钮 */}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onAction}
+        style={{
+          padding: "6px 20px", borderRadius: 6, fontSize: 13, fontWeight: 500,
+          border: "none", cursor: disabled ? "not-allowed" : "pointer",
+          background: disabled ? "#f5f5f5" : "#4E63F0",
+          color: disabled ? "#bfbfbf" : "#fff",
+        }}
+      >
+        {actionLabel}
+      </button>
+    </div>
+  );
 }
 
 // ---------- 主组件 ----------
@@ -156,10 +195,8 @@ export default function TaskDetailPage() {
     loadRightRailData().then(setRightRail);
   }, [taskId]);
 
-  // 加载训练记录
   useEffect(() => {
     if (!selectedSceneId || !detail) return;
-    // 调用 training-records API 获取对练记录
     apiFetch<{ items: TrainingRecord[] }>(`/training-records?taskId=${detail.task.id}&sceneId=${selectedSceneId}&pageSize=50`)
       .then((res) => setTrainingRecords(res.items || []))
       .catch(() => setTrainingRecords([]));
@@ -198,46 +235,68 @@ export default function TaskDetailPage() {
     >
       {error && <div className="notice">{error}</div>}
 
-      {/* 顶部标题区 */}
-      <div className="page-header" style={{ marginBottom: 20 }}>
-        <div>
+      {/* ===== 1. 顶部标题区 ===== */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <h1 className="page-title">{task.name}</h1>
-            <span className={`badge ${statusBadgeClass(task.status)}`}>{statusLabel(task.status)}</span>
+            <h1 style={{ margin: 0, fontSize: 20, color: "#172b4d", fontWeight: 700 }}>{task.name}</h1>
+            <span style={{
+              padding: "2px 10px", borderRadius: 4, fontSize: 12, fontWeight: 500,
+              background: task.status === "completed" ? "#f6ffed" : task.status === "overdue" ? "#fff7e6" : "#e6f4ff",
+              color: task.status === "completed" ? "#52c41a" : task.status === "overdue" ? "#e6a23c" : "#4E63F0",
+            }}>
+              {statusLabel(task.status)}
+            </span>
           </div>
-          <p className="page-desc">任务编号: {task.code || task.id}</p>
-        </div>
-        <div className="toolbar">
-          <button className="btn" type="button" onClick={() => { window.location.href = "/?section=my-tasks"; }}>
-            <ArrowLeft size={16} /> 返回我的任务
+          <button
+            type="button"
+            onClick={() => { window.location.href = "/?section=my-tasks"; }}
+            style={{
+              padding: "6px 16px", borderRadius: 6, fontSize: 13,
+              border: "1px solid #d9d9d9", background: "#fff", color: "#52657f", cursor: "pointer",
+            }}
+          >
+            返回我的任务
           </button>
         </div>
+        <p style={{ margin: "4px 0 0", color: "#8b98aa", fontSize: 13 }}>任务编号: {task.code || task.id}</p>
       </div>
 
-      {/* 任务描述区块 */}
-      <div className="card section" style={{ marginBottom: 20 }}>
-        <h3 className="section-title" style={{ marginBottom: 12 }}>任务描述</h3>
-        <p style={{ color: "#52657f", lineHeight: 1.7, marginBottom: 16 }}>{task.description || "完成场景学习、对练与考试。"}</p>
+      {/* ===== 2. 任务描述 ===== */}
+      <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+        <h3 style={{ margin: "0 0 8px", fontSize: 15, color: "#172b4d", fontWeight: 600 }}>任务描述</h3>
+        <p style={{ color: "#52657f", lineHeight: 1.7, marginBottom: 16, fontSize: 14 }}>
+          {task.description || "完成场景学习、对练与考试。"}
+        </p>
         <div style={{ display: "flex", gap: 48, flexWrap: "wrap" }}>
-          <div>
-            <span style={{ color: "#8b98aa", fontSize: 13 }}>截止时间</span><br />
-            <strong>{formatDate(task.endAt)}</strong>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Clock size={16} color="#8b98aa" />
+            <div>
+              <div style={{ color: "#8b98aa", fontSize: 12, marginBottom: 2 }}>截止时间</div>
+              <strong style={{ fontSize: 14, color: "#172b4d" }}>{formatDate(task.endAt)}</strong>
+            </div>
           </div>
-          <div>
-            <span style={{ color: "#8b98aa", fontSize: 13 }}>整体进度</span><br />
-            <strong>{task.progressPercent}%（{task.completedSceneCount}/{task.sceneCount} 场景）</strong>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <BarChart3 size={16} color="#8b98aa" />
+            <div>
+              <div style={{ color: "#8b98aa", fontSize: 12, marginBottom: 2 }}>整体进度</div>
+              <strong style={{ fontSize: 14, color: "#172b4d" }}>{task.progressPercent}%（{task.completedSceneCount}/{task.sceneCount} 场景）</strong>
+            </div>
           </div>
-          <div>
-            <span style={{ color: "#8b98aa", fontSize: 13 }}>所属部门</span><br />
-            <strong>{task.creatorOrgName || "—"}</strong>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Building2 size={16} color="#8b98aa" />
+            <div>
+              <div style={{ color: "#8b98aa", fontSize: 12, marginBottom: 2 }}>发布部门</div>
+              <strong style={{ fontSize: 14, color: "#172b4d" }}>{task.creatorOrgName || "—"}</strong>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 场景学习区块 */}
-      <div className="card section" style={{ marginBottom: 20 }}>
-        <div className="section-head compact" style={{ marginBottom: 16 }}>
-          <h2 className="section-title">场景学习</h2>
+      {/* ===== 3. 场景学习 ===== */}
+      <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <h2 style={{ margin: 0, fontSize: 15, color: "#172b4d", fontWeight: 600 }}>场景学习</h2>
           <span style={{ color: "#8b98aa", fontSize: 13 }}>选择场景进行学习，按顺序完成</span>
         </div>
         {detail.scenes.map((scene, i) => {
@@ -248,34 +307,45 @@ export default function TaskDetailPage() {
               key={scene.id}
               onClick={() => setSelectedSceneId(scene.id)}
               style={{
-                border: active ? "1px solid #4080ff" : "1px solid var(--border, #e4e7ed)",
-                borderRadius: 8,
+                borderRadius: 10,
                 padding: 16,
                 marginBottom: 12,
                 cursor: "pointer",
-                background: active ? "#f5f9ff" : "#fff",
+                background: active
+                  ? "linear-gradient(135deg, #4E63F0 0%, #6B7FF0 100%)"
+                  : "#f7f8fa",
+                color: active ? "#fff" : "#172b4d",
                 display: "flex",
                 alignItems: "center",
                 gap: 12,
+                border: active ? "none" : "1px solid #e4e7ed",
+                transition: "all 0.2s",
               }}
             >
               <span style={{
-                width: 28, height: 28, borderRadius: 6,
-                background: active ? "#4080ff" : "#c0c4cc",
-                color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                width: 28, height: 28, borderRadius: "50%",
+                background: active ? "rgba(255,255,255,0.25)" : "#d9d9d9",
+                color: active ? "#fff" : "#8b98aa",
+                display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: 13, fontWeight: 700,
               }}>
                 {i + 1}
               </span>
               <div style={{ flex: 1 }}>
-                <strong>{scene.sceneName || "场景名称"}</strong>
-                {scene.sceneType && (
-                  <span style={{ marginLeft: 8, fontSize: 12, color: "#8b98aa" }}>
-                    {scene.sceneType === "free" ? "自由对练" : "任务对练"}
+                <strong style={{ display: "block", fontSize: 14 }}>{scene.sceneName || "场景名称"}</strong>
+                {active && (
+                  <span style={{ fontSize: 12, opacity: 0.8, marginTop: 2, display: "block" }}>
+                    {scene.sceneType === "投诉处理" || scene.sceneType === "资费咨询" || scene.sceneType === "故障报修"
+                      ? `${scene.sceneType}场景对练训练`
+                      : "识别常见问题，掌握处理方法。"}
                   </span>
                 )}
               </div>
-              <span className={`badge ${sceneStatus === "已完成" ? "green" : "info"}`}>
+              <span style={{
+                padding: "2px 10px", borderRadius: 4, fontSize: 12,
+                background: active ? "rgba(255,255,255,0.2)" : sceneStatus === "已完成" ? "#f6ffed" : "#e6f4ff",
+                color: active ? "#fff" : sceneStatus === "已完成" ? "#52c41a" : "#4E63F0",
+              }}>
                 {sceneStatus}
               </span>
             </div>
@@ -283,70 +353,61 @@ export default function TaskDetailPage() {
         })}
       </div>
 
-      {/* 场景详情区块 */}
+      {/* ===== 4. 场景详情 ===== */}
       {currentScene && (
-        <div className="card section">
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+        <div className="card" style={{ padding: 20 }}>
+          {/* 场景标题+标签 */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 240 }}>
-              <h2 className="section-title">{currentScene.sceneName || "场景名称"}</h2>
-              <p style={{ color: "#8b98aa", fontSize: 13, marginTop: 4 }}>
+              <h2 style={{ margin: 0, fontSize: 16, color: "#172b4d", fontWeight: 700 }}>{currentScene.sceneName || "场景名称"}</h2>
+              <p style={{ margin: "4px 0 0", color: "#8b98aa", fontSize: 13 }}>
                 {currentScene.sceneType === "free" ? "自由对练场景" : "任务对练场景"}
               </p>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <span className="badge default">合格标准 ≥{currentScene.passScore}%</span>
-              <span className="badge default">任务类型 {currentScene.sceneType === "free" ? "自由对练" : "任务对练"}</span>
-              <span className="badge default">回答形式 {currentScene.mode === "text" ? "文本回答" : "语音回答"}</span>
+              <span style={{ padding: "2px 10px", borderRadius: 4, fontSize: 12, background: "#f5f5f5", color: "#52657f" }}>合格标准 ≥{currentScene.passScore}%</span>
+              <span style={{ padding: "2px 10px", borderRadius: 4, fontSize: 12, background: "#f5f5f5", color: "#52657f" }}>
+                任务类型 {currentScene.sceneType === "free" ? "自由对练" : "任务对练"}
+              </span>
+              <span style={{ padding: "2px 10px", borderRadius: 4, fontSize: 12, background: "#f5f5f5", color: "#52657f" }}>
+                回答形式 {currentScene.mode === "text" ? "文本回答" : "语音回答"}
+              </span>
             </div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
             {/* 左侧：学习步骤流 */}
             <div>
-              <div className="section-head compact" style={{ marginBottom: 12 }}>
-                <h3 className="section-title">场景学习</h3>
-                <span style={{ color: "#8b98aa", fontSize: 13 }}>{currentScene.sceneName || "场景名称"}</span>
+              <div style={{ marginBottom: 12 }}>
+                <h3 style={{ margin: 0, fontSize: 14, color: "#172b4d", fontWeight: 600 }}>场景学习</h3>
+                <span style={{ fontSize: 12, color: "#8b98aa" }}>{currentScene.sceneName || "场景名称"}</span>
               </div>
-              <div style={{ display: "grid", gap: 12 }}>
-                {/* 资料学习 */}
-                <div style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "12px 0", borderTop: "1px solid var(--border, #e4e7ed)",
-                }}>
-                  <div>
-                    <strong>资料学习</strong><br />
-                    <span style={{ fontSize: 12, color: "#8b98aa" }}>查看学习资料，掌握场景要点。</span>
-                  </div>
-                  <button className="btn" type="button">开始学习</button>
-                </div>
-                {/* AI对练 */}
-                <div style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "12px 0", borderTop: "1px solid var(--border, #e4e7ed)",
-                }}>
-                  <div>
-                    <strong>AI对练</strong><br />
-                    <span style={{ fontSize: 12, color: "#8b98aa" }}>与AI进行模拟对话训练。</span>
-                  </div>
-                  <button className="btn primary" type="button" onClick={() => startPractice(currentScene)}>
-                    开始对练
-                  </button>
-                </div>
-                {/* 场景考试 */}
-                <div style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "12px 0", borderTop: "1px solid var(--border, #e4e7ed)",
-                }}>
-                  <div>
-                    <strong>场景考试</strong><br />
-                    <span style={{ fontSize: 12, color: "#8b98aa" }}>完成场景相关综合能力测评。</span>
-                  </div>
-                  <button className="btn" type="button" disabled>开始考试</button>
-                </div>
-              </div>
+
+              <StepItem
+                num={1}
+                title="资料学习"
+                desc="查看学习资料，掌握场景要点。"
+                actionLabel="开始学习"
+                onAction={() => {}}
+              />
+              <StepItem
+                num={2}
+                title="AI对练"
+                desc="与AI进行模拟对练训练。"
+                actionLabel="开始对练"
+                onAction={() => startPractice(currentScene)}
+              />
+              <StepItem
+                num={3}
+                title="场景考试"
+                desc="完成场景相关综合能力测评。"
+                actionLabel="开始考试"
+                disabled
+              />
+
               <p style={{
                 background: "#fdf6ec", borderRadius: 6,
-                padding: "10px 12px", fontSize: 12, color: "#e6a23c", marginTop: 12,
+                padding: "10px 12px", fontSize: 12, color: "#e6a23c", marginTop: 8,
               }}>
                 资料学习和AI对练均可直接开始，完成AI对练后解锁场景考试。
               </p>
@@ -354,24 +415,34 @@ export default function TaskDetailPage() {
 
             {/* 右侧：场景学习记录 */}
             <div>
-              <div className="section-head compact" style={{ marginBottom: 12 }}>
-                <h3 className="section-title">场景学习记录</h3>
-                <span style={{ color: "#8b98aa", fontSize: 13 }}>{currentScene.sceneName || "场景名称"}</span>
+              <div style={{ marginBottom: 12 }}>
+                <h3 style={{ margin: 0, fontSize: 14, color: "#172b4d", fontWeight: 600 }}>场景学习记录</h3>
+                <span style={{ fontSize: 12, color: "#8b98aa" }}>{currentScene.sceneName || "场景名称"}</span>
               </div>
-              <div style={{ display: "flex", gap: 16, borderBottom: "1px solid var(--border, #e4e7ed)", marginBottom: 16 }}>
+              <div style={{ display: "flex", gap: 16, borderBottom: "1px solid #e4e7ed", marginBottom: 16 }}>
                 <button
-                  className="link-btn"
                   type="button"
                   onClick={() => setRecordTab("practice")}
-                  style={recordTab === "practice" ? { color: "#4080ff", fontWeight: 600, borderBottom: "2px solid #4080ff", paddingBottom: 8 } : {}}
+                  style={{
+                    padding: "0 0 8px", border: "none", background: "transparent",
+                    fontSize: 13, cursor: "pointer",
+                    color: recordTab === "practice" ? "#4E63F0" : "#8b98aa",
+                    fontWeight: recordTab === "practice" ? 600 : 400,
+                    borderBottom: recordTab === "practice" ? "2px solid #4E63F0" : "2px solid transparent",
+                  }}
                 >
                   对练记录
                 </button>
                 <button
-                  className="link-btn"
                   type="button"
                   onClick={() => setRecordTab("exam")}
-                  style={recordTab === "exam" ? { color: "#4080ff", fontWeight: 600, borderBottom: "2px solid #4080ff", paddingBottom: 8 } : {}}
+                  style={{
+                    padding: "0 0 8px", border: "none", background: "transparent",
+                    fontSize: 13, cursor: "pointer",
+                    color: recordTab === "exam" ? "#4E63F0" : "#8b98aa",
+                    fontWeight: recordTab === "exam" ? 600 : 400,
+                    borderBottom: recordTab === "exam" ? "2px solid #4E63F0" : "2px solid transparent",
+                  }}
                 >
                   考试记录
                 </button>
@@ -383,8 +454,7 @@ export default function TaskDetailPage() {
                     {trainingRecords.map((rec) => (
                       <div key={rec.id} style={{
                         display: "flex", justifyContent: "space-between", alignItems: "center",
-                        padding: "10px 12px", borderRadius: 6,
-                        border: "1px solid var(--border, #e4e7ed)",
+                        padding: "10px 12px", borderRadius: 6, border: "1px solid #e4e7ed",
                       }}>
                         <div>
                           <strong style={{ fontSize: 14 }}>对练 #{rec.id.slice(-4)}</strong>
@@ -394,7 +464,11 @@ export default function TaskDetailPage() {
                           <span style={{ fontSize: 14, fontWeight: 600, color: rec.score >= currentScene.passScore ? "#52c41a" : "#f5222d" }}>
                             {rec.score}分
                           </span>
-                          <span className={`badge ${rec.score >= currentScene.passScore ? "green" : "danger"}`}>
+                          <span style={{
+                            padding: "2px 8px", borderRadius: 4, fontSize: 12,
+                            background: rec.score >= currentScene.passScore ? "#f6ffed" : "#fff1f0",
+                            color: rec.score >= currentScene.passScore ? "#52c41a" : "#f5222d",
+                          }}>
                             {rec.score >= currentScene.passScore ? "合格" : "不合格"}
                           </span>
                         </div>
@@ -402,10 +476,14 @@ export default function TaskDetailPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="empty" style={{ padding: 24 }}>完成AI对练后显示对练记录</div>
+                  <div style={{ padding: 32, textAlign: "center", color: "#8b98aa", fontSize: 13 }}>
+                    完成AI对练后显示对练记录
+                  </div>
                 )
               ) : (
-                <div className="empty" style={{ padding: 24 }}>完成场景考试后显示考试记录</div>
+                <div style={{ padding: 32, textAlign: "center", color: "#8b98aa", fontSize: 13 }}>
+                  完成场景考试后显示考试记录
+                </div>
               )}
             </div>
           </div>
