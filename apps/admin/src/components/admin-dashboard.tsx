@@ -1547,6 +1547,9 @@ export function AdminDashboard() {
 
         {activeSection === "practice" && (
           <section className="page-section">
+            <div style={{ background: "#dcfce7", color: "#166534", padding: "8px 12px", borderRadius: 6, fontSize: 12 }}>
+              ✓ practice section 渲染中 · activeSection={String(activeSection)} · scenes={Array.isArray(scenes) ? scenes.length : "undef"} · records={Array.isArray(records) ? records.length : "undef"}
+            </div>
             <div className="page-header">
               <div>
                 <h1 className="page-title">对练中心</h1>
@@ -1557,17 +1560,17 @@ export function AdminDashboard() {
               <div className="home-main">
                 <div className="card section" style={{ padding: 20 }}>
                   <h3 style={{ margin: "0 0 16px" }}>可对练场景</h3>
-                  {scenes.length === 0 ? (
+                  {(!Array.isArray(scenes) || scenes.length === 0) ? (
                     <div className="empty">暂无可用场景，请先在「场景管理」创建。</div>
                   ) : (
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
                       {scenes.map((scene) => (
                         <div key={scene.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 16, background: "var(--panel)" }}>
-                          <strong style={{ display: "block", marginBottom: 6 }}>{scene.name}</strong>
+                          <strong style={{ display: "block", marginBottom: 6 }}>{scene?.name || "(未命名场景)"}</strong>
                           <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-                            类型：{scene.sceneType || "—"} · 合格线 80
+                            合格线 80
                           </div>
-                          <button className="btn primary full" type="button" onClick={() => navigateTo(`/practice?sceneId=${scene.id}`)}>
+                          <button className="btn primary full" type="button" onClick={() => navigateTo(`/practice?sceneId=${encodeURIComponent(scene.id)}`)}>
                             开始对练 →
                           </button>
                         </div>
@@ -1579,14 +1582,14 @@ export function AdminDashboard() {
               <aside className="home-side">
                 <div className="card section" style={{ padding: 20 }}>
                   <h3 style={{ margin: "0 0 12px" }}>最近训练</h3>
-                  {records.length === 0 ? (
+                  {(!Array.isArray(records) || records.length === 0) ? (
                     <div className="empty">暂无训练记录。</div>
                   ) : (
                     <div style={{ display: "grid", gap: 10 }}>
                       {records.slice(0, 5).map((r) => (
                         <div key={r.id} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600 }}>{r.sceneName || "—"}</div>
-                          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{r.score} 分 · {formatDate(r.finishedAt)}</div>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{r?.sceneName || "—"}</div>
+                          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{r?.score ?? 0} 分 · {formatDate(r?.finishedAt)}</div>
                         </div>
                       ))}
                     </div>
