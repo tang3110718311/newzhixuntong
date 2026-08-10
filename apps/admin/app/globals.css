@@ -1432,6 +1432,9 @@ body {
   color: #8b98aa;
   text-align: center;
   white-space: nowrap;
+  max-width: 56px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chart-bars-labeled {
@@ -1441,6 +1444,12 @@ body {
   gap: 0;
   height: 160px;
   margin-top: 16px;
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.chart-bars-labeled .chart-col {
+  min-width: 44px;
 }
 
 /* 排名行 */
