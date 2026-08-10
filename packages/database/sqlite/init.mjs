@@ -480,6 +480,24 @@ create table if not exists knowledge_folders (
   updated_at text not null default current_timestamp,
   deleted_at text
 );
+
+create table if not exists knowledge_files (
+  id text primary key,
+  tenant_id text not null,
+  folder_id text not null,
+  file_id text not null,
+  name text not null,
+  mime_type text not null default 'application/octet-stream',
+  size integer not null default 0,
+  content text not null default '',
+  summary text not null default '',
+  parse_status text not null default 'parsing',
+  parse_error text not null default '',
+  created_by text,
+  created_at text not null default current_timestamp,
+  updated_at text not null default current_timestamp,
+  deleted_at text
+);
 `);
 
 function hasColumn(tableName, columnName) {
