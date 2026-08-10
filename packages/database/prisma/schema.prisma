@@ -1,0 +1,457 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id                String    @id @default(cuid())
+  name              String
+  code              String    @unique
+  status            String    @default("active")
+  passwordHash String @default("") @map("password_hash")
+  passwordMustChange Boolean @default(true) @map("password_must_change")
+  lastLoginAt DateTime? @map("last_login_at")
+  planCode          String    @default("trial") @map("plan_code")
+  expireAt          DateTime? @map("expire_at")
+  resourceQuotaJson String    @default("{}") @map("resource_quota_json")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  @@map("tenants")
+}
+
+model Organization {
+  id        String    @id @default(cuid())
+  tenantId  String    @map("tenant_id")
+  parentId  String?   @map("parent_id")
+  code      String
+  name      String
+  type      String    @default("department")
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("organizations")
+}
+
+model User {
+  id        String    @id @default(cuid())
+  tenantId  String    @map("tenant_id")
+  orgId     String?   @map("org_id")
+  name      String
+  mobile    String
+  email     String?
+  roleCode  String    @default("tenant_admin") @map("role_code")
+  status    String    @default("active")
+  passwordHash String @default("") @map("password_hash")
+  passwordMustChange Boolean @default(true) @map("password_must_change")
+  lastLoginAt DateTime? @map("last_login_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@unique([tenantId, mobile])
+  @@index([tenantId, orgId])
+  @@map("users")
+}
+
+model UserSession {
+  id        String    @id @default(cuid())
+  tenantId  String    @map("tenant_id")
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+  userAgent String    @default("") @map("user_agent")
+  ip        String    @default("")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([tenantId, userId])
+  @@index([expiresAt])
+  @@map("user_sessions")
+}
+model IndustryPackage {
+  id               String    @id @default(cuid())
+  tenantId         String    @map("tenant_id")
+  name             String
+  code             String
+  industryType     String    @map("industry_type")
+  targetRoles      String    @map("target_roles")
+  version          String    @default("1.0.0")
+  status           String    @default("enabled")
+  description      String    @default("")
+  isSystemTemplate Boolean   @default(false) @map("is_system_template")
+  createdBy        String?   @map("created_by")
+  updatedBy        String?   @map("updated_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  @@unique([tenantId, code])
+  @@index([tenantId, status])
+  @@map("industry_packages")
+}
+
+model CapabilityModel {
+  id                String    @id @default(cuid())
+  tenantId          String    @map("tenant_id")
+  industryPackageId String    @map("industry_package_id")
+  name              String
+  description       String    @default("")
+  passScore         Int       @default(60) @map("pass_score")
+  createdBy         String?   @map("created_by")
+  updatedBy         String?   @map("updated_by")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  @@index([tenantId, industryPackageId])
+  @@map("capability_models")
+}
+
+model CapabilityItem {
+  id                String    @id @default(cuid())
+  tenantId          String    @map("tenant_id")
+  capabilityModelId String    @map("capability_model_id")
+  name              String
+  weight            Int
+  scoreDesc         String    @default("") @map("score_desc")
+  riskTag           String    @default("") @map("risk_tag")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  @@index([tenantId, capabilityModelId])
+  @@map("capability_items")
+}
+
+model FileObject {
+  id          String    @id @default(cuid())
+  tenantId    String    @map("tenant_id")
+  name        String
+  mimeType    String    @default("application/octet-stream") @map("mime_type")
+  size        Int       @default(0)
+  storagePath String    @map("storage_path")
+  hash        String    @default("")
+  createdBy   String?   @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  @@index([tenantId])
+  @@map("files")
+}
+
+model Material {
+  id                String    @id @default(cuid())
+  tenantId          String    @map("tenant_id")
+  name              String
+  type              String
+  fileId            String?   @map("file_id")
+  industryPackageId String?   @map("industry_package_id")
+  sceneId           String?   @map("scene_id")
+  tags              String    @default("[]")
+  status            String    @default("active")
+  passwordHash String @default("") @map("password_hash")
+  passwordMustChange Boolean @default(true) @map("password_must_change")
+  lastLoginAt DateTime? @map("last_login_at")
+  content           String    @default("")
+  createdBy         String?   @map("created_by")
+  updatedBy         String?   @map("updated_by")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  @@index([tenantId, industryPackageId])
+  @@index([tenantId, sceneId])
+  @@map("materials")
+}
+
+model Scene {
+  id                String    @id @default(cuid())
+  tenantId          String    @map("tenant_id")
+  industryPackageId String?   @map("industry_package_id")
+  name              String
+  code              String
+  mode              String    @default("voice")
+  status            String    @default("draft")
+  version           String    @default("1.0.0")
+  isTemplate        Boolean   @default(false) @map("is_template")
+  sourceType        String    @default("manual") @map("source_type")
+  sceneType         String    @default("") @map("scene_type")
+  description       String    @default("")
+  createdBy         String?   @map("created_by")
+  updatedBy         String?   @map("updated_by")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  @@unique([tenantId, code])
+  @@index([tenantId, industryPackageId])
+  @@index([tenantId, status])
+  @@map("scenes")
+}
+
+model SceneRole {
+  id          String    @id @default(cuid())
+  tenantId    String    @map("tenant_id")
+  sceneId     String    @map("scene_id")
+  roleType    String    @map("role_type")
+  identity    String
+  background  String    @default("")
+  personality String    @default("")
+  emotion     String    @default("calm")
+  goal        String    @default("")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  @@index([tenantId, sceneId])
+  @@map("scene_roles")
+}
+
+model SceneRule {
+  id                 String    @id @default(cuid())
+  tenantId           String    @map("tenant_id")
+  sceneId            String    @map("scene_id")
+  initiator          String    @default("ai")
+  endCondition       String    @default("") @map("end_condition")
+  interruptCondition String    @default("") @map("interrupt_condition")
+  description        String    @default("")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  @@unique([tenantId, sceneId])
+  @@map("scene_rules")
+}
+
+model ScoringRule {
+  id               String    @id @default(cuid())
+  tenantId         String    @map("tenant_id")
+  sceneId          String    @map("scene_id")
+  capabilityItemId String?   @map("capability_item_id")
+  name             String
+  score            Int
+  criteria         String
+  deductionRule    String    @default("") @map("deduction_rule")
+  evidenceRequired String    @default("") @map("evidence_required")
+  sortOrder        Int       @default(0) @map("sort_order")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  @@index([tenantId, sceneId])
+  @@map("scoring_rules")
+}
+
+model Task {
+  id        String    @id @default(cuid())
+  tenantId  String    @map("tenant_id")
+  code      String
+  name      String
+  type      String
+  description String    @default("")
+  status    String    @default("draft")
+  startAt   DateTime? @map("start_at")
+  endAt     DateTime? @map("end_at")
+  publishAt DateTime? @map("publish_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@unique([tenantId, code])
+  @@index([tenantId, status])
+  @@map("tasks")
+}
+
+model TaskScene {
+  id                 String    @id @default(cuid())
+  tenantId           String    @map("tenant_id")
+  taskId             String    @map("task_id")
+  sceneId            String    @map("scene_id")
+  sortOrder          Int       @default(0) @map("sort_order")
+  requiredTrainTimes Int       @default(1) @map("required_train_times")
+  passScore          Int       @default(60) @map("pass_score")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  @@unique([tenantId, taskId, sceneId])
+  @@index([tenantId, taskId])
+  @@map("task_scenes")
+}
+
+model TaskParticipant {
+  id         String    @id @default(cuid())
+  tenantId   String    @map("tenant_id")
+  taskId     String    @map("task_id")
+  userId     String?   @map("user_id")
+  orgId      String?   @map("org_id")
+  status     String    @default("not_started")
+  finishedAt DateTime? @map("finished_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  @@index([tenantId, taskId])
+  @@map("task_participants")
+}
+
+model TrainingRecord {
+  id         String    @id @default(cuid())
+  tenantId   String    @map("tenant_id")
+  recordNo   String    @map("record_no")
+  taskId     String?   @map("task_id")
+  sceneId    String    @map("scene_id")
+  userId     String?   @map("user_id")
+  mode       String    @default("voice")
+  status     String    @default("completed")
+  score      Int       @default(0)
+  startedAt  DateTime? @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  @@unique([tenantId, recordNo])
+  @@index([tenantId, sceneId])
+  @@index([tenantId, taskId])
+  @@map("training_records")
+}
+
+model TrainingTurn {
+  id          String    @id @default(cuid())
+  tenantId    String    @map("tenant_id")
+  recordId    String    @map("record_id")
+  speaker     String
+  audioFileId String?   @map("audio_file_id")
+  text        String
+  startedAt   DateTime? @map("started_at")
+  durationMs  Int       @default(0) @map("duration_ms")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  @@index([tenantId, recordId])
+  @@map("training_turns")
+}
+
+model ScoreDetail {
+  id              String    @id @default(cuid())
+  tenantId        String    @map("tenant_id")
+  recordId        String    @map("record_id")
+  scoringRuleId   String?   @map("scoring_rule_id")
+  score           Int
+  deductionReason String    @default("") @map("deduction_reason")
+  evidenceText    String    @default("") @map("evidence_text")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  @@index([tenantId, recordId])
+  @@map("score_details")
+}
+
+model ExamRecord {
+  id          String    @id @default(cuid())
+  tenantId    String    @map("tenant_id")
+  taskId      String?   @map("task_id")
+  userId      String?   @map("user_id")
+  paperId     String?   @map("paper_id")
+  score       Int       @default(0)
+  status      String    @default("passed")
+  submittedAt DateTime? @map("submitted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  @@index([tenantId, taskId])
+  @@map("exam_records")
+}
+
+model Appeal {
+  id        String    @id @default(cuid())
+  tenantId  String    @map("tenant_id")
+  bizType   String    @map("biz_type")
+  bizId     String    @map("biz_id")
+  userId    String?   @map("user_id")
+  reason    String
+  status    String    @default("pending")
+  handlerId String?   @map("handler_id")
+  handledAt DateTime? @map("handled_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([tenantId, status])
+  @@map("appeals")
+}
+
+model AiProviderConfig {
+  id              String    @id @default(cuid())
+  tenantId        String    @map("tenant_id")
+  providerType    String    @map("provider_type")
+  providerName    String    @map("provider_name")
+  modelName       String    @map("model_name")
+  baseUrl         String    @default("") @map("base_url")
+  apiKeyEncrypted String    @default("") @map("api_key_encrypted")
+  status          String    @default("disabled")
+  isDefault       Boolean   @default(false) @map("is_default")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  @@index([tenantId, providerType])
+  @@map("ai_provider_configs")
+}
+
+model AiCallLog {
+  id           String    @id @default(cuid())
+  tenantId     String    @map("tenant_id")
+  providerType String    @map("provider_type")
+  modelName    String    @default("") @map("model_name")
+  bizType      String    @map("biz_type")
+  bizId        String?   @map("biz_id")
+  tokens       Int       @default(0)
+  audioSeconds Int       @default(0) @map("audio_seconds")
+  durationMs   Int       @default(0) @map("duration_ms")
+  success      Boolean   @default(false)
+  errorMessage String    @default("") @map("error_message")
+  traceId      String    @map("trace_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  @@index([tenantId, providerType])
+  @@index([tenantId, traceId])
+  @@map("ai_call_logs")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String   @map("tenant_id")
+  userId     String?  @map("user_id")
+  action     String
+  bizType    String   @map("biz_type")
+  bizId      String?  @map("biz_id")
+  beforeJson String   @default("{}") @map("before_json")
+  afterJson  String   @default("{}") @map("after_json")
+  ip         String   @default("")
+  traceId    String   @map("trace_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, bizType])
+  @@map("audit_logs")
+}

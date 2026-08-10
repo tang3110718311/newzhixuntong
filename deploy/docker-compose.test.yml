@@ -1,0 +1,58 @@
+name: zxt-next-test
+
+services:
+  zxt-api:
+    image: zxt-next:test
+    container_name: zxt-next-api
+    build:
+      context: ${ZXT_RELEASE_DIR}
+      dockerfile: /data/zxt-next/deploy/Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+    restart: unless-stopped
+    working_dir: /app
+    command: ["npm", "--workspace", "@zxt/api", "run", "start", "--", "-H", "0.0.0.0"]
+    ports:
+      - "${ZXT_API_PORT}:4000"
+    env_file:
+      - /data/zxt-next/deploy/env.test
+    environment:
+      NODE_ENV: production
+      SQLITE_DB_PATH: /app/storage/sqlite/dev.db
+      TTS_PYTHON_BIN: python3
+    volumes:
+      - /data/zxt-next/storage:/app/storage
+      - /data/zxt-next/logs:/app/.logs
+    networks:
+      - zxt-next-net
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+
+  zxt-admin:
+    image: zxt-next:test
+    container_name: zxt-next-admin
+    restart: unless-stopped
+    working_dir: /app
+    command: ["npm", "--workspace", "@zxt/admin", "run", "start", "--", "-H", "0.0.0.0"]
+    ports:
+      - "${ZXT_ADMIN_PORT}:3000"
+    env_file:
+      - /data/zxt-next/deploy/env.test
+    environment:
+      NODE_ENV: production
+    depends_on:
+      zxt-api:
+        condition: service_healthy
+    volumes:
+      - /data/zxt-next/logs:/app/.logs
+    networks:
+      - zxt-next-net
+
+networks:
+  zxt-next-net:
+    external: true

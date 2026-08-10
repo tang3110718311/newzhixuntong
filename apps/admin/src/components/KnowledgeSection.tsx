@@ -1,0 +1,362 @@
+// 企业知识库区块：调用真实后端 API 加载文件夹列表，统计卡用真实数据，支持新建/查看/删除文件夹
+"use client";
+
+import { Plus, Folder, Eye, Trash2 } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
+import { DataTable, Field, type AuthSession, type TrainingRecord } from "./dashboard-shared";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
+
+const PAGE_SIZE = 10;
+
+type KnowledgeProps = {
+  auth: AuthSession;
+  records: TrainingRecord[];
+  completedRecordCount: number;
+  pendingAppealCount: number;
+};
+
+type Folder = {
+  id: string;
+  name: string;
+  description: string;
+  fileCount: number;
+  totalSize: number;
+  createdBy: string | null;
+  creatorName: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function getStoredAuthToken() {
+  if (typeof window === "undefined") return "";
+  try {
+    const raw = window.localStorage.getItem("zxt-admin-auth");
+    if (!raw) return "";
+    const parsed = JSON.parse(raw) as { token?: string };
+    return parsed.token || "";
+  } catch {
+    return "";
+  }
+}
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getStoredAuthToken();
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers || {}),
+    },
+  });
+  const payload = (await response.json()) as { success: boolean; message?: string; code?: string; data: T };
+  if (!payload.success) {
+    throw new Error(payload.message || payload.code);
+  }
+  return payload.data;
+}
+
+function formatSize(bytes: number): string {
+  if (!bytes) return "0 KB";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
+
+function formatTime(iso: string): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+const emptyForm = { name: "", description: "" };
+
+export function KnowledgeSection({ auth, records, completedRecordCount, pendingAppealCount }: KnowledgeProps) {
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [showModal, setShowModal] = useState(false);
+  const [showDetail, setShowDetail] = useState<Folder | null>(null);
+  const [form, setForm] = useState(emptyForm);
+
+  // Search & filter state
+  const [searchText, setSearchText] = useState("");
+  const [filterFolder, setFilterFolder] = useState("all");
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+
+  async function loadFolders() {
+    setError("");
+    try {
+      const data = await apiFetch<{ items: Folder[] }>("/knowledge?pageSize=100");
+      setFolders(data.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载知识库失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadFolders();
+  }, []);
+
+  const totalFiles = folders.reduce((sum, folder) => sum + (folder.fileCount || 0), 0);
+  const totalSize = folders.reduce((sum, folder) => sum + (folder.totalSize || 0), 0);
+
+  // Filtered & paged data
+  const filtered = folders.filter((f) => {
+    if (searchText) {
+      const q = searchText.toLowerCase();
+      if (!f.name.toLowerCase().includes(q) && !f.description.toLowerCase().includes(q)) return false;
+    }
+    if (filterFolder !== "all" && f.id !== filterFolder) return false;
+    return true;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  // Reset page when filter changes
+  useEffect(() => { setCurrentPage(1); }, [searchText, filterFolder]);
+
+  function openCreate() {
+    setForm(emptyForm);
+    setShowModal(true);
+  }
+
+  function handleView(folder: Folder) {
+    setShowDetail(folder);
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    try {
+      await apiFetch<Folder>("/knowledge", { method: "POST", body: JSON.stringify(form) });
+      setMessage("文件夹已新建。");
+      setShowModal(false);
+      await loadFolders();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存失败");
+    }
+  }
+
+  async function handleDelete(folder: Folder) {
+    if (!window.confirm(`确认删除文件夹「${folder.name}」？`)) return;
+    setError("");
+    try {
+      await apiFetch<{ id: string }>(`/knowledge/${folder.id}`, { method: "DELETE" });
+      setMessage("文件夹已删除。");
+      await loadFolders();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除失败");
+    }
+  }
+
+  function handleResetFilter() {
+    setSearchText("");
+    setFilterFolder("all");
+  }
+
+  return (
+    <section className="page-section">
+      <div className="home-grid">
+        <div className="home-main">
+          <div className="page-header">
+            <div>
+              <h1 className="page-title">企业知识库</h1>
+              <p className="page-desc">按文件夹管理企业培训资料；每个文件夹可包含多个视频、PDF、Word、Excel、PPT 文件。</p>
+            </div>
+            <div className="toolbar">
+              <button className="btn primary" type="button" onClick={openCreate}><Plus size={16} /> 新建文件夹</button>
+            </div>
+          </div>
+          {message ? <div className="notice">{message}</div> : null}
+          {error ? <div className="notice error">{error}</div> : null}
+
+          {/* ── 统计卡（原型彩色数值） ── */}
+          <div className="stats prototype-stats stats-4" style={{ marginBottom: 24 }}>
+            <div className="metric card"><span>文件夹数量</span><strong>{folders.length}</strong><small>全部知识资料分类</small></div>
+            <div className="metric card"><span>文件总数</span><strong style={{ color: "#0f3168" }}>{totalFiles}</strong><small>已归档文件</small></div>
+            <div className="metric card"><span>视频资料</span><strong style={{ color: "#8045DD" }}>—</strong><small>可用于课程学习</small></div>
+            <div className="metric card"><span>存储空间</span><strong style={{ color: "#32C766" }}>{formatSize(totalSize)}</strong><small>当前已上传资料</small></div>
+          </div>
+
+          {/* ── 搜索筛选栏 ── */}
+          <div className="card filter-bar" style={{ marginBottom: 16 }}>
+            <div className="filter-row">
+              <div className="filter-item">
+                <input
+                  className="filter-input"
+                  style={{ width: 260 }}
+                  placeholder="搜索文件夹名称/文件名称"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                />
+              </div>
+              <div className="filter-item">
+                <label className="filter-label">所在文件夹</label>
+                <select
+                  className="filter-select"
+                  value={filterFolder}
+                  onChange={(e) => setFilterFolder(e.target.value)}
+                >
+                  <option value="all">全部</option>
+                  {folders.map((f) => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+              </div>
+              <button className="btn primary" type="button" onClick={() => setCurrentPage(1)}>查询</button>
+              <button className="btn" type="button" onClick={handleResetFilter}>重置</button>
+            </div>
+          </div>
+
+          {/* ── 文件夹列表 ── */}
+          <div className="card section">
+            <div className="section-head compact">
+              <div>
+                <h2 className="section-title">文件夹列表</h2>
+              </div>
+            </div>
+            {loading ? (
+              <div className="empty">正在加载文件夹数据…</div>
+            ) : (
+              <DataTable headers={["文件夹名称", "文件夹说明", "文件数量", "占用空间", "创建人", "更新时间", "操作"]}>
+                {paged.map((folder) => (
+                  <tr key={folder.id}>
+                    <td>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <Folder size={18} style={{ color: "#F5A623", flexShrink: 0 }} />
+                        <strong>{folder.name}</strong>
+                      </span>
+                    </td>
+                    <td className="muted-text">{folder.description || "—"}</td>
+                    <td>{folder.fileCount}个文件</td>
+                    <td>{formatSize(folder.totalSize)}</td>
+                    <td className="muted-text">{folder.creatorName || "—"}</td>
+                    <td className="muted-text">{formatTime(folder.updatedAt)}</td>
+                    <td>
+                      <button className="link-btn" type="button" onClick={() => handleView(folder)}><Eye size={14} /> 查看</button>
+                      <button className="link-btn danger" type="button" onClick={() => handleDelete(folder)}><Trash2 size={14} /> 删除</button>
+                    </td>
+                  </tr>
+                ))}
+                {!filtered.length && <tr><td colSpan={7}><div className="empty">暂无文件夹，请点击「新建文件夹」创建。</div></td></tr>}
+              </DataTable>
+            )}
+
+            {/* ── 分页器 ── */}
+            {filtered.length > 0 && (
+              <div className="pagination">
+                <span className="pagination-info">共 {filtered.length} 个文件夹，第 {safePage}/{totalPages} 页</span>
+                <div className="pagination-controls">
+                  <button
+                    className="page-btn"
+                    type="button"
+                    disabled={safePage <= 1}
+                    onClick={() => setCurrentPage((p) => p - 1)}
+                  >‹</button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                    <button
+                      key={p}
+                      className={`page-btn${p === safePage ? " active" : ""}`}
+                      type="button"
+                      onClick={() => setCurrentPage(p)}
+                    >{p}</button>
+                  ))}
+                  <button
+                    className="page-btn"
+                    type="button"
+                    disabled={safePage >= totalPages}
+                    onClick={() => setCurrentPage((p) => p + 1)}
+                  >›</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <aside className="right-rail">
+          <div className="profile card">
+            <span className="avatar large" />
+            <div>
+              <h2>{auth.user.name}</h2>
+              <p>企业管理员</p>
+              <p>培训负责人</p>
+            </div>
+          </div>
+          <div className="sidecard card">
+            <div className="sidecard-head"><h2>培训概况</h2><span>本年度</span></div>
+            <strong>{completedRecordCount}</strong>
+            <p>已完成培训任务</p>
+            <div className="mini-stats"><span>对练<b>{records.length}</b></span><span>考试<b>0</b></span><span>合格率<b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></span></div>
+          </div>
+          <div className="sidecard card">
+            <h2>通知消息</h2>
+            <p>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息，系统将及时推送任务派发、培训安排及学习进度提醒。"}</p>
+          </div>
+        </aside>
+      </div>
+
+      {/* ── 新建文件夹弹窗 ── */}
+      {showModal && (
+        <div className="modal-mask">
+          <form className="modal card" onSubmit={handleSubmit}>
+            <div className="modal-head">
+              <h2>新建文件夹</h2>
+              <button className="link-btn" type="button" onClick={() => setShowModal(false)}>关闭</button>
+            </div>
+            <Field label="文件夹名称"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></Field>
+            <Field label="文件夹说明"><textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="文件夹用途说明" /></Field>
+            <div className="modal-actions">
+              <button className="btn" type="button" onClick={() => setShowModal(false)}>取消</button>
+              <button className="btn primary" type="submit">创建</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ── 查看文件夹弹窗 ── */}
+      {showDetail && (
+        <div className="modal-mask">
+          <div className="modal card">
+            <div className="modal-head">
+              <h2>查看文件夹</h2>
+              <button className="link-btn" type="button" onClick={() => setShowDetail(null)}>关闭</button>
+            </div>
+            <div style={{ display: "grid", gap: 12, padding: "8px 0" }}>
+              <div><span style={{ color: "#73839a", fontSize: 14 }}>文件夹名称</span><div style={{ fontWeight: 600, marginTop: 4 }}>{showDetail.name}</div></div>
+              <div><span style={{ color: "#73839a", fontSize: 14 }}>文件夹说明</span><div style={{ marginTop: 4 }}>{showDetail.description || "—"}</div></div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                <div><span style={{ color: "#73839a", fontSize: 14 }}>文件数量</span><div style={{ fontWeight: 600, marginTop: 4 }}>{showDetail.fileCount}个文件</div></div>
+                <div><span style={{ color: "#73839a", fontSize: 14 }}>占用空间</span><div style={{ fontWeight: 600, marginTop: 4 }}>{formatSize(showDetail.totalSize)}</div></div>
+                <div><span style={{ color: "#73839a", fontSize: 14 }}>创建人</span><div style={{ fontWeight: 600, marginTop: 4 }}>{showDetail.creatorName || "—"}</div></div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div><span style={{ color: "#73839a", fontSize: 14 }}>创建时间</span><div style={{ marginTop: 4 }}>{formatTime(showDetail.createdAt)}</div></div>
+                <div><span style={{ color: "#73839a", fontSize: 14 }}>更新时间</span><div style={{ marginTop: 4 }}>{formatTime(showDetail.updatedAt)}</div></div>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn" type="button" onClick={() => setShowDetail(null)}>关闭</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
