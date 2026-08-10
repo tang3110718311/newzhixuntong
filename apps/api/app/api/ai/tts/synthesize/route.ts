@@ -20,6 +20,9 @@ const CHAT_TTS_BASE_URL = stripTrailingSlash(
 const SHERPA_TTS_TIMEOUT_MS = Number(process.env.SHERPA_TTS_TIMEOUT_MS || 15000);
 const CHAT_TTS_TIMEOUT_MS = Number(process.env.CHAT_TTS_TIMEOUT_MS || 60000);
 const EDGE_TTS_TIMEOUT_MS = Number(process.env.EDGE_TTS_TIMEOUT_MS || 25000);
+const ZXT_TTS_TIMEOUT_MS = Number(process.env.ZXT_TTS_TIMEOUT_MS || 30000);
+// 旧版智训通语音服务(OpenAI 兼容 /v1/audio/speech,实测 171.109.109.90:10030 可用),配置后 AI 说话声音优先走自有服务
+const ZXT_TTS_BASE_URL = stripTrailingSlash(process.env.ZXT_TTS_BASE_URL || "");
 
 const ALLOWED_EMOTIONS = [
   "angry", "urgent", "anxious", "sad", "satisfied",
@@ -56,6 +59,24 @@ export async function POST(request: Request) {
   try {
     const { tenantId } = await getTenantContext(request);
     const { text, voice, emotion } = ttsRequestSchema.parse(await request.json());
+
+    // 0. 旧版智训通语音服务(配置 ZXT_TTS_BASE_URL 时优先,失败自动回退 edge-tts)
+    if (ZXT_TTS_BASE_URL) {
+      try {
+        const legacyResult = await synthesizeWithLegacyTts({ text, voice, emotion });
+        if (!legacyResult.ok || !legacyResult.audioBase64) {
+          throw new Error(legacyResult.error || "zxt-legacy-tts returned empty audio");
+        }
+        logAiCall({ tenantId, providerType: "tts", modelName: "zxt-legacy-tts", bizType: "tts_synthesize", durationMs: Date.now() - started, success: true, traceId });
+        return ok({
+          audioBase64: legacyResult.audioBase64,
+          format: legacyResult.format || "wav",
+          engine: "zxt-legacy-tts",
+        }, traceId);
+      } catch (legacyError) {
+        // 旧版服务不可用时降级到 edge-tts,不影响主流程
+      }
+    }
 
     // 1. 主引擎：edge-tts（微软云端，自然男女声、情绪丰富、不占本地算力）
     try {
@@ -144,6 +165,45 @@ async function synthesizeWithChatTts(payload: TtsPayload): Promise<TtsEngineResu
       throw new Error(result?.error || "ChatTTS returned empty audio");
     }
     return result;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const LEGACY_DEFAULT_VOICE = "xiaoyan";
+
+function toLegacyVoice(voice: string): string {
+  const v = (voice || "").trim();
+  if (!v) return LEGACY_DEFAULT_VOICE;
+  // 新版音色名映射到旧版默认音色;其余(如 xiaoyan 等旧版音色)原样透传
+  if (v.startsWith("chattts-") || v.startsWith("edge-") || v.includes("Neural")) {
+    return LEGACY_DEFAULT_VOICE;
+  }
+  return v;
+}
+
+async function synthesizeWithLegacyTts(payload: TtsPayload): Promise<TtsEngineResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ZXT_TTS_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${ZXT_TTS_BASE_URL}/v1/audio/speech`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        input: payload.text,
+        voice: toLegacyVoice(payload.voice),
+        response_format: "wav",
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      throw new Error(`zxt-legacy-tts HTTP ${response.status} ${errText.slice(0, 120)}`);
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length) throw new Error("zxt-legacy-tts returned empty audio");
+    return { ok: true, audioBase64: buffer.toString("base64"), format: "wav", engine: "zxt-legacy-tts" };
   } finally {
     clearTimeout(timer);
   }

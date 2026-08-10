@@ -229,7 +229,7 @@ export function StatisticsSection({
 
   // 按均分排序的学员（柱状图显示全部，排名取前4）
   const learnerSorted = [...learnerAgg].filter((l) => l.recordCount > 0).sort((a, b) => b.score - a.score);
-  const topLearners = learnerSorted;
+  const topLearners = learnerSorted.slice(0, 10);
   const rankLearners = learnerSorted.slice(0, 4);
 
   // 部门名称截断
@@ -387,7 +387,7 @@ export function StatisticsSection({
 
               <div className="home-bottom-grid" style={{ marginBottom: 24 }}>
                 <div className="chart card">
-                  <h2>学员成绩 TOP5</h2>
+                  <h2>学员成绩 TOP10</h2>
                   {topLearners.length > 0 ? (
                     <div className="chart-bars chart-bars-labeled">
                       {topLearners.map((l) => (
