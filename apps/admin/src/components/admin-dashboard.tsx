@@ -1643,7 +1643,7 @@ export function AdminDashboard() {
                         <td>
                           <div className="action-row">
                             <button className="link-btn" type="button" onClick={() => { window.location.href = '/scenes/' + scene.id; }}>预览</button>
-                            <button className="link-btn" type="button">编辑</button>
+                            <button className="link-btn" type="button" onClick={() => { window.location.href = '/scenes/' + scene.id + '/edit'; }}>编辑</button>
                             {scene.status === "published" || scene.status === "enabled" ? (
                               <button className="link-btn" type="button" onClick={() => disableScene(scene.id)} disabled={submitting}>禁用</button>
                             ) : (
