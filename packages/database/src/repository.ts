@@ -1,6 +1,7 @@
 ﻿import { randomBytes } from "node:crypto";
 import { all, createId, get, run } from "./sqlite";
 import { hashPassword, hashSessionToken, verifyPassword } from "./password";
+import { decryptSecret, encryptSecret, isEncryptedSecret } from "./secret";
 
 export type TenantRow = {
   id: string;
@@ -1326,12 +1327,15 @@ export function listAiProviders(tenantId: string) {
 }
 
 export function getDefaultAiProvider(tenantId: string, providerType = "llm") {
-  return get<AiProviderRow & { apiKeyEncrypted: string }>(
+  const row = get<AiProviderRow & { apiKeyEncrypted: string }>(
     `select id, provider_type as providerType, provider_name as providerName, model_name as modelName, base_url as baseUrl,
             api_key_encrypted as apiKeyEncrypted, status, is_default as isDefault
      from ai_provider_configs where tenant_id = ? and provider_type = ? and is_default = 1 and deleted_at is null limit 1`,
     [tenantId, providerType],
   );
+  // 返回前解密 API Key（仅服务端使用，不暴露给客户端）
+  if (row) row.apiKeyEncrypted = decryptSecret(row.apiKeyEncrypted);
+  return row;
 }
 
 export function upsertDefaultAiProvider(
@@ -1345,7 +1349,9 @@ export function upsertDefaultAiProvider(
   if (input.isDefault) {
     run("update ai_provider_configs set is_default = 0, updated_at = datetime('now') where tenant_id = ? and provider_type = ?", [tenantId, input.providerType]);
   }
-  const apiKey = input.apiKey || existing?.apiKeyEncrypted || "";
+  // API Key 写入前加密；已加密（enc:v1:）的存量值不重复加密；未提供新 key 时保留原值（原值已加密则原样，明文则加密迁移）
+  let apiKey = input.apiKey ?? existing?.apiKeyEncrypted ?? "";
+  if (apiKey && !isEncryptedSecret(apiKey)) apiKey = encryptSecret(apiKey);
   if (existing) {
     run(
       `update ai_provider_configs

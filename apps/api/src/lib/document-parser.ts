@@ -59,6 +59,7 @@ export async function parseDocumentFile(filePath: string, mimeType: string): Pro
   if (mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation") {
     const buffer = readFileSync(filePath);
     const zip = await JSZip.loadAsync(buffer);
+    assertSafeZip(zip); // 解压炸弹防护
     const slideFiles = Object.keys(zip.files)
       .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
       .sort((a, b) => {
@@ -86,6 +87,44 @@ export function isSupportedDocumentMime(mimeType: string): boolean {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   ].includes(mimeType);
+}
+
+// 魔数校验：防止伪装类型上传（如把可执行/恶意文件改名为 .pdf/.docx）
+export function detectRealMime(buffer: Buffer, declaredMime: string): string {
+  if (buffer.length >= 4 && buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) {
+    return "application/pdf"; // %PDF
+  }
+  if (buffer.length >= 2 && buffer[0] === 0x50 && buffer[1] === 0x4b) {
+    // PK -> OOXML 家族（docx/xlsx/pptx 均为 zip 容器），仅接受声明为 OOXML 的类型
+    if (declaredMime.includes("wordprocessingml") || declaredMime.includes("spreadsheetml") || declaredMime.includes("presentationml")) {
+      return declaredMime;
+    }
+    return "application/zip"; // zip 容器但不是受支持的文档类型
+  }
+  if (declaredMime === "text/plain" || declaredMime === "text/markdown") {
+    return declaredMime; // 纯文本不做魔数强校验
+  }
+  return declaredMime; // 其余交由 isSupportedDocumentMime 白名单拦截
+}
+
+// 解压炸弹防护：PPTX（zip 容器）解压条目数/体积上限
+const MAX_ZIP_ENTRIES = 3000;
+const MAX_ZIP_TOTAL = 300 * 1024 * 1024; // 300MB 解压总量
+const MAX_ZIP_SINGLE = 30 * 1024 * 1024; // 单文件 30MB
+
+function assertSafeZip(zip: JSZip): void {
+  const entries = Object.values(zip.files);
+  if (entries.length > MAX_ZIP_ENTRIES) {
+    throw new Error(`压缩包条目过多（${entries.length} > ${MAX_ZIP_ENTRIES}）`);
+  }
+  let total = 0;
+  for (const f of entries) {
+    if (f.dir) continue;
+    const size = (f as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize ?? 0;
+    if (size > MAX_ZIP_SINGLE) throw new Error("压缩包内单个文件过大");
+    total += size;
+    if (total > MAX_ZIP_TOTAL) throw new Error("压缩包解压总量过大");
+  }
 }
 
 export function mimeFromExtension(filename: string): string {

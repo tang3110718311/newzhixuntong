@@ -345,8 +345,8 @@ const AUTH_STORAGE_KEY = "zxt-admin-auth";
 
 const initialLoginForm = {
   tenantCode: "zxt-demo",
-  mobile: "13800000000",
-  password: "Zxt@2026",
+  mobile: "",
+  password: "",
 };
 
 function readStoredAuth(): AuthSession | null {

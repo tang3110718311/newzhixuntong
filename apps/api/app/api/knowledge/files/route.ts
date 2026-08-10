@@ -10,7 +10,7 @@ import {
 import { createOpenAiCompatibleLlmProvider } from "@zxt/ai-provider";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
-import { isSupportedDocumentMime, mimeFromExtension, parseDocumentFile } from "@/lib/document-parser";
+import { detectRealMime, isSupportedDocumentMime, mimeFromExtension, parseDocumentFile } from "@/lib/document-parser";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -54,6 +54,14 @@ export async function POST(request: Request) {
     const safeName = basename(file.name).replace(/[\\/:*?"<>|]/g, "_");
     const storagePath = join(dir, safeName);
     const buffer = Buffer.from(await file.arrayBuffer());
+
+    // 魔数校验：防止伪装类型上传（改名 .pdf/.docx 的恶意文件）
+    const realMime = detectRealMime(buffer, mimeType);
+    if (!isSupportedDocumentMime(realMime)) {
+      rmSync(dir, { recursive: true, force: true });
+      return fail("FILE_TYPE_MISMATCH", "文件内容与声明格式不符，仅支持 PDF / Word / Excel / PPT / TXT。", 415);
+    }
+
     writeFileSync(storagePath, buffer);
 
     // 解析 + AI 摘要
@@ -62,7 +70,7 @@ export async function POST(request: Request) {
     let parseStatus = "done";
     let parseError = "";
     try {
-      const parsed = await parseDocumentFile(storagePath, mimeType);
+      const parsed = await parseDocumentFile(storagePath, realMime);
       content = parsed.text;
     } catch (err) {
       parseStatus = "failed";
