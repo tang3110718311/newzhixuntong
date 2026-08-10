@@ -39,7 +39,7 @@ type KnowledgeFile = {
   size: number;
   content: string;
   summary: string;
-  parseStatus: string; // parsing / done / failed
+  parseStatus: "parsing" | "done" | "failed"; // parsing / done / failed
   parseError: string;
   uploaderName: string | null;
   createdAt: string;
@@ -235,7 +235,7 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
     try {
       await apiFetch<{ id: string }>(`/knowledge/files/${file.id}`, { method: "DELETE" });
       setMessage("文件已删除。");
-      if (expandedFolder) await loadFiles(expandedFolder.id);
+      await loadFiles(file.folderId);
       await loadFolders();
     } catch (err) {
       setError(err instanceof Error ? err.message : "删除失败");
@@ -252,11 +252,13 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
       const formData = new FormData();
       formData.append("file", file);
       formData.append("folderId", expandedFolder.id);
-      await apiFetch<KnowledgeFile>("/knowledge/files", {
+      const created = await apiFetch<KnowledgeFile>("/knowledge/files", {
         method: "POST",
         body: formData,
       });
-      setMessage(`文件「${file.name}」已上传并解析。`);
+      setMessage(
+        `文件「${file.name}」${created.parseStatus === "done" ? "已上传并解析。" : "已上传，解析中或解析失败。"}`,
+      );
       await loadFiles(expandedFolder.id);
       await loadFolders();
     } catch (err) {

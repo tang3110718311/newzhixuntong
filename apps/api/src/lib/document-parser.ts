@@ -12,6 +12,24 @@ function truncate(text: string): ParsedDocument {
   return { text: truncated ? text.slice(0, MAX_CHARS) : text, truncated };
 }
 
+// XML 实体反转义：覆盖常用命名实体与数字实体（十六进制 / 十进制）
+function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#x([0-9a-fA-F]+);/g, (m, hex: string) => {
+      const code = Number.parseInt(hex, 16);
+      return Number.isNaN(code) || code > 0x10ffff ? m : String.fromCodePoint(code);
+    })
+    .replace(/&#(\d+);/g, (m, dec: string) => {
+      const code = Number.parseInt(dec, 10);
+      return Number.isNaN(code) || code > 0x10ffff ? m : String.fromCodePoint(code);
+    });
+}
+
 export async function parseDocumentFile(filePath: string, mimeType: string): Promise<ParsedDocument> {
   if (mimeType === "text/plain" || mimeType === "text/markdown") {
     return truncate(readFileSync(filePath, "utf-8"));
@@ -51,7 +69,7 @@ export async function parseDocumentFile(filePath: string, mimeType: string): Pro
     const parts: string[] = [];
     for (const slideFile of slideFiles) {
       const xml = await zip.files[slideFile].async("text");
-      const texts = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => m[1]);
+      const texts = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => decodeXmlEntities(m[1]));
       parts.push(`[slide ${slideFile.match(/slide(\d+)/)?.[1] ?? "?"}]\n${texts.join("\n")}`);
     }
     return truncate(parts.join("\n\n"));

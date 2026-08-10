@@ -1,11 +1,10 @@
-import { mkdirSync, writeFileSync, existsSync, rmSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { basename, join, resolve } from "node:path";
 import {
   bumpKnowledgeFolderStats,
   createId,
   createKnowledgeFile,
   getDefaultAiProvider,
-  getKnowledgeFile,
   listKnowledgeFiles,
 } from "@zxt/database/client";
 import { createOpenAiCompatibleLlmProvider } from "@zxt/ai-provider";
@@ -51,7 +50,9 @@ export async function POST(request: Request) {
     const fileId = createId("file");
     const dir = join(STORAGE_ROOT, tenantId, fileId);
     mkdirSync(dir, { recursive: true });
-    const storagePath = join(dir, file.name);
+    // 文件名消毒：basename 防路径穿越 + 替换 Windows 非法字符
+    const safeName = basename(file.name).replace(/[\\/:*?"<>|]/g, "_");
+    const storagePath = join(dir, safeName);
     const buffer = Buffer.from(await file.arrayBuffer());
     writeFileSync(storagePath, buffer);
 
@@ -90,7 +91,7 @@ export async function POST(request: Request) {
     const created = createKnowledgeFile(tenantId, {
       folderId,
       fileId,
-      name: file.name,
+      name: safeName,
       mimeType,
       size: file.size,
       content,

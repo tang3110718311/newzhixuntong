@@ -236,6 +236,7 @@ export type TrainingRecordRow = {
   score: number;
   startedAt: string | null;
   finishedAt: string | null;
+  sessionId?: string | null;
 };
 
 export type TrainingTurnRow = {
@@ -258,6 +259,7 @@ export type TrainingRecordDetail = {
   record: TrainingRecordRow;
   turns: TrainingTurnRow[];
   scores: ScoreDetailRow[];
+  suggestions: string[];
 };
 
 export type CreateTrainingRecordInput = {
@@ -267,6 +269,8 @@ export type CreateTrainingRecordInput = {
   mode: "voice" | "text";
   status: "completed" | "in_progress";
   score: number;
+  sessionId?: string | null;
+  suggestions?: string[];
   startedAt?: string | null;
   finishedAt?: string | null;
   turns: Array<{ speaker: "ai" | "learner"; text: string; durationMs?: number; startedAt?: string | null }>;
@@ -1128,6 +1132,16 @@ export function listTrainingRecords(
 }
 
 export function createTrainingRecord(tenantId: string, input: CreateTrainingRecordInput) {
+  // 幂等：同一对练会话（sessionId）只允许一条训练记录，重复请求直接返回已有记录
+  if (input.sessionId) {
+    const existing = get<{ id: string }>(
+      "select id from training_records where tenant_id = ? and session_id = ? and deleted_at is null limit 1",
+      [tenantId, input.sessionId],
+    );
+    if (existing) {
+      return getTrainingRecordDetail(tenantId, existing.id);
+    }
+  }
   const scene = get<{ id: string }>("select id from scenes where tenant_id = ? and id = ? and deleted_at is null limit 1", [tenantId, input.sceneId]);
   if (!scene) return undefined;
   if (input.taskId) {
@@ -1142,10 +1156,11 @@ export function createTrainingRecord(tenantId: string, input: CreateTrainingReco
   const recordNo = `TR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
   const startedAt = input.startedAt ?? new Date().toISOString();
   const finishedAt = input.finishedAt ?? (input.status === "completed" ? new Date().toISOString() : null);
+  const suggestionsJson = JSON.stringify(input.suggestions ?? []);
   run(
-    `insert into training_records (id, tenant_id, record_no, task_id, scene_id, user_id, mode, status, score, started_at, finished_at, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-    [id, tenantId, recordNo, input.taskId ?? null, input.sceneId, input.userId ?? null, input.mode, input.status, input.score, startedAt, finishedAt],
+    `insert into training_records (id, tenant_id, record_no, task_id, scene_id, user_id, mode, status, score, session_id, suggestions, started_at, finished_at, created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+    [id, tenantId, recordNo, input.taskId ?? null, input.sceneId, input.userId ?? null, input.mode, input.status, input.score, input.sessionId ?? null, suggestionsJson, startedAt, finishedAt],
   );
   input.turns.forEach((turn) => {
     run(
@@ -1173,7 +1188,8 @@ export function createTrainingRecord(tenantId: string, input: CreateTrainingReco
 export function getTrainingRecordDetail(tenantId: string, recordId: string): TrainingRecordDetail | undefined {
   const record = get<TrainingRecordRow>(
     `select tr.id, tr.record_no as recordNo, tr.task_id as taskId, t.name as taskName, tr.scene_id as sceneId, s.name as sceneName,
-            tr.user_id as userId, u.name as userName, tr.mode, tr.status, tr.score, tr.started_at as startedAt, tr.finished_at as finishedAt
+            tr.user_id as userId, u.name as userName, tr.mode, tr.status, tr.score, tr.session_id as sessionId,
+            tr.started_at as startedAt, tr.finished_at as finishedAt
      from training_records tr
      left join tasks t on t.id = tr.task_id and t.tenant_id = tr.tenant_id
      left join scenes s on s.id = tr.scene_id and s.tenant_id = tr.tenant_id
@@ -1194,7 +1210,28 @@ export function getTrainingRecordDetail(tenantId: string, recordId: string): Tra
      where sd.tenant_id = ? and sd.record_id = ? and sd.deleted_at is null order by sd.created_at asc`,
     [tenantId, recordId],
   );
-  return { record, turns, scores };
+  const suggestionsRow = get<{ suggestions: string }>(
+    "select suggestions from training_records where tenant_id = ? and id = ? and deleted_at is null limit 1",
+    [tenantId, recordId],
+  );
+  let suggestions: string[] = [];
+  if (suggestionsRow?.suggestions) {
+    try {
+      const parsed = JSON.parse(suggestionsRow.suggestions);
+      if (Array.isArray(parsed)) suggestions = parsed.filter((s) => typeof s === "string");
+    } catch { /* ignore invalid json */ }
+  }
+  return { record, turns, scores, suggestions };
+}
+
+/** 按对练会话查询训练记录（评分异步完成后前端轮询用） */
+export function getTrainingRecordBySessionId(tenantId: string, sessionId: string): TrainingRecordDetail | undefined {
+  const found = get<{ id: string }>(
+    "select id from training_records where tenant_id = ? and session_id = ? and deleted_at is null limit 1",
+    [tenantId, sessionId],
+  );
+  if (!found) return undefined;
+  return getTrainingRecordDetail(tenantId, found.id);
 }
 
 export function getAppeal(tenantId: string, appealId: string) {
@@ -2171,7 +2208,7 @@ export function listKnowledgeSummaries(tenantId: string, limit = 20) {
   return all<{ folderName: string; name: string; summary: string }>(
     `select kf.name, kf.summary, kfolder.name as folderName
      from knowledge_files kf
-     left join knowledge_folders kfolder on kfolder.id = kf.folder_id and kfolder.tenant_id = kf.tenant_id
+     left join knowledge_folders kfolder on kfolder.id = kf.folder_id and kfolder.tenant_id = kf.tenant_id and kfolder.deleted_at is null
      where kf.tenant_id = ? and kf.parse_status = 'done' and kf.deleted_at is null and kf.summary <> ''
      order by kf.created_at desc limit ?`,
     [tenantId, limit],
