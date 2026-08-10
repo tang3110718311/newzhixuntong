@@ -3,7 +3,7 @@
 "use client";
 
 import { Plus, Folder, Eye, Trash2, ChevronUp } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { DataTable, Field, type AuthSession, type TrainingRecord } from "./dashboard-shared";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
@@ -29,42 +29,61 @@ type Folder = {
   updatedAt: string;
 };
 
-// 模拟文件数据（第二阶段将接真实 knowledge_files API）
+// 知识库文件（对接后端 knowledge_files 表）
 type KnowledgeFile = {
   id: string;
+  folderId: string;
+  fileId: string;
   name: string;
-  folderName: string;
-  fileType: string;
-  fileSize: number;
-  uploader: string;
-  uploadedAt: string;
+  mimeType: string;
+  size: number;
+  content: string;
+  summary: string;
+  parseStatus: string; // parsing / done / failed
+  parseError: string;
+  uploaderName: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
-const MOCK_FILES: Record<string, KnowledgeFile[]> = {
-  // folder id -> files（key 用文件夹 id，seed 数据里可对应）
-};
+// MIME -> 展示用文件类型标签
+function fileTypeLabel(mimeType: string): string {
+  if (mimeType === "application/pdf") return "PDF";
+  if (mimeType === "text/plain" || mimeType === "text/markdown") return "TXT";
+  if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return "Word";
+  if (mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") return "Excel";
+  if (mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation") return "PPT";
+  return "文件";
+}
 
-// 为每个文件夹生成模拟文件
-function getMockFiles(folder: Folder): KnowledgeFile[] {
-  if (MOCK_FILES[folder.id]) return MOCK_FILES[folder.id];
-  if (folder.fileCount === 0) return [];
-  // 根据文件夹名称智能生成示例文件
-  const files: KnowledgeFile[] = [];
-  if (folder.name.includes("安全")) {
-    files.push({ id: "f1", name: "安全生产基础知识培训视频.mp4", folderName: folder.name, fileType: "视频", fileSize: 186 * 1024 * 1024, uploader: "智训通管理员", uploadedAt: "2026-08-05 17:58" });
-    files.push({ id: "f2", name: "企业安全生产管理制度.pdf", folderName: folder.name, fileType: "PDF", fileSize: 2621440, uploader: "智训通管理员", uploadedAt: "2026-08-05 17:58" });
-  } else if (folder.name.includes("投诉") || folder.name.includes("客诉")) {
-    files.push({ id: "f3", name: "客户投诉处理标准话术.docx", folderName: folder.name, fileType: "Word", fileSize: 512000, uploader: "智训通管理员", uploadedAt: "2026-08-06 10:20" });
-    files.push({ id: "f4", name: "投诉应对培训视频.mp4", folderName: folder.name, fileType: "视频", fileSize: 210 * 1024 * 1024, uploader: "智训通管理员", uploadedAt: "2026-08-06 14:35" });
-  } else if (folder.name.includes("套餐") || folder.name.includes("资费")) {
-    files.push({ id: "f5", name: "套餐资费FAQ问答手册.xlsx", folderName: folder.name, fileType: "Excel", fileSize: 1048576, uploader: "智训通管理员", uploadedAt: "2026-08-07 09:15" });
-  } else if (folder.name.includes("网络") || folder.name.includes("故障")) {
-    files.push({ id: "f6", name: "网络故障排查流程.pptx", folderName: folder.name, fileType: "PPT", fileSize: 8388608, uploader: "智训通管理员", uploadedAt: "2026-08-07 11:00" });
-    files.push({ id: "f7", name: "故障处理视频教程.mp4", folderName: folder.name, fileType: "视频", fileSize: 350 * 1024 * 1024, uploader: "智训通管理员", uploadedAt: "2026-08-07 11:30" });
-  } else {
-    files.push({ id: "f8", name: `${folder.name}培训资料.pdf`, folderName: folder.name, fileType: "PDF", fileSize: 3145728, uploader: "智训通管理员", uploadedAt: "2026-08-08 09:00" });
+// MIME -> 文件类型图标缩写（用于文件行左侧色块）
+function fileIconLabel(mimeType: string): string {
+  switch (mimeType) {
+    case "application/pdf": return "PDF";
+    case "text/plain":
+    case "text/markdown": return "TXT";
+    case "application/vnd.openxmlformats-officedocument.wordprocessingml.document": return "DOC";
+    case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": return "XLS";
+    case "application/vnd.openxmlformats-officedocument.presentationml.presentation": return "PPT";
+    default: return "FILE";
   }
-  return files.slice(0, folder.fileCount || 2);
+}
+
+// 解析状态徽标（parsing 黄 / failed 红+title 提示 / done 绿）
+function renderParseStatusBadge(file: KnowledgeFile) {
+  if (file.parseStatus === "parsing") {
+    return (
+      <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 4, background: "#fff7e6", color: "#fa8c16", fontSize: 12 }}>解析中</span>
+    );
+  }
+  if (file.parseStatus === "failed") {
+    return (
+      <span title={file.parseError || "解析失败"} style={{ display: "inline-block", padding: "2px 8px", borderRadius: 4, background: "#ffeceb", color: "#ed2633", fontSize: 12 }}>解析失败</span>
+    );
+  }
+  return (
+    <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 4, background: "#e8f8ee", color: "#2fb95d", fontSize: 12 }}>已解析</span>
+  );
 }
 
 function getStoredAuthToken() {
@@ -81,11 +100,13 @@ function getStoredAuthToken() {
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getStoredAuthToken();
+  // multipart 请求（FormData body）不设置 Content-Type，由浏览器自动生成 boundary
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     cache: "no-store",
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers || {}),
     },
@@ -128,6 +149,12 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
   const [expandedFolder, setExpandedFolder] = useState<Folder | null>(null);
   const [fileSearchText, setFileSearchText] = useState("");
   const [form, setForm] = useState(emptyForm);
+
+  // 文件列表（真实 API 数据）
+  const [files, setFiles] = useState<KnowledgeFile[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Search & filter state
   const [searchText, setSearchText] = useState("");
@@ -180,9 +207,62 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
   function handleView(folder: Folder) {
     if (expandedFolder?.id === folder.id) {
       setExpandedFolder(null); // 收起
+      setFiles([]);
     } else {
       setExpandedFolder(folder);
       setFileSearchText("");
+      void loadFiles(folder.id);
+    }
+  }
+
+  async function loadFiles(folderId: string) {
+    setFilesLoading(true);
+    setError("");
+    try {
+      const data = await apiFetch<KnowledgeFile[]>(`/knowledge/files?folderId=${encodeURIComponent(folderId)}`);
+      setFiles(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载文件列表失败");
+      setFiles([]);
+    } finally {
+      setFilesLoading(false);
+    }
+  }
+
+  async function handleDeleteFile(file: KnowledgeFile) {
+    if (!window.confirm(`确认删除文件「${file.name}」？`)) return;
+    setError("");
+    try {
+      await apiFetch<{ id: string }>(`/knowledge/files/${file.id}`, { method: "DELETE" });
+      setMessage("文件已删除。");
+      if (expandedFolder) await loadFiles(expandedFolder.id);
+      await loadFolders();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除失败");
+    }
+  }
+
+  async function handleUploadFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !expandedFolder) return;
+    setUploading(true);
+    setError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folderId", expandedFolder.id);
+      await apiFetch<KnowledgeFile>("/knowledge/files", {
+        method: "POST",
+        body: formData,
+      });
+      setMessage(`文件「${file.name}」已上传并解析。`);
+      await loadFiles(expandedFolder.id);
+      await loadFolders();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "上传失败");
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -217,11 +297,10 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
     setFilterFolder("all");
   }
 
-  // 文件详情面板的文件列表（模拟数据 + 搜索过滤）
-  const detailFiles = expandedFolder ? getMockFiles(expandedFolder) : [];
+  // 文件详情面板的文件列表（真实 API 数据 + 搜索过滤）
   const filteredFiles = fileSearchText
-    ? detailFiles.filter((f) => f.name.toLowerCase().includes(fileSearchText.toLowerCase()))
-    : detailFiles;
+    ? files.filter((f) => f.name.toLowerCase().includes(fileSearchText.toLowerCase()))
+    : files;
 
   return (
     <section className="page-section">
@@ -356,9 +435,16 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
                   <button className="btn" type="button" onClick={() => setExpandedFolder(null)}>
                     <ChevronUp size={14} /> 收起详情
                   </button>
-                  <button className="btn primary" type="button" onClick={() => setMessage("新建文件功能开发中，将在第二阶段上线。")}>
-                    <Plus size={14} /> 新建文件
+                  <button className="btn primary" type="button" disabled={uploading} onClick={() => fileInputRef.current?.click()}>
+                    <Plus size={14} /> {uploading ? "解析中…" : "新建文件"}
                   </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    hidden
+                    accept=".pdf,.docx,.xlsx,.pptx,.txt,.md"
+                    onChange={handleUploadFile}
+                  />
                 </div>
               </div>
 
@@ -380,57 +466,62 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
               </div>
 
               {/* 文件列表 */}
-              <DataTable headers={["文件名称", "文件类型", "文件大小", "上传人", "上传时间", "操作"]}>
-                {filteredFiles.map((file) => {
-                  const isVideo = file.fileType === "视频";
-                  // 原型：视频=淡紫底#f0edff+深紫#7b61ff三角，PDF=淡红底#ffeceb+红色#ed2633
-                  const iconBg = isVideo ? "#f0edff" : "#ffeceb";
-                  const iconColor = isVideo ? "#7b61ff" : "#ed2633";
-                  const iconLabel = isVideo ? "▶" : "PDF";
-                  return (
-                    <tr key={file.id}>
-                      <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            width: 20,
-                            height: 20,
-                            borderRadius: 3,
-                            background: iconBg,
-                            color: iconColor,
-                            fontSize: isVideo ? 10 : 7,
-                            fontWeight: 700,
-                            flexShrink: 0,
-                          }}>{iconLabel}</span>
-                          <div>
-                            <div style={{ fontWeight: 600 }}>{file.name}</div>
-                            <div style={{ color: "#86909c", fontSize: 12, marginTop: 2 }}>文件夹: {file.folderName}</div>
+              <DataTable headers={["文件名称", "文件类型", "文件大小", "解析状态", "上传人", "上传时间", "操作"]}>
+                {filesLoading ? (
+                  <tr><td colSpan={7}><div className="empty">正在加载文件数据…</div></td></tr>
+                ) : (
+                  filteredFiles.map((file) => {
+                    const isVideo = file.mimeType.startsWith("video/");
+                    // 原型：视频=淡紫底#f0edff+深紫#7b61ff三角，其余=淡红底#ffeceb+红色#ed2633
+                    const iconBg = isVideo ? "#f0edff" : "#ffeceb";
+                    const iconColor = isVideo ? "#7b61ff" : "#ed2633";
+                    const iconLabel = isVideo ? "▶" : fileIconLabel(file.mimeType);
+                    return (
+                      <tr key={file.id}>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: 20,
+                              height: 20,
+                              borderRadius: 3,
+                              background: iconBg,
+                              color: iconColor,
+                              fontSize: isVideo ? 10 : 7,
+                              fontWeight: 700,
+                              flexShrink: 0,
+                            }}>{iconLabel}</span>
+                            <div>
+                              <div style={{ fontWeight: 600 }}>{file.name}</div>
+                              <div style={{ color: "#86909c", fontSize: 12, marginTop: 2 }}>文件夹: {expandedFolder.name}</div>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td>
-                        <span style={{
-                          display: "inline-block",
-                          padding: "2px 8px",
-                          borderRadius: 4,
-                          background: "#eaf2ff",
-                          color: "#4080ff",
-                          fontSize: 12,
-                        }}>{file.fileType}</span>
-                      </td>
-                      <td>{formatSize(file.fileSize)}</td>
-                      <td className="muted-text">{file.uploader}</td>
-                      <td className="muted-text">{file.uploadedAt}</td>
-                      <td>
-                        <button className="link-btn" type="button" style={{ color: "#4080ff" }}>查看</button>
-                        <button className="link-btn danger" type="button" style={{ color: "#ed2633" }}>删除</button>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {!filteredFiles.length && <tr><td colSpan={6}><div className="empty">暂无文件</div></td></tr>}
+                        </td>
+                        <td>
+                          <span style={{
+                            display: "inline-block",
+                            padding: "2px 8px",
+                            borderRadius: 4,
+                            background: "#eaf2ff",
+                            color: "#4080ff",
+                            fontSize: 12,
+                          }}>{fileTypeLabel(file.mimeType)}</span>
+                        </td>
+                        <td>{formatSize(file.size)}</td>
+                        <td>{renderParseStatusBadge(file)}</td>
+                        <td className="muted-text">{file.uploaderName || "—"}</td>
+                        <td className="muted-text">{formatTime(file.createdAt)}</td>
+                        <td>
+                          <button className="link-btn" type="button" style={{ color: "#4080ff" }}>查看</button>
+                          <button className="link-btn danger" type="button" style={{ color: "#ed2633" }} onClick={() => handleDeleteFile(file)}>删除</button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+                {!filesLoading && !filteredFiles.length && <tr><td colSpan={7}><div className="empty">暂无文件</div></td></tr>}
               </DataTable>
               <div style={{ padding: "10px 0 4px", color: "#8b98aa", fontSize: 14 }}>
                 共 {filteredFiles.length} 个文件
