@@ -1,5 +1,5 @@
 import { createSceneSchema } from "@zxt/shared";
-import { createScene, listScenes } from "@zxt/database/client";
+import { createScene, listScenes } from "@zxt/database";
 import { handleRouteError, ok } from "@/lib/response";
 import { parsePagination } from "@/lib/pagination";
 import { getTenantContext } from "@/lib/tenant";

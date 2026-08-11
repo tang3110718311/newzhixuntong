@@ -3,7 +3,7 @@ import {
   createExamAttempt,
   submitExamAttempt,
   listExamAttempts,
-} from "@zxt/database/client";
+} from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

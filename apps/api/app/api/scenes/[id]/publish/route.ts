@@ -1,4 +1,4 @@
-import { updateSceneStatus } from "@zxt/database/client";
+import { updateSceneStatus } from "@zxt/database";
 import { handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

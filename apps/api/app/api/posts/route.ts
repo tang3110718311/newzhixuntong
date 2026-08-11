@@ -1,5 +1,5 @@
 import { createPostSchema } from "@zxt/shared";
-import { createPost, listPosts } from "@zxt/database/client";
+import { createPost, listPosts } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { parsePagination } from "@/lib/pagination";
 import { getTenantContext } from "@/lib/tenant";

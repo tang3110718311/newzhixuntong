@@ -1,5 +1,5 @@
 import { createMaterialSchema } from "@zxt/shared";
-import { createMaterial, listMaterials } from "@zxt/database/client";
+import { createMaterial, listMaterials } from "@zxt/database";
 import { handleRouteError, ok } from "@/lib/response";
 import { parsePagination } from "@/lib/pagination";
 import { getTenantContext } from "@/lib/tenant";

@@ -1,6 +1,6 @@
 import { createOpenAiCompatibleLlmProvider } from "@zxt/ai-provider";
 import { generateSceneSchema } from "@zxt/shared";
-import { createGeneratedScene, getDefaultAiProvider, getIndustryPackage, listKnowledgeSummaries, logAiCall } from "@zxt/database/client";
+import { createGeneratedScene, getDefaultAiProvider, getIndustryPackage, listKnowledgeSummaries, logAiCall } from "@zxt/database";
 import { createTraceId, fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

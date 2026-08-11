@@ -3,7 +3,7 @@ import { unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 import { promisify } from "util";
 import { z } from "zod";
-import { logAiCall } from "@zxt/database/client";
+import { logAiCall } from "@zxt/database";
 import { createTraceId, fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

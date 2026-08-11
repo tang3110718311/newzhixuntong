@@ -1,5 +1,5 @@
 import { createOpenAiCompatibleLlmProvider, type ScoringRuleDraft } from "@zxt/ai-provider";
-import { getDefaultAiProvider, getSceneDetail, getTrainingRecordBySessionId, logAiCall, createTrainingRecord } from "@zxt/database/client";
+import { getDefaultAiProvider, getSceneDetail, getTrainingRecordBySessionId, logAiCall, createTrainingRecord } from "@zxt/database";
 import { z } from "zod";
 import { createTraceId, fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
@@ -336,20 +336,6 @@ function countConsecutiveWeakReplies(messages: ChatMessage[]): number {
   return count;
 }
 
-/** 从对话历史中统计已发出的跑题提醒次数（[REMIND:N] 标记，取最大 N） */
-function countRemindMarks(messages: ChatMessage[]): number {
-  let max = 0;
-  for (const m of messages) {
-    if (m.role !== "ai") continue;
-    const match = m.content.match(/\[REMIND:(\d+)\]/);
-    if (match) {
-      const n = Number(match[1]);
-      if (n > max) max = n;
-    }
-  }
-  return max;
-}
-
 /** LLM 轻量判定：单条学员回复是否明显跑题/敷衍（相对训练主题） */
 async function judgeLastOffTopic(
   reply: string,
@@ -427,7 +413,7 @@ async function scoreAndSaveRecord(
         {
           role: "system",
           content: "你是 AI 智训通的训练评分专家，必须以对话中的真实内容为依据评分，不得臆造。只输出 JSON，格式："
-            + "{\"totalScore\": 数字, \"details\": [{\"name\": \"维度名(必须与评分维度完全一致)\", \"score\": 数字, \"reason\": \"评分理由\", \"evidence\": \"从对话原文引用学员原话或关键表现\"}], \"suggestions\": [\"改进建议1\"]}",
+            + "{\"totalScore\": 数字, \"details\": [{\"name\": \"维度名(必须与评分维度完全一致)\", \"score\": 数字, \"reason\": \"评分理由\", \"evidence\": \"从对话原文引用学员原话或关键表现\"}], \"suggestions\": [\"改进建议1\"], \"highlights\": [\"学员做得好的1-3点\"], \"weaknesses\": [\"学员的短板1-3点\"]}",
         },
         {
           role: "user",
@@ -445,6 +431,8 @@ async function scoreAndSaveRecord(
   let totalScore = 70;
   let scoreDetails: Array<{ scoringRuleId: string | null; score: number; deductionReason: string; evidenceText: string }> = [];
   let suggestions: string[] = [];
+  let highlights: string[] = [];
+  let weaknesses: string[] = [];
 
   if (scoreResponse.ok) {
     try {
@@ -478,6 +466,12 @@ async function scoreAndSaveRecord(
         }
         if (Array.isArray(parsed.suggestions)) {
           suggestions = parsed.suggestions;
+        }
+        if (Array.isArray(parsed.highlights)) {
+          highlights = parsed.highlights.filter((s: unknown): s is string => typeof s === "string");
+        }
+        if (Array.isArray(parsed.weaknesses)) {
+          weaknesses = parsed.weaknesses.filter((s: unknown): s is string => typeof s === "string");
         }
       }
     } catch { /* fallback to default score */ }
@@ -523,6 +517,8 @@ async function scoreAndSaveRecord(
     score: totalScore,
     sessionId: body.sessionId ?? null,
     suggestions,
+    highlights,
+    weaknesses,
     startedAt: new Date(Date.now() - body.messages.length * 15000).toISOString(),
     finishedAt: new Date().toISOString(),
     turns,
@@ -530,7 +526,12 @@ async function scoreAndSaveRecord(
   });
 
   // 幂等：若后台任务重复执行（如被再次触发），createTrainingRecord 内部已按 sessionId 返回已有记录
-  return record ? { ...record, suggestions: record.suggestions?.length ? record.suggestions : suggestions } : null;
+  return record ? {
+    ...record,
+    suggestions: record.suggestions?.length ? record.suggestions : suggestions,
+    highlights: record.highlights?.length ? record.highlights : highlights,
+    weaknesses: record.weaknesses?.length ? record.weaknesses : weaknesses,
+  } : null;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { createKnowledgeFolderSchema } from "@zxt/shared";
-import { createKnowledgeFolder, listKnowledgeFolders } from "@zxt/database/client";
+import { createKnowledgeFolder, listKnowledgeFolders } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { parsePagination } from "@/lib/pagination";
 import { getTenantContext } from "@/lib/tenant";

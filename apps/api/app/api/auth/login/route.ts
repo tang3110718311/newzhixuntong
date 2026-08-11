@@ -1,5 +1,5 @@
 ﻿import { loginSchema } from "@zxt/shared";
-import { ensureDb, loginWithPassword } from "@zxt/database/client";
+import { ensureDb, loginWithPassword } from "@zxt/database";
 import { handleRouteError, HttpError, ok } from "@/lib/response";
 
 export const dynamic = "force-dynamic";

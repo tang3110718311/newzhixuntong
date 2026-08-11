@@ -1,6 +1,6 @@
 import { existsSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { deleteKnowledgeFile, getKnowledgeFile, bumpKnowledgeFolderStats } from "@zxt/database/client";
+import { deleteKnowledgeFile, getKnowledgeFile, bumpKnowledgeFolderStats } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

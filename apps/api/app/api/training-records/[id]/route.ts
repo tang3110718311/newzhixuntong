@@ -1,4 +1,4 @@
-import { getTrainingRecordDetail } from "@zxt/database/client";
+import { getTrainingRecordDetail } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

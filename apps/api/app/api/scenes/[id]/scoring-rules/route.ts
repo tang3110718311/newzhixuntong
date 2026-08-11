@@ -1,5 +1,5 @@
 import { updateScoringRulesSchema } from "@zxt/shared";
-import { replaceSceneScoringRules } from "@zxt/database/client";
+import { replaceSceneScoringRules } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

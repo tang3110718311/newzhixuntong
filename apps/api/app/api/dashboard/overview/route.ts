@@ -1,4 +1,4 @@
-import { getDashboardOverview } from "@zxt/database/client";
+import { getDashboardOverview } from "@zxt/database";
 import { handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

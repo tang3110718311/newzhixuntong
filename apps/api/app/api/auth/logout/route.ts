@@ -1,4 +1,4 @@
-﻿import { ensureDb, revokeSessionToken } from "@zxt/database/client";
+﻿import { ensureDb, revokeSessionToken } from "@zxt/database";
 import { getBearerToken } from "@/lib/tenant";
 import { handleRouteError, ok } from "@/lib/response";
 

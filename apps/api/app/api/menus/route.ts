@@ -1,5 +1,5 @@
 import { createMenuSchema } from "@zxt/shared";
-import { createMenu, listMenus } from "@zxt/database/client";
+import { createMenu, listMenus } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { parsePagination } from "@/lib/pagination";
 import { getTenantContext } from "@/lib/tenant";

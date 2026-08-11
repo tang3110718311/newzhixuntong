@@ -1,5 +1,5 @@
 ﻿import { handleAppealSchema } from "@zxt/shared";
-import { handleAppeal } from "@zxt/database/client";
+import { handleAppeal } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

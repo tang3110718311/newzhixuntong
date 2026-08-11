@@ -1,5 +1,5 @@
 ﻿import { createCapabilityModelSchema } from "@zxt/shared";
-import { createCapabilityModel, listCapabilityModels } from "@zxt/database/client";
+import { createCapabilityModel, listCapabilityModels } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { parsePagination } from "@/lib/pagination";
 import { getTenantContext } from "@/lib/tenant";

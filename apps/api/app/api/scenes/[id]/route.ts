@@ -1,4 +1,4 @@
-import { getSceneDetail } from "@zxt/database/client";
+import { getSceneDetail } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

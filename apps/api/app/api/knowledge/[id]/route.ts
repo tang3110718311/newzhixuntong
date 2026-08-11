@@ -1,5 +1,5 @@
 import { updateKnowledgeFolderSchema } from "@zxt/shared";
-import { deleteKnowledgeFolder, updateKnowledgeFolder } from "@zxt/database/client";
+import { deleteKnowledgeFolder, updateKnowledgeFolder } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

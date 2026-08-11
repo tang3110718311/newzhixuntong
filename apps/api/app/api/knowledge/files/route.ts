@@ -6,7 +6,7 @@ import {
   createKnowledgeFile,
   getDefaultAiProvider,
   listKnowledgeFiles,
-} from "@zxt/database/client";
+} from "@zxt/database";
 import { createOpenAiCompatibleLlmProvider } from "@zxt/ai-provider";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";

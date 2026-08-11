@@ -1,5 +1,5 @@
 import { createIndustryPackageSchema } from "@zxt/shared";
-import { createIndustryPackage, listIndustryPackages } from "@zxt/database/client";
+import { createIndustryPackage, listIndustryPackages } from "@zxt/database";
 import { handleRouteError, ok } from "@/lib/response";
 import { parsePagination } from "@/lib/pagination";
 import { getTenantContext } from "@/lib/tenant";

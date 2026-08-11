@@ -1,5 +1,5 @@
 ﻿import { createAppealSchema } from "@zxt/shared";
-import { createAppeal, listAppeals } from "@zxt/database/client";
+import { createAppeal, listAppeals } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { parsePagination } from "@/lib/pagination";
 import { getTenantContext } from "@/lib/tenant";

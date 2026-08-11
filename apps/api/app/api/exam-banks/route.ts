@@ -8,7 +8,7 @@ import {
   deleteExamQuestion,
   getExamQuestionBankWithQuestions,
   deleteExamBank,
-} from "@zxt/database/client";
+} from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

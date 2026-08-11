@@ -1,5 +1,5 @@
 ﻿import { defaultTenantCode } from "@zxt/shared";
-import { ensureDb, getTenantByCode, getUserBySessionToken } from "@zxt/database/client";
+import { ensureDb, getTenantByCode, getUserBySessionToken } from "@zxt/database";
 import { HttpError } from "./response";
 
 export function getBearerToken(request?: Request) {

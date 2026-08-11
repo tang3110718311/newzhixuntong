@@ -1,5 +1,5 @@
 import { createRoleSchema } from "@zxt/shared";
-import { createRole, listRoles } from "@zxt/database/client";
+import { createRole, listRoles } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { parsePagination } from "@/lib/pagination";
 import { getTenantContext } from "@/lib/tenant";

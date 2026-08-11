@@ -1,5 +1,5 @@
 import { updatePostSchema } from "@zxt/shared";
-import { deletePost, updatePost } from "@zxt/database/client";
+import { deletePost, updatePost } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { logAiCall } from "@zxt/database/client";
+import { logAiCall } from "@zxt/database";
 import { createTraceId, fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 import { transcribeViaFunasrBridge } from "@/lib/funasr-bridge";

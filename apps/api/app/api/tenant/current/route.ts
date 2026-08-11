@@ -1,5 +1,5 @@
 ﻿import { updateTenantSettingsSchema } from "@zxt/shared";
-import { getTenantSettings, updateTenantSettings } from "@zxt/database/client";
+import { getTenantSettings, updateTenantSettings } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

@@ -1,4 +1,4 @@
-import { updateTaskStatus } from "@zxt/database/client";
+import { updateTaskStatus } from "@zxt/database";
 import { handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

@@ -1,5 +1,5 @@
 import { updateMenuSchema } from "@zxt/shared";
-import { deleteMenu, updateMenu } from "@zxt/database/client";
+import { deleteMenu, updateMenu } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

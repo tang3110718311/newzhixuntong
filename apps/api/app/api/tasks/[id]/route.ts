@@ -1,4 +1,4 @@
-﻿import { getTaskDetail } from "@zxt/database/client";
+﻿import { getTaskDetail } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 

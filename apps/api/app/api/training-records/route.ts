@@ -1,5 +1,5 @@
 ﻿import { createTrainingRecordSchema } from "@zxt/shared";
-import { createTrainingRecord, listTrainingRecords } from "@zxt/database/client";
+import { createTrainingRecord, listTrainingRecords } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { parsePagination } from "@/lib/pagination";
 import { getTenantContext } from "@/lib/tenant";

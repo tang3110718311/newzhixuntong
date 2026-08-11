@@ -1,5 +1,5 @@
 import { updateAiProviderSchema } from "@zxt/shared";
-import { listAiProviders, upsertDefaultAiProvider } from "@zxt/database/client";
+import { listAiProviders, upsertDefaultAiProvider } from "@zxt/database";
 import { handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 
