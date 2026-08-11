@@ -2718,7 +2718,7 @@ export function AdminDashboard() {
             <div className="home-grid">
               <div className="home-main">
                 {/* 学习空间横幅 */}
-                <section className="hero-card card" style={{ marginBottom: 24 }}>
+                <section className="home-hero-card card" style={{ marginBottom: 24 }}>
                   <div style={{ position: "relative", zIndex: 1, flex: 1 }}>
                     <p>我的学习空间</p>
                     <h1>早上好，{auth.user.name}</h1>

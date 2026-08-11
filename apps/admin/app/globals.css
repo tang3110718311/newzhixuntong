@@ -1932,7 +1932,7 @@ body {
   gap: 18px;
 }
 
-.hero-card {
+.home-hero-card {
   display: flex;
   min-height: 142px;
   align-items: center;
@@ -1944,7 +1944,7 @@ body {
   position: relative;
 }
 
-.hero-card::after {
+.home-hero-card::after {
   content: "";
   position: absolute;
   inset: -70px -20px auto auto;
@@ -1954,19 +1954,19 @@ body {
   background: rgba(255, 255, 255, 0.14);
 }
 
-.hero-card p,
-.hero-card h1 {
+.home-hero-card p,
+.home-hero-card h1 {
   position: relative;
   z-index: 1;
 }
 
-.hero-card p {
+.home-hero-card p {
   margin: 0 0 12px;
   opacity: 0.72;
   font-weight: 700;
 }
 
-.hero-card h1 {
+.home-hero-card h1 {
   margin: 0;
   font-size: 27px;
   color: #fff;
