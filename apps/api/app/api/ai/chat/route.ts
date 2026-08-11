@@ -97,15 +97,16 @@ function buildSystemPrompt(sceneDetail: ReturnType<typeof getSceneDetail>): stri
   parts.push(`4. 学员明确表示要结束对话（如"结束""完毕""不想练了"），你必须立即附上【训练结束】。`);
   parts.push(``);
   parts.push(`## 教练提示规则（必须遵守）`);
-  parts.push(`你每次回复都必须在末尾嵌入 [COACH_TIP:提示内容] 标记，提示学员下一轮该往哪个方向回答。`);
+  parts.push(`你每次回复都必须在末尾嵌入 [COACH_TIP:提示内容] 标记。教练提示面向学员，目标：让学员知道刚才那句话该怎么说更好。`);
   parts.push(``);
-  parts.push(`提示内容要求：`);
-  parts.push(`- 结合当前评分维度和对话进度，给出下一轮的回答方向建议`);
-  parts.push(`- 绝不给出完整答案，只提示思路方向，如"先安抚情绪再解释原因""说明处理时限和流程""确认客户需求后给方案"`);
-  parts.push(`- 如果学员上一轮表现出色，可以提示更高阶的方向，如"注意挖掘深层需求""尝试主动提出增值方案"`);
-  parts.push(`- 如果学员跑题、敷衍、违规或索要答案，提示要明确指出问题所在并纠正，如"你刚才答非所问了，请正面回应我的诉求""不要只安抚，请给出具体处理安排""请不要向我索要答案，由你来解决"`);
+  parts.push(`提示内容要求（针对学员上一句话点评 + 给出参考说法）：`);
+  parts.push(`- 先简要点评学员上一句表现：哪里做得好，或哪里不足（如"诉求确认到位""安抚不够""没给时限"），点评不超过10字`);
+  parts.push(`- 再给出"应该怎么说"的参考话术（具体到可直接照说的短句，10-20字），格式如"可以说：非常抱歉，我先帮您核实，稍后回复您"`);
+  parts.push(`- 如果学员上一句表现优秀，参考话术可以给更高阶示范（如挖掘需求、主动增值）`);
+  parts.push(`- 如果学员跑题、敷衍、违规或索要答案，参考话术要示范正确做法并点明错误`);
+  parts.push(`- 总长度控制在30字内，点评+示范都要有，不要只给方向不给话术`);
   parts.push(``);
-  parts.push(`格式要求：每条回复末尾必须附 [COACH_TIP:提示内容]，提示用简短中文（15字内）。`);
+  parts.push(`格式要求：每条回复末尾必须附 [COACH_TIP:提示内容]，如 [COACH_TIP:安抚到位，可以说：我马上帮您加急处理，2小时内回复您]`);
 
   return parts.join("\n");
 }
@@ -154,6 +155,25 @@ export async function POST(request: Request) {
       forceFinished = true;
       // 仍然让 LLM 回复一段总结，但不依赖它输出【训练结束】标记
       apiMessages.push({ role: "system" as const, content: "对话已达最大轮次（20轮），请在回复末尾附上【训练结束】标记并给出简要评价总结。这是强制指令。" });
+    }
+
+    // 跑题/敷衍检测（服务端确定性兜底，不依赖 AI 角色扮演自觉）：
+    // 1) 规则层：连续 3 条学员消息为敷衍/过短 → 强制结束
+    // 2) LLM 层：规则未命中时，轻量判定最近学员回复是否持续跑题（连续≥2次）→ 强制结束
+    const weakStreak = countConsecutiveWeakReplies(body.messages);
+    if (!forceFinished && weakStreak >= 3) {
+      forceFinished = true;
+      apiMessages.push({ role: "system" as const, content: "学员已连续多次敷衍/跑题应答（答非所问、无实质内容或索要答案）。请以角色身份简要指出问题，并在回复末尾附上【训练结束】标记，给出简要评分依据。这是强制指令，不得忽略。" });
+    } else if (!forceFinished && learnerMessageCount >= 2) {
+      try {
+        const repeatedOffTopic = await judgeRepeatedOffTopic(body.messages, sceneDetail, config);
+        if (repeatedOffTopic) {
+          forceFinished = true;
+          apiMessages.push({ role: "system" as const, content: "检测到学员持续跑题/偏离训练主题。请立即结束训练：在回复末尾附上【训练结束】标记，给出简要评价与评分依据。这是强制指令，不得忽略。" });
+        }
+      } catch {
+        // LLM 判定失败不影响主流程
+      }
     }
 
     const endpoint = normalizeUrl(config.baseUrl);
@@ -263,6 +283,81 @@ function normalizeUrl(baseUrl: string) {
   if (trimmed.endsWith("/chat/completions")) return trimmed;
   if (trimmed.endsWith("/v1")) return `${trimmed}/chat/completions`;
   return `${trimmed}/v1/chat/completions`;
+}
+
+// ---------- 跑题/敷衍检测（服务端确定性兜底） ----------
+// 纯敷衍/套话模式（整句无实质内容）
+const OFF_TOPIC_RE = [
+  /^(好的?|嗯+[嗯哦]*|哦|噢|知道了?|明白|懂了|了解|收到|可以|行(吧)?|对(的|啊|对)?|是(的)?|没错|同意|ok|好的吧)\W*$/i,
+  /^(没听清|听不清|再说一遍|没听到|没听明白|不知道|不清楚|随便(吧)?|算了|不练了|不想练|太累了|累了|无聊|没意思|换一个|下一个|跳过|不会|不会说)\W*$/,
+];
+
+function isWeakOrOffTopicReply(text: string): boolean {
+  const t = (text || "").trim();
+  if (!t) return true;
+  if (t.length <= 3) return true; // 过短，几乎无实质内容
+  if (OFF_TOPIC_RE.some((re) => re.test(t))) return true;
+  return false;
+}
+
+/** 统计最近连续"学员弱应答/跑题"条数（中间穿插 AI 回复不打断统计） */
+function countConsecutiveWeakReplies(messages: ChatMessage[]): number {
+  let count = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === "system") continue;
+    if (m.role === "learner") {
+      if (isWeakOrOffTopicReply(m.content)) count++;
+      else break;
+    }
+  }
+  return count;
+}
+
+/** LLM 轻量判定：学员最近是否持续跑题（最近回复中明显偏离训练主题/敷衍的比例高） */
+async function judgeRepeatedOffTopic(
+  messages: ChatMessage[],
+  sceneDetail: NonNullable<ReturnType<typeof getSceneDetail>>,
+  config: { baseUrl: string; apiKeyEncrypted: string; modelName: string },
+): Promise<boolean> {
+  // 只提取学员回复给裁判（不夹杂 AI 角色台词，避免干扰）
+  const learnerReplies = messages.filter((m) => m.role === "learner").slice(-4);
+  if (learnerReplies.length < 2) return false;
+  const sceneName = sceneDetail.scene.name;
+  const targetRole = sceneDetail.roles.find((r) => r.roleType === "learner")?.identity || "学员";
+  const prompt = [
+    `训练主题：${sceneName}（训练对象：${targetRole}）。`,
+    "下面是学员最近的几条回复。判断学员是否明显跑题：回复与训练主题无关（聊无关话题）、答非所问、纯敷衍应付（如“好的”“嗯”“不知道”“随便”等无实质内容）。",
+    "如果学员回复中至少 2 条明显跑题或敷衍，result 为 true；否则为 false。",
+    "学员回复：",
+    ...learnerReplies.map((m, i) => `${i + 1}. ${m.content.slice(0, 100)}`),
+  ].join("\n");
+
+  const endpoint = normalizeUrl(config.baseUrl);
+  const resp = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKeyEncrypted}` },
+    body: JSON.stringify({
+      model: config.modelName,
+      temperature: 0,
+      max_tokens: 30,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: "你是训练质量裁判。只输出 JSON，格式：{\"result\": true} 或 {\"result\": false}。" },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+  if (!resp.ok) return false;
+  const payload = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const content = (payload.choices?.[0]?.message?.content || "").trim();
+  try {
+    const parsed = JSON.parse(content) as { result?: unknown };
+    return parsed.result === true;
+  } catch {
+    // 兼容非 JSON 输出（如直接输出 true/false）
+    return content.toLowerCase().includes("true");
+  }
 }
 
 async function scoreAndSaveRecord(

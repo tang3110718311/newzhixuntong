@@ -44,7 +44,15 @@ export async function transcribeViaFunasrBridge(bridgeUrl: string, audio: Buffer
           const chunk = audio.subarray(i, Math.min(i + WS_SEND_CHUNK_SIZE, audio.length));
           ws?.send(chunk);
         }
-        ws?.send(JSON.stringify({ command: "stop" }));
+        // 追加 1 秒静音,帮助 FunASR 检测语音结束并触发 offline 完整结果
+        ws?.send(Buffer.alloc(16000));
+        // 关键:不能立即发 stop!桥接服务收到 stop 会立刻结束连接,
+        // 导致在 FunASR 返回结果前客户端就断开。延迟 ~3s 给识别留时间。
+        setTimeout(() => {
+          try {
+            ws?.send(JSON.stringify({ command: "stop" }));
+          } catch { /* noop */ }
+        }, 3000);
       } catch {
         finish("");
       }
@@ -55,8 +63,8 @@ export async function transcribeViaFunasrBridge(bridgeUrl: string, audio: Buffer
       try {
         const msg = JSON.parse(raw) as { asr_result?: string; status?: string };
         if (typeof msg.asr_result === "string" && msg.asr_result.length > 0) {
+          // 桥接服务每个中间结果都带 status:"complete",只能取最后一个收敛文本
           finalText = msg.asr_result;
-          if (msg.status === "complete") finish(msg.asr_result);
         }
       } catch {
         // 非 JSON 消息(如二进制)忽略

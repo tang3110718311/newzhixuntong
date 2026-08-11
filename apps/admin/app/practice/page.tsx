@@ -7,6 +7,8 @@ import { navigateTo } from "@/lib/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
+// 自有 FunASR 桥接服务(实时流式识别直连地址)
+const FUNASR_WS_URL = process.env.NEXT_PUBLIC_FUNASR_WS_URL || "wss://zxt.xingyiwulian.cn:8765";
 
 type AuthUser = {
   id: string;
@@ -153,6 +155,8 @@ export default function PracticePage() {
   const [expandedDetail, setExpandedDetail] = useState<HistoryDetail | null>(null);
 
   const [isRecording, setIsRecording] = useState(false);
+  // 实时识别回显文本(流式录音时动态更新)
+  const [liveTranscript, setLiveTranscript] = useState("");
   // 每个场景固定一种声音（进入场景时随机男女声，整个场景不变）
   const [ttsVoice, setTtsVoice] = useState<string | null>(null);
 
@@ -163,6 +167,15 @@ export default function PracticePage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingRef = useRef(false);
+  // 实时流式识别(WebSocket 直连自有桥接服务)引用
+  const liveStreamRef = useRef<{
+    ws: WebSocket;
+    ctx: AudioContext;
+    scriptNode: ScriptProcessorNode;
+    source: MediaStreamAudioSourceNode;
+    stream: MediaStream;
+    finalText: string;
+  } | null>(null);
 
   // 当前播放的音频引用（用于退出/切换时停止）
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -449,31 +462,111 @@ export default function PracticePage() {
     }
   }, [apiPost, chatMessages, chatSending, selectedScene, pollTrainingResult]);
 
-  // ===== STT + 语音采集 =====
+  // ===== STT + 语音采集(实时流式优先,失败回退一次性转写) =====
+  const startLiveStream = useCallback(async (stream: MediaStream): Promise<boolean> => {
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx || typeof window.WebSocket === "undefined") return false;
+      const ctx = new AudioCtx();
+      const source = ctx.createMediaStreamSource(stream);
+      const scriptNode = ctx.createScriptProcessor(4096, 1, 1);
+      const ws = new WebSocket(FUNASR_WS_URL);
+      const state = { ws, ctx, scriptNode, source, stream, finalText: "" };
+      let opened = false;
+
+      scriptNode.onaudioprocess = (e: AudioProcessingEvent) => {
+        if (!opened || ws.readyState !== WebSocket.OPEN) return;
+        const input = e.inputBuffer.getChannelData(0);
+        const pcm = resampleToInt16(input, ctx.sampleRate, 16000);
+        if (pcm.byteLength > 0) ws.send(pcm);
+      };
+      ws.onopen = () => {
+        opened = true;
+      };
+      ws.onmessage = (ev: MessageEvent) => {
+        try {
+          const msg = JSON.parse(ev.data as string) as { asr_result?: string; status?: string };
+          if (typeof msg.asr_result === "string" && msg.asr_result.length > 0) {
+            state.finalText = msg.asr_result;
+            setLiveTranscript(msg.asr_result);
+          }
+        } catch { /* 非 JSON 忽略 */ }
+      };
+      ws.onerror = () => { /* 交由超时保护统一失败 */ };
+
+      // 麦克风音频不输出到扬声器(接静音 gain 节点保证 scriptNode 被拉取)
+      const mute = ctx.createGain();
+      mute.gain.value = 0;
+      source.connect(scriptNode);
+      scriptNode.connect(mute);
+      mute.connect(ctx.destination);
+
+      // 3 秒内未连上桥接则视为失败,回退一次性转写
+      const result = await new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => {
+          if (!opened) {
+            try { ws.close(); } catch { /* noop */ }
+            try { scriptNode.onaudioprocess = null; source.disconnect(); scriptNode.disconnect(); ctx.close(); } catch { /* noop */ }
+            resolve(false);
+          } else {
+            resolve(true);
+          }
+        }, 3000);
+        ws.onopen = () => {
+          opened = true;
+          clearTimeout(timer);
+          resolve(true);
+        };
+      });
+      if (!result) {
+        stream.getTracks().forEach((t) => t.stop());
+        return false;
+      }
+      liveStreamRef.current = state;
+      return true;
+    } catch {
+      stream.getTracks().forEach((t) => t.stop());
+      return false;
+    }
+  }, []);
+
   const startRecording = useCallback(async () => {
     if (recordingRef.current) return;
     setError("");
+    setLiveTranscript("");
     if (
       typeof navigator === "undefined" ||
       !navigator.mediaDevices?.getUserMedia ||
       typeof window === "undefined" ||
-      !window.isSecureContext ||
-      typeof window.MediaRecorder === "undefined"
+      !window.isSecureContext
     ) {
       setError(getMicrophoneErrorMessage());
       return;
     }
     // 学员开始说话时，立即停止 AI 语音播报
     stopAudio();
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // 实时流式优先：WebSocket 直连自有桥接服务，边录边回显文字
+      const liveOk = await startLiveStream(stream);
+      if (liveOk) {
+        recordingRef.current = true;
+        setIsRecording(true);
+        return;
+      }
+      // 回退：MediaRecorder 一次性转写
+      if (typeof window.MediaRecorder === "undefined") {
+        setError(getMicrophoneErrorMessage());
+        return;
+      }
       const recorder = new MediaRecorder(stream);
       audioChunksRef.current = [];
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
       recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
+        stream?.getTracks().forEach((t) => t.stop());
         setIsRecording(false);
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
         // 优先转 16kHz/16bit PCM 走自有 FunASR 桥接服务;解码失败回退 webm 走 Whisper
@@ -496,18 +589,45 @@ export default function PracticePage() {
       recordingRef.current = true;
       setIsRecording(true);
     } catch (err) {
+      stream?.getTracks().forEach((t) => t.stop());
       recordingRef.current = false;
       setIsRecording(false);
       setError(getMicrophoneErrorMessage(err));
     }
-  }, [apiPost, sendChatMessage, stopAudio]);
+  }, [apiPost, sendChatMessage, stopAudio, startLiveStream]);
 
   const stopRecording = useCallback(() => {
+    // 实时流式模式：结束音源、发 stop、取最终文本
+    if (liveStreamRef.current) {
+      const live = liveStreamRef.current;
+      liveStreamRef.current = null;
+      live.scriptNode.onaudioprocess = null;
+      try { live.source.disconnect(); live.scriptNode.disconnect(); } catch { /* noop */ }
+      live.stream.getTracks().forEach((t) => t.stop());
+      try { void live.ctx.close(); } catch { /* noop */ }
+      recordingRef.current = false;
+      setIsRecording(false);
+      try {
+        live.ws.send(JSON.stringify({ command: "stop" }));
+      } catch { /* noop */ }
+      // 给最后一段识别结果留时间，再取最终文本
+      setTimeout(() => {
+        try { live.ws.close(); } catch { /* noop */ }
+        const finalText = live.finalText;
+        setLiveTranscript("");
+        if (finalText && finalText.trim()) {
+          void sendChatMessage(finalText.trim());
+        } else {
+          setError("未识别到语音内容，请改用文字或重试。");
+        }
+      }, 400);
+      return;
+    }
     if (mediaRecorderRef.current && recordingRef.current) {
       mediaRecorderRef.current.stop();
       recordingRef.current = false;
     }
-  }, []);
+  }, [sendChatMessage]);
 
   const toggleRecording = useCallback(() => {
     if (isRecording) {
@@ -726,7 +846,20 @@ export default function PracticePage() {
                   <button className={!voiceMode ? "active" : ""} type="button" onClick={() => setVoiceMode(false)}>文本模式</button>
                 </span>
               </div>
-              <button className="pc-back-mini" type="button" onClick={backToHistory}>← 返回历史</button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {!chatFinished && (
+                  <button
+                    className="pc-btn-ghost"
+                    type="button"
+                    disabled={chatSending || chatMessages.length < 2}
+                    onClick={() => { if (window.confirm("确定结束本次对练并查看评分？")) void endTraining(); }}
+                    style={{ color: "#ef4444", borderColor: "#fecaca" }}
+                  >
+                    结束对练
+                  </button>
+                )}
+                <button className="pc-back-mini" type="button" onClick={backToHistory}>← 返回历史</button>
+              </div>
             </div>
 
             <div className="pc-messages">
@@ -771,6 +904,10 @@ export default function PracticePage() {
                 onBack={backToHistory}
                 onRestart={() => void enterChat(selectedScene)}
               />
+            ) : chatFinished ? (
+              <div className="pc-empty" style={{ padding: "24px 0", textAlign: "center", color: "#86909c" }}>
+                对练已结束，正在生成评分报告…
+              </div>
             ) : (
               <div className="pc-inputbar">
                 <div className="pc-inputrow">
@@ -800,7 +937,9 @@ export default function PracticePage() {
                   </button>
                 </div>
                 <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
-                  {isRecording ? "录音中…点击停止后自动识别" : "支持语音输入（自动识别转文字）或直接打字"}
+                  {isRecording
+                    ? (liveTranscript ? `识别中：${liveTranscript}` : "录音中…请说话")
+                    : "支持语音输入（自动识别转文字）或直接打字"}
                 </div>
               </div>
             )}
@@ -1048,6 +1187,24 @@ function blobToBase64(blob: Blob): Promise<string> {
 function floatToInt16(value: number): number {
   const s = Math.max(-1, Math.min(1, value));
   return s < 0 ? s * 0x8000 : s * 0x7fff;
+}
+
+/** 实时流式:Float32 音频帧重采样为 16kHz/16bit 小端 PCM(ArrayBuffer,可直接 ws.send) */
+function resampleToInt16(input: Float32Array, fromRate: number, toRate = 16000): ArrayBuffer {
+  const len = Math.max(1, Math.round((input.length * toRate) / fromRate));
+  const out = new Int16Array(len);
+  if (fromRate === toRate) {
+    for (let i = 0; i < len; i++) out[i] = floatToInt16(input[i]);
+  } else {
+    for (let i = 0; i < len; i++) {
+      const pos = (i * fromRate) / toRate;
+      const i0 = Math.floor(pos);
+      const i1 = Math.min(i0 + 1, input.length - 1);
+      const frac = pos - i0;
+      out[i] = floatToInt16(input[i0] * (1 - frac) + input[i1] * frac);
+    }
+  }
+  return out.buffer;
 }
 
 function bytesToBase64(bytes: Uint8Array): Promise<string> {
