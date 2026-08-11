@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import type { ApiResponse, AuthSession, DashboardOverview, PageResult } from "@zxt/shared";
@@ -15,7 +15,6 @@ import {
   KeyRound,
   Landmark,
   Loader2,
-  LockKeyhole,
   LogOut,
   Menu,
   Paperclip,
@@ -28,7 +27,6 @@ import {
   Sparkles,
   Trash2,
   Users,
-  Mic,
   Wand2,
 } from "lucide-react";
 import { AppealsSection } from "./AppealsSection";
@@ -38,6 +36,7 @@ import { StatisticsSection } from "./StatisticsSection";
 import { SysMenusSection } from "./SysMenusSection";
 import { SysPostsSection } from "./SysPostsSection";
 import { SysRolesSection } from "./SysRolesSection";
+import { CompanyBoardSection, DeptBoardSection, LearnerBoardSection } from "./BoardSections";
 import { navigateTo } from "@/lib/navigation";
 
 type NavChild = { id: string; key: ActiveSection; label: string; icon: React.ReactNode };
@@ -340,7 +339,9 @@ type ActiveSection =
   | "sys-posts"
   | "sys-tenants"
   | "records"
-  | "practice";
+  | "board-company"
+  | "board-dept"
+  | "board-learner";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -650,6 +651,7 @@ export function AdminDashboard() {
   const [sceneFilter, setSceneFilter] = useState({ status: "all", mode: "all", org: "all", keyword: "" });
   const [wizardRoleForm, setWizardRoleForm] = useState({
     aiIdentity: "",
+    aiStatus: "",
     aiBackground: "",
     aiPersonality: "",
     aiEmotion: "",
@@ -1093,6 +1095,7 @@ export function AdminDashboard() {
       // Fill wizard role form from AI draft
       setWizardRoleForm({
         aiIdentity: draft.aiRole?.identity || "",
+        aiStatus: "",
         aiBackground: draft.aiRole?.background || "",
         aiPersonality: draft.aiRole?.personality || "",
         aiEmotion: draft.aiRole?.emotion || "calm",
@@ -1339,7 +1342,7 @@ export function AdminDashboard() {
             description: aiGenerateForm.sceneDescription,
             aiRole: {
               identity: wizardRoleForm.aiIdentity,
-              background: wizardRoleForm.aiBackground,
+              background: (wizardRoleForm.aiStatus ? wizardRoleForm.aiStatus + "。" : "") + wizardRoleForm.aiBackground,
               personality: wizardRoleForm.aiPersonality,
               emotion: wizardRoleForm.aiEmotion,
               goal: wizardRoleForm.dialogueGoal,
@@ -1366,7 +1369,7 @@ export function AdminDashboard() {
       setShowSceneWizard(false);
       setSceneWizardStep(1);
       setAiGenerateDraft(null);
-      setWizardRoleForm({ aiIdentity: "", aiBackground: "", aiPersonality: "", aiEmotion: "", learnerIdentity: "", dialogueGoal: "", initiator: "ai", endCondition: "", interruptCondition: "", dialogueExample: "", sceneDescription: "" });
+      setWizardRoleForm({ aiIdentity: "", aiStatus: "", aiBackground: "", aiPersonality: "", aiEmotion: "", learnerIdentity: "", dialogueGoal: "", initiator: "ai", endCondition: "", interruptCondition: "", dialogueExample: "", sceneDescription: "" });
       setWizardScoringRules([
         { name: "需求识别", score: 25, criteria: "准确识别客户核心诉求", deductionRule: "", evidenceRequired: "" },
         { name: "合规表达", score: 25, criteria: "按业务规范说明边界", deductionRule: "", evidenceRequired: "" },
@@ -1434,36 +1437,103 @@ export function AdminDashboard() {
 
   if (!auth) {
     return (
-      <div className="login-shell">
-        <form className="login-card" onSubmit={handleLogin}>
-          <div className="login-brand">
-            <div className="brand-mark">智</div>
-            <div>
-              <p className="brand-title">AI 智训通</p>
-              <p className="brand-subtitle">管理端登录</p>
+      <div className="login-redesign" aria-label="登录页">
+        <div className="login-glow"></div>
+        <div className="login-wash wash-one"></div>
+        <div className="login-wash wash-two"></div>
+
+        <div className="login-layout">
+          {/* ── 左侧品牌宣传区 ── */}
+          <section className="login-intro">
+            <div className="login-brand">
+              <i className="mark"></i>
+              <strong>智训通</strong>
+              <span>企业培训管理平台</span>
             </div>
-          </div>
-          <div className="login-title">
-            <LockKeyhole size={22} />
-            <div>
-              <h1>进入训练管理台</h1>
-              <p>使用手机号、密码和验证码登录，登录后选择企业租户。</p>
-            </div>
-          </div>
-          {error ? <div className="notice"><AlertCircle size={16} /> {error}</div> : null}
-              <Field label="手机号"><input value={loginForm.mobile} onChange={(e) => setLoginForm({ ...loginForm, mobile: e.target.value })} placeholder="请输入手机号" required /></Field>
-              <Field label="密码"><input value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} type="password" placeholder="请输入密码" required /></Field>
-              <Field label="验证码">
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input value={loginForm.code} onChange={(e) => setLoginForm({ ...loginForm, code: e.target.value })} placeholder="请输入验证码" style={{ flex: 1 }} required />
-                  <button className="btn" type="button" disabled={!!codeCountdown || submitting} onClick={handleSendCode} style={{ whiteSpace: "nowrap", minWidth: 110 }}>
-                    {codeCountdown > 0 ? `${codeCountdown}s 后重发` : "获取验证码"}
-                  </button>
+            <div className="login-kicker">SMART TRAINING · SMART GROWTH</div>
+            <h1>让学习创造<br /><span>更大价值</span></h1>
+            <p className="login-subtitle">智能场景训练 · 数据驱动成长</p>
+
+            {/* 智训通工作台主视觉 */}
+            <div className="login-hero-art" aria-hidden="true">
+              <div className="hero-orbit orbit-a"></div>
+              <div className="hero-orbit orbit-b"></div>
+              <div className="hero-orbit orbit-c"></div>
+              <div className="hero-glow"></div>
+              <div className="hero-platform">
+                <div className="hero-platform-top"></div>
+                <div className="hero-platform-side"></div>
+              </div>
+              <div className="hero-panel">
+                <div className="hero-panel-head">
+                  <span className="panel-dot"></span>
+                  <b>智训通工作台</b>
+                  <small>LIVE</small>
                 </div>
-              </Field>
-              <button className="btn primary full" disabled={submitting} type="submit"><LockKeyhole size={16} /> 登录</button>
-            <p className="login-hint">本地验证默认账号：13800000000 / Zxt@2026，验证码 666666</p>
-        </form>
+                <div className="hero-panel-body">
+                  <div className="hero-bars"><i></i><i></i><i></i><i></i><i></i></div>
+                  <div className="hero-line"></div>
+                  <div className="hero-avatar"></div>
+                </div>
+              </div>
+              <div className="hero-cube"><b>智</b><small>TRAIN</small></div>
+              <div className="hero-card float-card-one"><i>✓</i><span>训练完成度<br /><b>86%</b></span></div>
+              <div className="hero-card float-card-two"><i>↗</i><span>本周成长值<br /><b>+24.8</b></span></div>
+              <div className="hero-spark spark-one">✦</div>
+              <div className="hero-spark spark-two">✦</div>
+              <div className="hero-spark spark-three">·</div>
+            </div>
+
+            <div className="login-features">
+              <div className="login-feature"><i>▣</i><span><b>弹性学习</b><small>随时随地提升能力</small></span></div>
+              <div className="login-feature"><i>✓</i><span><b>安全合规</b><small>企业级数据保障</small></span></div>
+              <div className="login-feature"><i>↗</i><span><b>智能调度</b><small>精准连接每一次成长</small></span></div>
+            </div>
+          </section>
+
+          {/* ── 右侧登录卡 ── */}
+          <section className="login-card">
+            <div className="login-card-head">
+              <div className="login-card-badge">智训通</div>
+              <h2>欢迎登录</h2>
+              <p>登录后进入智训通管理工作台</p>
+            </div>
+            {error ? <div className="login-tip" role="alert"><AlertCircle size={12} /> {error}</div> : <div className="login-tip" aria-live="polite"></div>}
+
+            <form id="loginForm" onSubmit={handleLogin}>
+              <div className="login-field">
+                <i className="field-icon">♙</i>
+                <input value={loginForm.mobile} onChange={(e) => setLoginForm({ ...loginForm, mobile: e.target.value })} type="text" maxLength={32} placeholder="请输入账号 / 手机号" autoComplete="username" required />
+              </div>
+
+              <div className="login-field login-password">
+                <i className="field-icon">▣</i>
+                <input value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} type="password" maxLength={32} placeholder="请输入密码" autoComplete="current-password" required />
+              </div>
+
+              <div className="login-field login-code">
+                <i className="field-icon">✉</i>
+                <input value={loginForm.code} onChange={(e) => setLoginForm({ ...loginForm, code: e.target.value })} type="text" maxLength={6} placeholder="请输入验证码" required />
+                <button type="button" disabled={!!codeCountdown || submitting} onClick={handleSendCode}>
+                  {codeCountdown > 0 ? `${codeCountdown}s 后重发` : "获取验证码"}
+                </button>
+              </div>
+
+              <div className="login-links">
+                <a id="loginForgot" onClick={() => setError("请联系管理员重置密码。")}>忘记密码?</a>
+              </div>
+
+              <button className="login-submit" type="submit" disabled={submitting}>登录</button>
+
+              <label className="login-agreement">
+                <input id="loginAgreement" type="checkbox" defaultChecked />
+                <span>阅读并接受 <a href="#">《服务条款》</a> 和 <a href="#">《隐私政策》</a></span>
+              </label>
+            </form>
+          </section>
+        </div>
+
+        <div className="login-foot">© 2026 智训通 · 企业培训与人才发展平台</div>
       </div>
     );
   }
@@ -1472,7 +1542,6 @@ export function AdminDashboard() {
     { id: "student-home", key: "student-home", label: "学员首页", icon: <Users size={18} /> },
     { id: "my-tasks", key: "my-tasks", label: "我的任务", icon: <ClipboardList size={18} />, badge: tasks.filter((task) => task.status !== "completed").length },
     { id: "my-exams", key: "my-exams", label: "我的考试", icon: <FileText size={18} />, badge: 0 },
-    { id: "practice", key: "practice", label: "对练中心", icon: <Mic size={18} /> },
     { id: "scenes", key: "scenes", label: "场景管理", icon: <Bot size={18} /> },
     { id: "knowledge", key: "knowledge", label: "企业知识库", icon: <Database size={18} /> },
     { id: "tasks", key: "tasks", label: "任务管理", icon: <ClipboardList size={18} /> },
@@ -1482,6 +1551,14 @@ export function AdminDashboard() {
       children: [
         { id: "statistics-dept", key: "statistics-dept", label: "部门数据", icon: <Building2 size={16} /> },
         { id: "statistics-learner", key: "statistics-learner", label: "学员统计", icon: <Users size={16} /> },
+      ],
+    },
+    {
+      id: "boards", key: "boards", label: "数据看板", icon: <BarChart3 size={18} />, group: "boards",
+      children: [
+        { id: "board-company", key: "board-company", label: "公司数据看板", icon: <Building2 size={16} /> },
+        { id: "board-dept", key: "board-dept", label: "部门数据看板", icon: <Building2 size={16} /> },
+        { id: "board-learner", key: "board-learner", label: "学员数据看板", icon: <Users size={16} /> },
       ],
     },
     { id: "materials", key: "materials", label: "素材管理", icon: <FileText size={18} /> },
@@ -1616,73 +1693,18 @@ export function AdminDashboard() {
           <HomeSection auth={auth} submitting={submitting} onRefresh={() => loadData()} />
         )}
 
-        {activeSection === "practice" && (
-          <section className="page-section">
-            <div style={{ background: "#dcfce7", color: "#166534", padding: "8px 12px", borderRadius: 6, fontSize: 12 }}>
-              ✓ practice section 渲染中 · activeSection={String(activeSection)} · scenes={Array.isArray(scenes) ? scenes.length : "undef"} · records={Array.isArray(records) ? records.length : "undef"}
-            </div>
-            <div className="page-header">
-              <div>
-                <h1 className="page-title">对练中心</h1>
-                <p className="page-desc">选择场景开始 AI 对练，或查看历史训练记录。</p>
-              </div>
-            </div>
-            <div className="home-grid">
-              <div className="home-main">
-                <div className="card section" style={{ padding: 20 }}>
-                  <h3 style={{ margin: "0 0 16px" }}>可对练场景</h3>
-                  {(!Array.isArray(scenes) || scenes.length === 0) ? (
-                    <div className="empty">暂无可用场景，请先在「场景管理」创建。</div>
-                  ) : (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
-                      {scenes.map((scene) => (
-                        <div key={scene.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 16, background: "var(--panel)" }}>
-                          <strong style={{ display: "block", marginBottom: 6 }}>{scene?.name || "(未命名场景)"}</strong>
-                          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-                            合格线 80
-                          </div>
-                          <button className="btn primary full" type="button" onClick={() => navigateTo(`/practice?sceneId=${encodeURIComponent(scene.id)}`)}>
-                            开始对练 →
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <aside className="home-side">
-                <div className="card section" style={{ padding: 20 }}>
-                  <h3 style={{ margin: "0 0 12px" }}>最近训练</h3>
-                  {(!Array.isArray(records) || records.length === 0) ? (
-                    <div className="empty">暂无训练记录。</div>
-                  ) : (
-                    <div style={{ display: "grid", gap: 10 }}>
-                      {records.slice(0, 5).map((r) => (
-                        <div key={r.id} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600 }}>{r?.sceneName || "—"}</div>
-                          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{r?.score ?? 0} 分 · {formatDate(r?.finishedAt)}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </aside>
-            </div>
-          </section>
-        )}
-
         {activeSection === "scenes" && (
           <section className="page-section">
             <div className="home-grid">
               <div className="home-main">
                 <div className="page-header">
                   <div>
-                    <h1 className="page-title">场景管理</h1>
-                    <p className="page-desc">管理智能对练场景，快速创建并关联培训任务。</p>
+                    <h1 className="zpage-title">场景管理</h1>
+                    <p className="zpage-desc">管理智能对练场景，快速创建并关联培训任务。</p>
                   </div>
                   <div className="toolbar">
-                    <button className="btn" type="button" disabled={scenes.length === 0}>批量删除</button>
-                    <button className="btn primary" type="button" onClick={() => setShowSceneModePicker(true)}><Plus size={16} /> 添加场景</button>
+                    <button className="zbtn" type="button" disabled={scenes.length === 0}>批量删除</button>
+                    <button className="zbtn zbtn-primary" type="button" onClick={() => setShowSceneModePicker(true)}><Plus size={16} /> 添加场景</button>
                   </div>
                 </div>
 
@@ -1716,42 +1738,46 @@ export function AdminDashboard() {
                   </div>
                 </div>
 
-                <div className="card section">
-                  <DataTable headers={["序号", "场景编号", "场景名称", "状态", "关联任务数", "创建部门", "创建人", "创建时间", "操作"]}>
-                    {scenes.filter((scene) => {
-                      if (sceneFilter.status !== "all" && scene.status !== sceneFilter.status) return false;
-                      if (sceneFilter.mode !== "all" && scene.mode !== sceneFilter.mode) return false;
-                      if (sceneFilter.keyword && !`${scene.name} ${scene.code}`.toLowerCase().includes(sceneFilter.keyword.toLowerCase())) return false;
-                      return true;
-                    }).map((scene, idx) => (
-                      <tr key={scene.id}>
-                        <td>{idx + 1}</td>
-                        <td className="muted-text">{scene.code}</td>
-                        <td><strong>{scene.name}</strong><span style={{ color: "#8b98aa", fontSize: 12, marginLeft: 6 }}>({modeLabel(scene.mode)})</span></td>
-                        <td>{statusBadge(scene.status)}</td>
-                        <td>—</td>
-                        <td className="muted-text">—</td>
-                        <td className="muted-text">—</td>
-                        <td className="muted-text">—</td>
-                        <td>
-                          <div className="action-row">
-                            <button className="link-btn" type="button" onClick={() => { navigateTo('/scenes/' + scene.id); }}>预览</button>
-                            <button className="link-btn" type="button" onClick={() => { navigateTo('/scenes/' + scene.id + '/edit'); }}>编辑</button>
-                            {scene.status === "published" || scene.status === "enabled" ? (
-                              <button className="link-btn" type="button" onClick={() => disableScene(scene.id)} disabled={submitting}>禁用</button>
-                            ) : (
-                              <button className="link-btn" type="button" onClick={() => publishScene(scene.id)} disabled={submitting}>启用</button>
-                            )}
-                            <button className="link-btn" type="button">复制</button>
-                            <button className="link-btn" type="button" onClick={() => { navigateTo(`/practice?sceneId=${scene.id}`); }}>创建任务</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {!scenes.length && <div className="empty">暂无场景数据，请先添加行业包并创建场景。</div>}
-                  </DataTable>
+                <div className="card section" style={{ padding: 16, display: "grid", gap: 10 }}>
+                  {scenes.filter((scene) => {
+                    if (sceneFilter.status !== "all" && scene.status !== sceneFilter.status) return false;
+                    if (sceneFilter.mode !== "all" && scene.mode !== sceneFilter.mode) return false;
+                    if (sceneFilter.keyword && !`${scene.name} ${scene.code}`.toLowerCase().includes(sceneFilter.keyword.toLowerCase())) return false;
+                    return true;
+                  }).map((scene, idx) => (
+                    <div className="zrow" key={scene.id}>
+                      <div className="zrow-main">
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 12, color: "#8b98aa" }}>{idx + 1}. {scene.code}</span>
+                          <strong style={{ fontSize: 14.5, color: "#17233b" }}>{scene.name}</strong>
+                          <span className={`ztag ztag-${scene.mode === "text" ? "cyan" : "blue"}`}>{modeLabel(scene.mode)}</span>
+                          <span className={`ztag ztag-${scene.status === "enabled" || scene.status === "published" ? "green" : "red"}`}>
+                            {scene.status === "enabled" || scene.status === "published" ? "启用" : "停用"}
+                          </span>
+                        </div>
+                        <div className="zrow-meta">
+                          <span>训练次数：—</span>
+                          <span>创建部门：—</span>
+                          <span>创建人：—</span>
+                          <span>创建时间：—</span>
+                        </div>
+                      </div>
+                      <div className="zops">
+                        <button type="button" onClick={() => { navigateTo('/scenes/' + scene.id); }}>预览</button>
+                        <button type="button" onClick={() => { navigateTo('/scenes/' + scene.id + '/edit'); }}>编辑</button>
+                        {scene.status === "published" || scene.status === "enabled" ? (
+                          <button type="button" onClick={() => disableScene(scene.id)} disabled={submitting}>禁用</button>
+                        ) : (
+                          <button type="button" onClick={() => publishScene(scene.id)} disabled={submitting}>启用</button>
+                        )}
+                        <button type="button">复制</button>
+                        <button type="button" onClick={() => { navigateTo(`/practice?sceneId=${scene.id}`); }}>创建任务</button>
+                      </div>
+                    </div>
+                  ))}
+                  {!scenes.length && <div className="empty">暂无场景数据，请先添加行业包并创建场景。</div>}
                   {/* 分页 */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, fontSize: 13, color: "#8b98aa" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, color: "#8b98aa" }}>
                     <span>共{scenes.length}条记录</span>
                   </div>
                 </div>
@@ -1861,12 +1887,11 @@ export function AdminDashboard() {
                           ))}
                         </div>
                       )}
-                      <Field label="场景描述">
+                      <Field label="场景描述" required count={(aiGenerateForm.sceneDescription || "").length} max={500}>
                         <textarea
                           value={aiGenerateForm.sceneDescription}
                           onChange={(e) => setAiGenerateForm({ ...aiGenerateForm, sceneDescription: e.target.value })}
                           placeholder="包含人物、场景、痛点、目标和关键沟通要求。如：一位客户咨询套餐资费，认为线下价格偏高且担心售后。训练学员识别诉求、解释方案并促成办理。"
-                          required
                           style={{ minHeight: 120 }}
                         />
                       </Field>
@@ -1882,10 +1907,11 @@ export function AdminDashboard() {
                       <div className="wizard-two-col">
                         <div className="wizard-col">
                           <h3>人员角色配置</h3>
-                          <Field label="* AI扮演角色"><input value={wizardRoleForm.aiIdentity} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiIdentity: e.target.value })} placeholder="如：投诉客户" required /></Field>
-                          <Field label="背景简介"><textarea value={wizardRoleForm.aiBackground} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiBackground: e.target.value })} placeholder="如：长期客户，对服务有较高期待，投诉过两次宽带故障" style={{ minHeight: 60 }} /></Field>
+                          <Field label="AI扮演角色" required count={(wizardRoleForm.aiIdentity || "").length} max={200}><input value={wizardRoleForm.aiIdentity} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiIdentity: e.target.value })} placeholder="如：投诉客户" /></Field>
+                          <Field label="身份地位" count={(wizardRoleForm.aiStatus || "").length} max={300}><input value={wizardRoleForm.aiStatus} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiStatus: e.target.value })} placeholder="如：金牌会员，投诉过两次宽带故障" /></Field>
+                          <Field label="背景简介" count={(wizardRoleForm.aiBackground || "").length} max={300}><textarea value={wizardRoleForm.aiBackground} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiBackground: e.target.value })} placeholder="如：长期客户，对服务有较高期待，投诉过两次宽带故障" style={{ minHeight: 60 }} /></Field>
                           <Field label="AI角色性格"><input value={wizardRoleForm.aiPersonality} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiPersonality: e.target.value })} placeholder="如：急躁但理性" /></Field>
-                          <Field label="* AI情绪设置">
+                          <Field label="AI情绪设置" required>
                             <select value={wizardRoleForm.aiEmotion} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiEmotion: e.target.value })}>
                               <option value="">请选择 AI 情绪</option>
                               <option value="calm">平静</option>
@@ -1897,12 +1923,39 @@ export function AdminDashboard() {
                               <option value="professional">专业</option>
                             </select>
                           </Field>
+                          <Field label="学员角色扮演" required count={(wizardRoleForm.learnerIdentity || "").length} max={200}><input value={wizardRoleForm.learnerIdentity} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, learnerIdentity: e.target.value })} placeholder="如：客服坐席" /></Field>
                         </div>
                         <div className="wizard-col">
                           <h3>对话设置</h3>
-                          <Field label="* 学员角色扮演"><input value={wizardRoleForm.learnerIdentity} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, learnerIdentity: e.target.value })} placeholder="如：客服坐席" required /></Field>
-                          <Field label="* 对话目标"><textarea value={wizardRoleForm.dialogueGoal} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, dialogueGoal: e.target.value })} placeholder="如：识别诉求、安抚情绪、给出解决方案" required /></Field>
-                          <Field label="场景说明"><textarea value={wizardRoleForm.sceneDescription} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, sceneDescription: e.target.value })} placeholder="补充场景背景、关键流程或注意事项（选填）" style={{ minHeight: 60 }} /></Field>
+                          <Field label="对话目标" required count={(wizardRoleForm.dialogueGoal || "").length} max={500} hint="上传附件后，AI 将提取关键信息并生成对话目标">
+                            <textarea value={wizardRoleForm.dialogueGoal} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, dialogueGoal: e.target.value })} placeholder="如：识别诉求、安抚情绪、给出解决方案" />
+                          </Field>
+                          <div
+                            className="zupload"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => sceneAttachmentInputRef.current?.click()}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") sceneAttachmentInputRef.current?.click(); }}
+                          >
+                            <Paperclip size={20} className="zupload-icon" />
+                            <span className="zupload-title">上传附件，AI 分析并填入</span>
+                            <span className="zupload-tip">支持 PDF、Word、Excel、PPT、图片及文本文件，单个文件不超过 20MB</span>
+                          </div>
+                          {sceneAttachments.length > 0 && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                              {sceneAttachments.map((item) => (
+                                <div key={item.name} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#3d4d66", background: "#f7f9fc", border: "1px solid #e6eaf2", borderRadius: 8, padding: "6px 10px" }}>
+                                  <Paperclip size={14} style={{ color: "#8b98aa", flexShrink: 0 }} />
+                                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
+                                  {item.status === "uploading" && <span style={{ color: "#b08a00" }}>上传解析中…</span>}
+                                  {item.status === "done" && <span style={{ color: "#22c55e" }}>已入库</span>}
+                                  {item.status === "failed" && <span style={{ color: "#ed2633" }} title={item.error}>解析失败</span>}
+                                  <button className="link-btn" type="button" style={{ color: "#ed2633" }} onClick={() => removeSceneAttachment(item.name)} aria-label={`删除附件 ${item.name}`}><Trash2 size={14} /></button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <Field label="场景说明" count={(wizardRoleForm.sceneDescription || "").length} max={500}><textarea value={wizardRoleForm.sceneDescription} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, sceneDescription: e.target.value })} placeholder="补充场景背景、关键流程或注意事项（选填）" style={{ minHeight: 60 }} /></Field>
                           <Field label="对话发起人">
                             <select value={wizardRoleForm.initiator} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, initiator: e.target.value })}>
                               <option value="ai">AI</option>
@@ -1910,9 +1963,9 @@ export function AdminDashboard() {
                               <option value="random">随机</option>
                             </select>
                           </Field>
-                          <Field label="结束条件"><input value={wizardRoleForm.endCondition} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, endCondition: e.target.value })} placeholder="如：学员给出明确处理时限" /></Field>
-                          <Field label="中断条件"><input value={wizardRoleForm.interruptCondition} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, interruptCondition: e.target.value })} placeholder="如：学员情绪失控或出现人身攻击" /></Field>
-                          <Field label="对话实例"><textarea value={wizardRoleForm.dialogueExample} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, dialogueExample: e.target.value })} placeholder="示例对话（可选）：客户：宽带又断了！客服：非常抱歉，我先帮您查一下线路状态…" style={{ minHeight: 70 }} /></Field>
+                          <Field label="结束条件" count={(wizardRoleForm.endCondition || "").length} max={300}><input value={wizardRoleForm.endCondition} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, endCondition: e.target.value })} placeholder="如：学员给出明确处理时限" /></Field>
+                          <Field label="中断条件" count={(wizardRoleForm.interruptCondition || "").length} max={300}><input value={wizardRoleForm.interruptCondition} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, interruptCondition: e.target.value })} placeholder="如：学员情绪失控或出现人身攻击" /></Field>
+                          <Field label="对话实例" count={(wizardRoleForm.dialogueExample || "").length} max={500}><textarea value={wizardRoleForm.dialogueExample} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, dialogueExample: e.target.value })} placeholder="示例对话（可选）：客户：宽带又断了！客服：非常抱歉，我先帮您查一下线路状态…" style={{ minHeight: 70 }} /></Field>
                         </div>
                       </div>
                     </div>
@@ -2503,7 +2556,6 @@ export function AdminDashboard() {
                   </div>
                 )}
               </div>
-
               <aside className="right-rail">
                 <div className="profile card">
                   <span className="avatar large" />
@@ -2515,9 +2567,9 @@ export function AdminDashboard() {
                 </div>
                 <div className="sidecard card">
                   <div className="sidecard-head"><h2>培训概况</h2><span>本年度</span></div>
-                  <strong>{tasks.filter((t) => t.status === "completed").length}</strong>
+                  <strong>{completedRecordCount}</strong>
                   <p>已完成培训任务</p>
-                  <div className="mini-stats"><span>对练<b>{records.length}</b></span><span>考试<b>{examAttempts.length}</b></span><span>合格率<b>{records.length ? `${Math.round((records.filter((r) => r.score >= 80).length / records.length) * 100)}%` : "0%"}</b></span></div>
+                  <div className="mini-stats"><span>对练<b>{records.length}</b></span><span>考试<b>0</b></span><span>合格率<b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></span></div>
                 </div>
                 <div className="sidecard card">
                   <h2>通知消息</h2>
@@ -2649,7 +2701,6 @@ export function AdminDashboard() {
                   </div>
                 )}
               </div>
-
               <aside className="right-rail">
                 <div className="profile card">
                   <span className="avatar large" />
@@ -3061,7 +3112,6 @@ export function AdminDashboard() {
                   </div>
                 )}
               </div>
-
               <aside className="right-rail">
                 <div className="profile card">
                   <span className="avatar large" />
@@ -3084,8 +3134,8 @@ export function AdminDashboard() {
               </aside>
             </div>
           </section>
-          );
-        })()}
+        );
+      })()}
         {activeSection === "my-exams" && (
           <section className="page-section">
             <div className="home-grid">
@@ -3239,6 +3289,20 @@ export function AdminDashboard() {
             onSwitchTab={(section) => setActiveSection(section)}
             onRefresh={loadData}
           />
+        )}
+        {activeSection === "board-company" && (
+          <section className="page-section"><CompanyBoardSection /></section>
+        )}
+        {activeSection === "board-dept" && (
+          <section className="page-section"><DeptBoardSection /></section>
+        )}
+        {activeSection === "board-learner" && (
+          <section className="page-section">
+            <LearnerBoardSection
+              learners={(Array.isArray(users) ? users : []).filter((u) => u.roleCode === "learner")}
+              authUserId={auth?.user?.id || ""}
+            />
+          </section>
         )}
         {activeSection === "settings" && (
           <section className="page-section">
@@ -3713,15 +3777,16 @@ function DataTable({ headers, children }: { headers: string[]; children: React.R
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, required, count, max, hint }: { label: string; children: React.ReactNode; required?: boolean; count?: number; max?: number; hint?: string }) {
   return (
-    <label className="field">
-      <span className="field-label">{label}</span>
+    <label className="zfield">
+      <span className="zfield-label">{label}{required ? <span className="zreq">*</span> : null}</span>
       {children}
+      {hint ? <span className="zfield-hint">{hint}</span> : null}
+      {typeof count === "number" ? <span className="zfield-count">{count}{typeof max === "number" ? `/${max}` : ""}</span> : null}
     </label>
   );
 }
-
 
 
 

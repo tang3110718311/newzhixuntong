@@ -371,28 +371,30 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
             {loading ? (
               <div className="empty">正在加载文件夹数据…</div>
             ) : (
-              <DataTable headers={["文件夹名称", "文件夹说明", "文件数量", "占用空间", "创建人", "更新时间", "操作"]}>
+              <div style={{ display: "grid", gap: 10 }}>
                 {paged.map((folder) => (
-                  <tr key={folder.id}>
-                    <td>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                        <Folder size={18} style={{ color: "#F5A623", flexShrink: 0 }} />
-                        <strong>{folder.name}</strong>
-                      </span>
-                    </td>
-                    <td className="muted-text">{folder.description || "—"}</td>
-                    <td>{folder.fileCount}个文件</td>
-                    <td>{formatSize(folder.totalSize)}</td>
-                    <td className="muted-text">{folder.creatorName || "—"}</td>
-                    <td className="muted-text">{formatTime(folder.updatedAt)}</td>
-                    <td>
-                      <button className="link-btn" type="button" onClick={() => handleView(folder)}><Eye size={14} /> 查看</button>
-                      <button className="link-btn danger" type="button" onClick={() => setConfirmTarget({ type: "folder", id: folder.id, name: folder.name })}><Trash2 size={14} /> 删除</button>
-                    </td>
-                  </tr>
+                  <div className="zrow" key={folder.id}>
+                    <span style={{ display: "grid", width: 40, height: 40, placeItems: "center", borderRadius: 10, background: "#fdf3e0", color: "#d9901a", flexShrink: 0 }}>
+                      <Folder size={20} />
+                    </span>
+                    <div className="zrow-main">
+                      <strong style={{ fontSize: 14.5, color: "#17233b" }}>{folder.name}</strong>
+                      {folder.description ? <div style={{ fontSize: 12.5, color: "#8b98aa", margin: "2px 0 4px" }}>{folder.description}</div> : null}
+                      <div className="zrow-meta">
+                        <span>{folder.fileCount} 个文件</span>
+                        <span>{formatSize(folder.totalSize)}</span>
+                        <span>{folder.creatorName || "—"}</span>
+                        <span>{formatTime(folder.updatedAt)}</span>
+                      </div>
+                    </div>
+                    <div className="zops">
+                      <button type="button" onClick={() => handleView(folder)}><Eye size={14} /> 查看</button>
+                      <button className="zops-danger" type="button" onClick={() => setConfirmTarget({ type: "folder", id: folder.id, name: folder.name })}><Trash2 size={14} /> 删除</button>
+                    </div>
+                  </div>
                 ))}
-                {!filtered.length && <tr><td colSpan={7}><div className="empty">暂无文件夹，请点击「新建文件夹」创建。</div></td></tr>}
-              </DataTable>
+                {!filtered.length && <div className="empty" style={{ padding: "28px 0" }}>暂无文件夹，请点击「新建文件夹」创建。</div>}
+              </div>
             )}
 
             {/* ── 分页器 ── */}
