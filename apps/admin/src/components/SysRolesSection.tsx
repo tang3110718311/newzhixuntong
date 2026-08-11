@@ -3,6 +3,7 @@
 
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { DataTable, Field, statusBadge } from "./dashboard-shared";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
@@ -54,6 +55,7 @@ export function SysRolesSection() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [confirmTarget, setConfirmTarget] = useState<Role | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Role | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -128,8 +130,7 @@ export function SysRolesSection() {
   }
 
   async function handleDelete(role: Role) {
-    if (!window.confirm(`确认删除角色「${role.name}」？`)) return;
-    setError("");
+        setError("");
     try {
       await apiFetch<{ id: string }>(`/roles/${role.id}`, { method: "DELETE" });
       setMessage("角色已删除。");
@@ -165,7 +166,7 @@ export function SysRolesSection() {
                 <td>{statusBadge(role.status)}</td>
                 <td>
                   <button className="link-btn" type="button" onClick={() => openEdit(role)}><Pencil size={14} /> 编辑</button>
-                  <button className="link-btn danger" type="button" onClick={() => handleDelete(role)}><Trash2 size={14} /> 删除</button>
+                  <button className="link-btn danger" type="button" onClick={() => setConfirmTarget(role)}><Trash2 size={14} /> 删除</button>
                 </td>
               </tr>
             ))}
@@ -198,6 +199,13 @@ export function SysRolesSection() {
           </form>
         </div>
       )}
+      <ConfirmDialog
+        open={!!confirmTarget}
+        title="删除确认"
+        message={confirmTarget ? `确认删除角色「${confirmTarget.name}」？删除后不可恢复。` : ""}
+        onCancel={() => setConfirmTarget(null)}
+        onConfirm={() => { const t = confirmTarget; setConfirmTarget(null); if (t) void handleDelete(t); }}
+      />
     </section>
   );
 }

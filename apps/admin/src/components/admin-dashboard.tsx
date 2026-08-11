@@ -642,6 +642,7 @@ export function AdminDashboard() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [showSceneWizard, setShowSceneWizard] = useState(false);
+  const [showSceneModePicker, setShowSceneModePicker] = useState(false);
   const [sceneWizardStep, setSceneWizardStep] = useState(1);
   const sceneAttachmentInputRef = useRef<HTMLInputElement>(null);
   const [sceneAttachments, setSceneAttachments] = useState<Array<{ name: string; status: "uploading" | "done" | "failed"; error?: string }>>([]);
@@ -669,6 +670,8 @@ export function AdminDashboard() {
   ]);
   const [showTaskCreate, setShowTaskCreate] = useState(false);
   const [taskWizardStep, setTaskWizardStep] = useState(1);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importText, setImportText] = useState("");
   const [showIndustryCreate, setShowIndustryCreate] = useState(false);
   const [showOrgCreate, setShowOrgCreate] = useState(false);
   const [showUserCreate, setShowUserCreate] = useState(false);
@@ -697,6 +700,7 @@ export function AdminDashboard() {
   const [takeRemainingSeconds, setTakeRemainingSeconds] = useState(0);
   const [submittedAttempt, setSubmittedAttempt] = useState<ExamAttempt | null>(null);
   const [currentAttemptId, setCurrentAttemptId] = useState("");
+  const [viewingExamResult, setViewingExamResult] = useState<ExamAttempt | null>(null);
   const [viewExamBankId, setViewExamBankId] = useState("");
   const [examFormQuestions, setExamFormQuestions] = useState<ExamQuestion[]>([]);
 
@@ -1678,7 +1682,7 @@ export function AdminDashboard() {
                   </div>
                   <div className="toolbar">
                     <button className="btn" type="button" disabled={scenes.length === 0}>批量删除</button>
-                    <button className="btn primary" type="button" onClick={() => setShowSceneWizard(true)}><Plus size={16} /> 添加场景</button>
+                    <button className="btn primary" type="button" onClick={() => setShowSceneModePicker(true)}><Plus size={16} /> 添加场景</button>
                   </div>
                 </div>
 
@@ -1753,6 +1757,40 @@ export function AdminDashboard() {
                 </div>
 
 
+
+            {showSceneModePicker && (
+              <div className="modal-overlay" onClick={() => setShowSceneModePicker(false)}>
+                <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 560 }}>
+                  <div className="modal-head">
+                    <h2>选择场景创建模式</h2>
+                    <button className="link-btn" type="button" onClick={() => setShowSceneModePicker(false)}>×</button>
+                  </div>
+                  <p className="section-note" style={{ marginBottom: 18 }}>选择创建方式，AI 模式可快速生成，固定模式适合标准化流程训练。</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                    <button
+                      className="mode-choice"
+                      type="button"
+                      onClick={() => { setShowSceneModePicker(false); setSceneWizardStep(1); setShowSceneWizard(true); }}
+                      style={{ minHeight: 160, padding: 18, border: "1px solid var(--line)", borderRadius: 14, background: "#f2f7ff", textAlign: "left", cursor: "pointer" }}
+                    >
+                      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12, color: "#367ff0" }}>AI</div>
+                      <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>AI生成对话模式</h3>
+                      <p style={{ margin: 0, color: "#7b8da4", fontSize: 12, lineHeight: 1.7 }}>输入场景描述，由 AI 辅助生成角色、对话目标和评分规则，适合开放式沟通训练。</p>
+                    </button>
+                    <button
+                      className="mode-choice"
+                      type="button"
+                      onClick={() => { setShowSceneModePicker(false); setSceneWizardStep(2); setShowSceneWizard(true); }}
+                      style={{ minHeight: 160, padding: 18, border: "1px solid var(--line)", borderRadius: 14, background: "#f2fbff", textAlign: "left", cursor: "pointer" }}
+                    >
+                      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12, color: "#32a5bd" }}>固</div>
+                      <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>固定对话模式</h3>
+                      <p style={{ margin: 0, color: "#7b8da4", fontSize: 12, lineHeight: 1.7 }}>配置预设对话流程和话术节点，适合标准化、流程化的对话训练。</p>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {showSceneWizard && (
               <div className="modal-overlay" onClick={() => setShowSceneWizard(false)}>
@@ -2379,6 +2417,7 @@ export function AdminDashboard() {
                                   const allLearners = users.filter((u) => u.roleCode === "learner");
                                   setTaskForm({ ...taskForm, participantUserIds: allLearners.map((u) => u.id) });
                                 }}>选全员</button>
+                                <button className="btn" type="button" onClick={() => setShowImportModal(true)}>导入名单</button>
                                 <span className="field-hint" style={{ alignSelf: "center" }}>已选 {taskForm.participantUserIds.length} 名学员 / {taskForm.participantOrgIds.length} 个组织</span>
                               </div>
                               {users.filter((user) => user.roleCode === "learner").map((user) => (
@@ -2417,6 +2456,49 @@ export function AdminDashboard() {
                           )}
                         </div>
                       </form>
+                    </div>
+                  </div>
+                )}
+
+                {/* 导入名单弹窗 */}
+                {showImportModal && (
+                  <div className="modal-overlay" onClick={() => { setShowImportModal(false); setImportText(""); }}>
+                    <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 520 }}>
+                      <div className="modal-head">
+                        <h2>导入名单</h2>
+                        <button className="link-btn" type="button" onClick={() => { setShowImportModal(false); setImportText(""); }}>×</button>
+                      </div>
+                      <p className="section-note" style={{ marginBottom: 14 }}>粘贴学员手机号或姓名（每行一个），系统自动匹配学员。未匹配的将忽略。</p>
+                      <textarea
+                        value={importText}
+                        onChange={(e) => setImportText(e.target.value)}
+                        placeholder={"13800000000\n王小明\n13912345678"}
+                        style={{ width: "100%", minHeight: 140, border: "1px solid var(--line)", borderRadius: 10, padding: 12, fontSize: 13, resize: "vertical" }}
+                      />
+                      <div className="modal-actions">
+                        <button className="btn" type="button" onClick={() => { setShowImportModal(false); setImportText(""); }}>取消</button>
+                        <button
+                          className="btn primary"
+                          type="button"
+                          onClick={() => {
+                            const lines = importText.split("\n").map((l) => l.trim()).filter(Boolean);
+                            const learners = users.filter((u) => u.roleCode === "learner");
+                            const matched: string[] = [];
+                            const notMatched: string[] = [];
+                            for (const line of lines) {
+                              const found = learners.find((u) => u.mobile === line || u.name === line);
+                              if (found) matched.push(found.id);
+                              else notMatched.push(line);
+                            }
+                            setTaskForm((prev) => ({ ...prev, participantUserIds: Array.from(new Set([...prev.participantUserIds, ...matched])) }));
+                            setImportText("");
+                            setShowImportModal(false);
+                            setMessage(`已导入 ${matched.length} 名学员${notMatched.length ? `，${notMatched.length} 条未匹配（${notMatched.slice(0, 3).join("、")}${notMatched.length > 3 ? "…" : ""}）` : ""}。`);
+                          }}
+                        >
+                          确认添加
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -3042,7 +3124,29 @@ export function AdminDashboard() {
                 {/* 考试表格 */}
                 <div className="card section">
                   <DataTable headers={["考试名称", "考试类型", "考试时间", "成绩", "状态", "操作"]}>
-                    {[
+                    {examAttempts.length > 0 ? examAttempts.slice(0, 20).map((attempt, i) => {
+                      const statusLabel = attempt.status === "passed" ? "已通过" : attempt.status === "failed" ? "未通过" : "待参加";
+                      const statusClass = attempt.status === "passed" ? "green" : attempt.status === "failed" ? "red" : "amber";
+                      const scoreText = attempt.score != null && attempt.totalScore ? `${attempt.score}分` : "—";
+                      const actionLabel = attempt.status === "passed" ? "查看解析" : attempt.status === "failed" ? "重新考试" : "开始考试";
+                      const exam = exams.find((e) => e.id === attempt.examId);
+                      return (
+                        <tr key={attempt.id || i}>
+                          <td><strong>{attempt.examName || exam?.name || "考试"}</strong></td>
+                          <td>{exam?.status === "stage" ? "阶段考试" : exam?.status === "final" ? "结业考试" : "在线考试"}</td>
+                          <td className="muted-text">{attempt.startedAt ? new Date(attempt.startedAt).toLocaleString("zh-CN", { hour12: false }).slice(0, 16) : "—"}</td>
+                          <td>{scoreText}</td>
+                          <td><span className={`badge ${statusClass}`}>{statusLabel}</span></td>
+                          <td>
+                            {attempt.status === "passed" ? (
+                              <button className="link-btn" type="button" onClick={() => setViewingExamResult(attempt)}>查看解析</button>
+                            ) : (
+                              <button className="link-btn" type="button" disabled={submitting} onClick={() => { if (exam) void createExamAttemptAndStart(exam); else void resumeExamAttempt(attempt.examId); }}>{actionLabel}</button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    }) : [
                       { name: "客户服务沟通技巧", type: "在线考试", time: "2026-08-05 09:00—23:59", score: "—", status: "待参加", statusClass: "amber", action: "开始考试" },
                       { name: "安全生产基础知识", type: "阶段考试", time: "2026-07-28 14:00—15:00", score: "86分", status: "已通过", statusClass: "green", action: "查看解析" },
                       { name: "新员工入职培训考试", type: "结业考试", time: "2026-07-25 10:00—11:00", score: "58分", status: "未通过", statusClass: "red", action: "重新考试" },
@@ -3059,6 +3163,37 @@ export function AdminDashboard() {
                     ))}
                   </DataTable>
                 </div>
+
+                {/* 查看解析弹窗（学员成绩报告） */}
+                {viewingExamResult && (
+                  <div className="modal-overlay" onClick={() => setViewingExamResult(null)}>
+                    <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 620 }}>
+                      <div className="modal-head">
+                        <h2>学员成绩报告</h2>
+                        <button className="link-btn" type="button" onClick={() => setViewingExamResult(null)}>×</button>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 24px", padding: "16px 18px", background: "#f7faff", border: "1px solid #e8eff8", borderRadius: 12 }}>
+                        <div><span style={{ color: "#8494a8", fontSize: 12 }}>考试名称</span><b style={{ display: "block", marginTop: 5 }}>{viewingExamResult.examName || "考试"}</b></div>
+                        <div><span style={{ color: "#8494a8", fontSize: 12 }}>学员</span><b style={{ display: "block", marginTop: 5 }}>{viewingExamResult.userName || "—"}</b></div>
+                        <div><span style={{ color: "#8494a8", fontSize: 12 }}>完成时间</span><b style={{ display: "block", marginTop: 5 }}>{viewingExamResult.finishedAt ? new Date(viewingExamResult.finishedAt).toLocaleString("zh-CN", { hour12: false }) : "—"}</b></div>
+                        <div><span style={{ color: "#8494a8", fontSize: 12 }}>用时</span><b style={{ display: "block", marginTop: 5 }}>{viewingExamResult.durationSeconds ? `${Math.round(viewingExamResult.durationSeconds / 60)} 分钟` : "—"}</b></div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 18, padding: "14px 18px", borderRadius: 12, background: viewingExamResult.status === "passed" ? "#f0fbf5" : "#fff4f0", color: viewingExamResult.status === "passed" ? "#318b68" : "#dc7662" }}>
+                        <span>本次成绩</span>
+                        <strong style={{ fontSize: 20 }}>{viewingExamResult.score}{viewingExamResult.totalScore ? ` / ${viewingExamResult.totalScore}` : ""} 分</strong>
+                      </div>
+                      <div style={{ marginTop: 16, color: "#71849d", fontSize: 13, lineHeight: 1.8 }}>
+                        {viewingExamResult.status === "passed" ? "已通过本次考试，成绩合格。建议回顾错题解析，巩固薄弱知识点。" : "未通过本次考试。建议重新学习相关资料后再次参加考试。"}
+                      </div>
+                      <div className="modal-actions">
+                        <button className="btn" type="button" onClick={() => setViewingExamResult(null)}>关闭</button>
+                        {viewingExamResult.status === "failed" && (
+                          <button className="btn primary" type="button" onClick={() => { const exam = exams.find((e) => e.id === viewingExamResult.examId); setViewingExamResult(null); if (exam) void createExamAttemptAndStart(exam); }}>重新考试</button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* 右侧3卡 */}

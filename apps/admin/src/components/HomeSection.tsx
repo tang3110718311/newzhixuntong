@@ -336,7 +336,7 @@ export function HomeSection({ auth, submitting, onRefresh }: HomeProps) {
         <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", flexShrink: 0 }}>
           <span style={{ fontSize: 12, background: "#f0fdf4", color: C.green, padding: "4px 10px", borderRadius: 4, whiteSpace: "nowrap" }}>优势：{advantage}</span>
           <span style={{ fontSize: 12, background: "#fef2f2", color: C.red, padding: "4px 10px", borderRadius: 4, whiteSpace: "nowrap" }}>风险：{risk}</span>
-          <button className="link-btn" type="button" style={{ fontSize: 12 }}>查看建议 →</button>
+          <button className="link-btn" type="button" style={{ fontSize: 12 }} onClick={() => navigateTo("/practice")}>查看建议 →</button>
         </div>
       </div>
     );
@@ -431,7 +431,7 @@ export function HomeSection({ auth, submitting, onRefresh }: HomeProps) {
             <h2 style={{ margin: 0, fontSize: 16, color: C.text1, fontWeight: 600 }}>团队成员完成情况</h2>
             <span style={{ color: C.text3, fontSize: 12 }}>按完成率与能力分排序</span>
           </div>
-          <button className="link-btn" type="button" style={{ fontSize: 13, color: C.brand }}>查看全部成员 →</button>
+          <button className="link-btn" type="button" style={{ fontSize: 13, color: C.brand }} onClick={() => navigateTo("/?section=statistics-learner")}>查看全部成员 →</button>
         </div>
         <div className="table-wrap">
           <table>
@@ -472,7 +472,7 @@ export function HomeSection({ auth, submitting, onRefresh }: HomeProps) {
             <h2 style={{ margin: 0, fontSize: 16, color: C.text1, fontWeight: 600 }}>高频失分问题</h2>
             <span style={{ color: C.text3, fontSize: 12 }}>AI 错题库识别训练与考试高频归因</span>
           </div>
-          <button className="link-btn" type="button" style={{ fontSize: 13, color: C.brand }}>查看全部问题 →</button>
+          <button className="link-btn" type="button" style={{ fontSize: 13, color: C.brand }} onClick={() => navigateTo("/?section=statistics-dept")}>查看全部问题 →</button>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {DEDUCTION_TOP3.map((d, i) => (
@@ -626,7 +626,7 @@ export function HomeSection({ auth, submitting, onRefresh }: HomeProps) {
               <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", flexShrink: 0 }}>
                 <span style={{ fontSize: 12, background: "#f0fdf4", color: C.green, border: "1px solid #b7eb8f", padding: "4px 10px", borderRadius: 4, whiteSpace: "nowrap" }}>优势: 参与覆盖率1</span>
                 <span style={{ fontSize: 12, background: "#fff7ed", color: C.orange, border: "1px solid #ffd591", padding: "4px 10px", borderRadius: 4, whiteSpace: "nowrap" }}>风险: 需求挖掘低分</span>
-                <button className="link-btn" type="button" style={{ fontSize: 12, color: C.brand }}>查看建议</button>
+                <button className="link-btn" type="button" style={{ fontSize: 12, color: C.brand }} onClick={() => navigateTo("/practice")}>查看建议</button>
               </div>
             </div>
 

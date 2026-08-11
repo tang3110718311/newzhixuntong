@@ -3,6 +3,7 @@
 
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { DataTable, Field, statusBadge, type Organization } from "./dashboard-shared";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
@@ -55,6 +56,7 @@ export function SysPostsSection({ organizations }: { organizations: Organization
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [confirmTarget, setConfirmTarget] = useState<Post | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Post | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -116,8 +118,7 @@ export function SysPostsSection({ organizations }: { organizations: Organization
   }
 
   async function handleDelete(post: Post) {
-    if (!window.confirm(`确认删除岗位「${post.name}」？`)) return;
-    setError("");
+        setError("");
     try {
       await apiFetch<{ id: string }>(`/posts/${post.id}`, { method: "DELETE" });
       setMessage("岗位已删除。");
@@ -158,7 +159,7 @@ export function SysPostsSection({ organizations }: { organizations: Organization
                 <td>{statusBadge(post.status)}</td>
                 <td>
                   <button className="link-btn" type="button" onClick={() => openEdit(post)}><Pencil size={14} /> 编辑</button>
-                  <button className="link-btn danger" type="button" onClick={() => handleDelete(post)}><Trash2 size={14} /> 删除</button>
+                  <button className="link-btn danger" type="button" onClick={() => setConfirmTarget(post)}><Trash2 size={14} /> 删除</button>
                 </td>
               </tr>
             ))}
@@ -198,6 +199,13 @@ export function SysPostsSection({ organizations }: { organizations: Organization
           </form>
         </div>
       )}
+      <ConfirmDialog
+        open={!!confirmTarget}
+        title="删除确认"
+        message={confirmTarget ? `确认删除岗位「${confirmTarget.name}」？删除后不可恢复。` : ""}
+        onCancel={() => setConfirmTarget(null)}
+        onConfirm={() => { const t = confirmTarget; setConfirmTarget(null); if (t) void handleDelete(t); }}
+      />
     </section>
   );
 }

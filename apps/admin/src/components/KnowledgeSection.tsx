@@ -5,6 +5,7 @@
 import { Plus, Folder, Eye, Trash2, ChevronUp } from "lucide-react";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { DataTable, Field, type AuthSession, type TrainingRecord } from "./dashboard-shared";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 
@@ -157,6 +158,8 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
   const fileInputRef = useRef<HTMLInputElement>(null);
   // 文件预览
   const [previewFile, setPreviewFile] = useState<KnowledgeFile | null>(null);
+  // 删除确认（弹窗化）
+  const [confirmTarget, setConfirmTarget] = useState<{ type: "file" | "folder"; id: string; name: string } | null>(null);
 
   // Search & filter state
   const [searchText, setSearchText] = useState("");
@@ -231,13 +234,12 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
     }
   }
 
-  async function handleDeleteFile(file: KnowledgeFile) {
-    if (!window.confirm(`确认删除文件「${file.name}」？`)) return;
+  async function handleDeleteFile(fileId: string, folderId: string) {
     setError("");
     try {
-      await apiFetch<{ id: string }>(`/knowledge/files/${file.id}`, { method: "DELETE" });
+      await apiFetch<{ id: string }>(`/knowledge/files/${fileId}`, { method: "DELETE" });
       setMessage("文件已删除。");
-      await loadFiles(file.folderId);
+      await loadFiles(folderId);
       await loadFolders();
     } catch (err) {
       setError(err instanceof Error ? err.message : "删除失败");
@@ -283,13 +285,12 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
     }
   }
 
-  async function handleDelete(folder: Folder) {
-    if (!window.confirm(`确认删除文件夹「${folder.name}」？`)) return;
+  async function handleDelete(folderId: string) {
     setError("");
     try {
-      await apiFetch<{ id: string }>(`/knowledge/${folder.id}`, { method: "DELETE" });
+      await apiFetch<{ id: string }>(`/knowledge/${folderId}`, { method: "DELETE" });
       setMessage("文件夹已删除。");
-      if (expandedFolder?.id === folder.id) setExpandedFolder(null);
+      if (expandedFolder?.id === folderId) setExpandedFolder(null);
       await loadFolders();
     } catch (err) {
       setError(err instanceof Error ? err.message : "删除失败");
@@ -386,7 +387,7 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
                     <td className="muted-text">{formatTime(folder.updatedAt)}</td>
                     <td>
                       <button className="link-btn" type="button" onClick={() => handleView(folder)}><Eye size={14} /> 查看</button>
-                      <button className="link-btn danger" type="button" onClick={() => handleDelete(folder)}><Trash2 size={14} /> 删除</button>
+                      <button className="link-btn danger" type="button" onClick={() => setConfirmTarget({ type: "folder", id: folder.id, name: folder.name })}><Trash2 size={14} /> 删除</button>
                     </td>
                   </tr>
                 ))}
@@ -519,7 +520,7 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
                         <td className="muted-text">{formatTime(file.createdAt)}</td>
                         <td>
                           <button className="link-btn" type="button" style={{ color: "#4080ff" }} onClick={() => setPreviewFile(file)}>查看</button>
-                          <button className="link-btn danger" type="button" style={{ color: "#ed2633" }} onClick={() => handleDeleteFile(file)}>删除</button>
+                          <button className="link-btn danger" type="button" style={{ color: "#ed2633" }} onClick={() => setConfirmTarget({ type: "file", id: file.id, name: file.name })}>删除</button>
                         </td>
                       </tr>
                     );
@@ -603,6 +604,23 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
           </div>
         </div>
       )}
+      {/* ── 删除确认弹窗 ── */}
+      <ConfirmDialog
+        open={!!confirmTarget}
+        title="删除确认"
+        message={confirmTarget ? `确认删除${confirmTarget.type === "folder" ? "文件夹" : "文件"}「${confirmTarget.name}」？删除后不可恢复。` : ""}
+        onCancel={() => setConfirmTarget(null)}
+        onConfirm={() => {
+          const t = confirmTarget;
+          setConfirmTarget(null);
+          if (!t) return;
+          if (t.type === "folder") void handleDelete(t.id);
+          else {
+            const f = files.find((x) => x.id === t.id);
+            void handleDeleteFile(t.id, f?.folderId ?? "");
+          }
+        }}
+      />
     </section>
   );
 }
