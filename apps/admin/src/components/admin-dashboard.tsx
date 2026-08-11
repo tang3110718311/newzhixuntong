@@ -346,9 +346,9 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
 
 const initialLoginForm = {
-  tenantCode: "zxt-demo",
   mobile: "",
   password: "",
+  code: "",
 };
 
 function readStoredAuth(): AuthSession | null {
@@ -610,6 +610,7 @@ export function AdminDashboard() {
   const [activeSection, setActiveSection] = useState<ActiveSection>("overview");
   const [auth, setAuth] = useState<AuthSession | null>(null);
   const [loginForm, setLoginForm] = useState(initialLoginForm);
+  const [codeCountdown, setCodeCountdown] = useState(0);
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [industries, setIndustries] = useState<IndustryPackage[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -801,6 +802,32 @@ export function AdminDashboard() {
       setError(err instanceof Error ? err.message : "登录失败");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleSendCode() {
+    const mobile = loginForm.mobile.trim();
+    if (!mobile) { setError("请输入手机号后再获取验证码。"); return; }
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/auth/send-code`, {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mobile }),
+      });
+      const payload = (await response.json()) as ApiResponse<{ expiresIn: number }>;
+      if (!payload.success) throw new Error(payload.message || "发送失败");
+      setMessage(`验证码已发送至 ${mobile}（本地环境验证码 666666）`);
+      setCodeCountdown(60);
+      const timer = window.setInterval(() => {
+        setCodeCountdown((prev) => {
+          if (prev <= 1) { window.clearInterval(timer); return 0; }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "验证码发送失败");
     }
   }
 
@@ -1416,15 +1443,22 @@ export function AdminDashboard() {
             <LockKeyhole size={22} />
             <div>
               <h1>进入训练管理台</h1>
-              <p>使用租户编码、手机号和密码登录。</p>
+              <p>使用手机号、密码和验证码登录，登录后选择企业租户。</p>
             </div>
           </div>
           {error ? <div className="notice"><AlertCircle size={16} /> {error}</div> : null}
-          <Field label="租户编码"><input value={loginForm.tenantCode} onChange={(e) => setLoginForm({ ...loginForm, tenantCode: e.target.value })} required /></Field>
-              <Field label="手机号"><input value={loginForm.mobile} onChange={(e) => setLoginForm({ ...loginForm, mobile: e.target.value })} required /></Field>
-              <Field label="密码"><input value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} type="password" required /></Field>
+              <Field label="手机号"><input value={loginForm.mobile} onChange={(e) => setLoginForm({ ...loginForm, mobile: e.target.value })} placeholder="请输入手机号" required /></Field>
+              <Field label="密码"><input value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} type="password" placeholder="请输入密码" required /></Field>
+              <Field label="验证码">
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input value={loginForm.code} onChange={(e) => setLoginForm({ ...loginForm, code: e.target.value })} placeholder="请输入验证码" style={{ flex: 1 }} required />
+                  <button className="btn" type="button" disabled={!!codeCountdown || submitting} onClick={handleSendCode} style={{ whiteSpace: "nowrap", minWidth: 110 }}>
+                    {codeCountdown > 0 ? `${codeCountdown}s 后重发` : "获取验证码"}
+                  </button>
+                </div>
+              </Field>
               <button className="btn primary full" disabled={submitting} type="submit"><LockKeyhole size={16} /> 登录</button>
-            <p className="login-hint">本地验证默认账号：zxt-demo / 13800000000 / Zxt@2026</p>
+            <p className="login-hint">本地验证默认账号：13800000000 / Zxt@2026，验证码 666666</p>
         </form>
       </div>
     );

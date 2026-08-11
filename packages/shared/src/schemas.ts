@@ -43,9 +43,13 @@ export const createUserSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  tenantCode: z.string().min(2).max(60),
   mobile: z.string().min(6).max(30),
   password: z.string().min(8).max(128),
+  code: z.string().min(4).max(10),
+});
+
+export const sendCodeSchema = z.object({
+  mobile: z.string().min(6).max(30),
 });
 
 export const changePasswordSchema = z.object({

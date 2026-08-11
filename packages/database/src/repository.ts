@@ -353,8 +353,9 @@ function stripPassword(row: AuthUserWithPassword): AuthUserRow {
   return user;
 }
 
-export function loginWithPassword(input: { tenantCode: string; mobile: string; password: string; userAgent?: string; ip?: string }): AuthSessionRow | undefined {
-  const user = selectAuthUserWhere("t.code = ? and u.mobile = ?", [input.tenantCode, input.mobile]);
+export function loginWithPassword(input: { mobile: string; password: string; userAgent?: string; ip?: string }): AuthSessionRow | undefined {
+  // 按手机号匹配激活租户下的用户（同一手机号多租户时取最近登录的租户；登录后可选租户）
+  const user = selectAuthUserWhere("u.mobile = ?", [input.mobile]);
   if (!user || user.status !== "active" || !user.passwordHash || !verifyPassword(input.password, user.passwordHash)) return undefined;
 
   const token = randomBytes(32).toString("base64url");

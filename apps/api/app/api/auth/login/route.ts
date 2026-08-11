@@ -45,6 +45,12 @@ function getClientIp(request: Request) {
   return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "";
 }
 
+// 本地环境模拟验证码（无短信通道）；接入真实短信后替换为校验存储的验证码
+function verifyLoginCode(_mobile: string, code: string): boolean {
+  const expected = process.env.LOGIN_CODE_OVERRIDE || "666666";
+  return code === expected;
+}
+
 export async function POST(request: Request) {
   try {
     await ensureDb();
@@ -55,14 +61,21 @@ export async function POST(request: Request) {
       throw new HttpError("LOGIN_ATTEMPTS_EXCEEDED", "登录失败次数过多，请 15 分钟后再试。", 429);
     }
 
+    // 验证码校验（本地模拟；接入短信后改为校验真实验证码）
+    if (!verifyLoginCode(body.mobile, body.code)) {
+      throw new HttpError("INVALID_CODE", "验证码不正确或已过期。", 401);
+    }
+
+    // 手机号 + 密码登录：按手机号匹配激活租户下的用户（SaaS 多租户时登录后进入租户选择）
     const session = loginWithPassword({
-      ...body,
+      mobile: body.mobile,
+      password: body.password,
       userAgent: request.headers.get("user-agent") || "",
       ip: getClientIp(request),
     });
     if (!session) {
       recordFailure(key);
-      throw new HttpError("INVALID_CREDENTIALS", "租户、手机号或密码不正确。", 401);
+      throw new HttpError("INVALID_CREDENTIALS", "手机号或密码不正确。", 401);
     }
 
     clearKey(key);
