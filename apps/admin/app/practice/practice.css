@@ -536,6 +536,23 @@
   border-radius: 10px;
   overflow: hidden;
 }
+.pc-auto-send {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.pc-auto-send.on {
+  background: rgba(22, 163, 74, 0.1);
+  border-color: rgba(22, 163, 74, 0.4);
+  color: #16a34a;
+}
 .pc-mode button {
   border: none;
   background: #fff;

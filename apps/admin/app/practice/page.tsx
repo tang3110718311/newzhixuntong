@@ -168,6 +168,21 @@ export default function PracticePage() {
   const [isRecording, setIsRecording] = useState(false);
   // 实时识别回显文本(流式录音时动态更新)
   const [liveTranscript, setLiveTranscript] = useState("");
+  // 语音识别后自动发送开关(默认关=识别文字回显到输入框,确认后再发送)
+  const [autoSendVoice, setAutoSendVoice] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("zxt-practice-auto-send-voice") === "1";
+  });
+  const autoSendVoiceRef = useRef(autoSendVoice);
+
+  const toggleAutoSendVoice = useCallback(() => {
+    setAutoSendVoice((prev) => {
+      const next = !prev;
+      autoSendVoiceRef.current = next;
+      localStorage.setItem("zxt-practice-auto-send-voice", next ? "1" : "0");
+      return next;
+    });
+  }, []);
   // 每个场景固定一种声音（进入场景时随机男女声，整个场景不变）
   const [ttsVoice, setTtsVoice] = useState<string | null>(null);
 
@@ -611,7 +626,13 @@ export default function PracticePage() {
         try {
           const data = await apiPost<{ text: string }>(`/ai/stt/transcribe`, { audioBase64, format });
           if (data.text && data.text.trim()) {
-            void sendChatMessage(data.text);
+            const text = data.text.trim();
+            if (autoSendVoiceRef.current) {
+              void sendChatMessage(text);
+            } else {
+              setChatInput(text);
+              setError("");
+            }
           } else {
             setError("未识别到语音内容，请改用文字或重试。");
           }
@@ -651,7 +672,15 @@ export default function PracticePage() {
         const finalText = live.finalText;
         setLiveTranscript("");
         if (finalText && finalText.trim()) {
-          void sendChatMessage(finalText.trim());
+          const text = finalText.trim();
+          if (autoSendVoiceRef.current) {
+            // 开关打开：识别后自动发送
+            void sendChatMessage(text);
+          } else {
+            // 默认：回显到输入框，学员确认/修改后点发送
+            setChatInput(text);
+            setError("");
+          }
         } else {
           setError("未识别到语音内容，请改用文字或重试。");
         }
@@ -883,6 +912,16 @@ export default function PracticePage() {
                   <button className={voiceMode ? "active" : ""} type="button" onClick={() => setVoiceMode(true)}>语音模式</button>
                   <button className={!voiceMode ? "active" : ""} type="button" onClick={() => setVoiceMode(false)}>文本模式</button>
                 </span>
+                {voiceMode && (
+                  <button
+                    className={`pc-auto-send${autoSendVoice ? " on" : ""}`}
+                    type="button"
+                    onClick={toggleAutoSendVoice}
+                    title={autoSendVoice ? "语音识别后自动发送（点击关闭）" : "语音识别后回显确认再发送（点击开启自动发送）"}
+                  >
+                    {autoSendVoice ? "语音自动发送" : "回显确认"}
+                  </button>
+                )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {!chatFinished && (

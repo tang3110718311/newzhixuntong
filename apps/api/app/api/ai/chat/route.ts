@@ -8,6 +8,9 @@ import { Converter } from "opencc-js";
 // 繁体转简体（硬保证，防止模型偶发输出繁体）
 const toSimplified = Converter({ from: "t", to: "cn" });
 
+// 跑题连续计数（按会话 sessionId，进程内存；单实例部署有效，重启归零可接受）
+const offTopicCountBySession = new Map<string, number>();
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -157,23 +160,42 @@ export async function POST(request: Request) {
       apiMessages.push({ role: "system" as const, content: "对话已达最大轮次（20轮），请在回复末尾附上【训练结束】标记并给出简要评价总结。这是强制指令。" });
     }
 
-    // 跑题/敷衍检测（服务端确定性兜底，不依赖 AI 角色扮演自觉）：
-    // 1) 规则层：连续 3 条学员消息为敷衍/过短 → 强制结束
-    // 2) LLM 层：规则未命中时，轻量判定最近学员回复是否持续跑题（连续≥2次）→ 强制结束
-    const weakStreak = countConsecutiveWeakReplies(body.messages);
-    if (!forceFinished && weakStreak >= 3) {
-      forceFinished = true;
-      apiMessages.push({ role: "system" as const, content: "学员已连续多次敷衍/跑题应答（答非所问、无实质内容或索要答案）。请以角色身份简要指出问题，并在回复末尾附上【训练结束】标记，给出简要评分依据。这是强制指令，不得忽略。" });
-    } else if (!forceFinished && learnerMessageCount >= 2) {
-      try {
-        const repeatedOffTopic = await judgeRepeatedOffTopic(body.messages, sceneDetail, config);
-        if (repeatedOffTopic) {
-          forceFinished = true;
-          apiMessages.push({ role: "system" as const, content: "检测到学员持续跑题/偏离训练主题。请立即结束训练：在回复末尾附上【训练结束】标记，给出简要评价与评分依据。这是强制指令，不得忽略。" });
+    // 跑题/敷衍检测（分级纠偏，服务端确定性兜底，不依赖 AI 角色扮演自觉，也不依赖 LLM 输出标记）：
+    //   连续第1次跑题 → AI 温和提醒（不结束）
+    //   连续第2次跑题 → AI 严肃警告（不结束）
+    //   连续第3次跑题 → 强制结束 + 评分
+    // 计数按 sessionId 存于进程内存；学员回到正题正常应答一轮则重置。
+    const sessionKey = body.sessionId || "default";
+    let offTopicNow = false;
+    const lastLearner = [...body.messages].reverse().find((m) => m.role === "learner");
+    if (lastLearner) {
+      // 规则层：最后一条学员消息弱应答/敷衍
+      offTopicNow = isWeakOrOffTopicReply(lastLearner.content);
+      // LLM 层：规则未命中时轻量判定最后一条是否明显跑题
+      if (!offTopicNow && learnerMessageCount >= 2) {
+        try {
+          offTopicNow = await judgeLastOffTopic(lastLearner.content, sceneDetail, config);
+        } catch {
+          offTopicNow = false; // LLM 判定失败不影响主流程
         }
-      } catch {
-        // LLM 判定失败不影响主流程
       }
+    }
+    let offTopicCount = offTopicCountBySession.get(sessionKey) || 0;
+    if (!forceFinished && offTopicNow) {
+      offTopicCount += 1;
+      offTopicCountBySession.set(sessionKey, offTopicCount);
+      if (offTopicCount >= 3) {
+        // 连续第 3 次跑题 → 强制结束
+        forceFinished = true;
+        apiMessages.push({ role: "system" as const, content: "学员已连续多次跑题/敷衍（已被提醒两次）。请立即结束训练：在回复末尾附上【训练结束】标记，指出学员跑题问题，给出简要评分依据。这是强制指令，不得忽略。" });
+      } else {
+        // 连续第 1/2 次：不结束，要求 AI 以角色身份提醒回主题
+        apiMessages.push({ role: "system" as const, content: `学员已连续${offTopicCount}次跑题或敷衍。请以角色身份${offTopicCount === 1 ? "温和提醒" : "严肃警告"}学员回到训练主题（不要说教、不要结束训练，继续推进对话）。这是强制指令。` });
+      }
+    } else if (lastLearner) {
+      // 正常应答：重置连续跑题计数
+      if (offTopicCountBySession.has(sessionKey)) offTopicCountBySession.delete(sessionKey);
+      offTopicCount = 0;
     }
 
     const endpoint = normalizeUrl(config.baseUrl);
@@ -259,7 +281,7 @@ export async function POST(request: Request) {
       traceId,
     });
 
-    return ok({ aiReply, isFinished, trainingRecord, recordPending, coachTip, emotion, round: learnerMessageCount }, traceId);
+    return ok({ aiReply, isFinished, trainingRecord, recordPending, coachTip, emotion, round: learnerMessageCount, remindCount: offTopicCount }, traceId);
   } catch (error) {
     if (tenantIdForLog) {
       try {
@@ -314,23 +336,34 @@ function countConsecutiveWeakReplies(messages: ChatMessage[]): number {
   return count;
 }
 
-/** LLM 轻量判定：学员最近是否持续跑题（最近回复中明显偏离训练主题/敷衍的比例高） */
-async function judgeRepeatedOffTopic(
-  messages: ChatMessage[],
+/** 从对话历史中统计已发出的跑题提醒次数（[REMIND:N] 标记，取最大 N） */
+function countRemindMarks(messages: ChatMessage[]): number {
+  let max = 0;
+  for (const m of messages) {
+    if (m.role !== "ai") continue;
+    const match = m.content.match(/\[REMIND:(\d+)\]/);
+    if (match) {
+      const n = Number(match[1]);
+      if (n > max) max = n;
+    }
+  }
+  return max;
+}
+
+/** LLM 轻量判定：单条学员回复是否明显跑题/敷衍（相对训练主题） */
+async function judgeLastOffTopic(
+  reply: string,
   sceneDetail: NonNullable<ReturnType<typeof getSceneDetail>>,
   config: { baseUrl: string; apiKeyEncrypted: string; modelName: string },
 ): Promise<boolean> {
-  // 只提取学员回复给裁判（不夹杂 AI 角色台词，避免干扰）
-  const learnerReplies = messages.filter((m) => m.role === "learner").slice(-4);
-  if (learnerReplies.length < 2) return false;
   const sceneName = sceneDetail.scene.name;
   const targetRole = sceneDetail.roles.find((r) => r.roleType === "learner")?.identity || "学员";
   const prompt = [
     `训练主题：${sceneName}（训练对象：${targetRole}）。`,
-    "下面是学员最近的几条回复。判断学员是否明显跑题：回复与训练主题无关（聊无关话题）、答非所问、纯敷衍应付（如“好的”“嗯”“不知道”“随便”等无实质内容）。",
-    "如果学员回复中至少 2 条明显跑题或敷衍，result 为 true；否则为 false。",
+    "判断学员这条回复是否明显跑题或敷衍：与训练主题无关（聊无关话题）、答非所问、纯敷衍应付（如“好的”“嗯”“不知道”“随便”等无实质内容）。",
     "学员回复：",
-    ...learnerReplies.map((m, i) => `${i + 1}. ${m.content.slice(0, 100)}`),
+    `"${(reply || "").slice(0, 150)}"`,
+    "只输出 JSON：{\"result\": true} 或 {\"result\": false}。",
   ].join("\n");
 
   const endpoint = normalizeUrl(config.baseUrl);
@@ -355,7 +388,6 @@ async function judgeRepeatedOffTopic(
     const parsed = JSON.parse(content) as { result?: unknown };
     return parsed.result === true;
   } catch {
-    // 兼容非 JSON 输出（如直接输出 true/false）
     return content.toLowerCase().includes("true");
   }
 }
