@@ -131,36 +131,51 @@ function statusBadgeClass(status: string) {
 
 // ---------- 学习步骤组件 ----------
 
-function StepItem({ num, title, desc, actionLabel, onAction, disabled }: {
+function StepItem({ num, title, desc, actionLabel, onAction, disabled, state }: {
   num: number; title: string; desc: string;
   actionLabel: string; onAction?: () => void; disabled?: boolean;
+  state?: "current" | "done" | "locked";
 }) {
+  const st = state ?? (disabled ? "locked" : "current");
+  // 原型三态：current 蓝渐变白字 / done 绿色 / locked 半透明灰
+  const bg = st === "current" ? "linear-gradient(110deg,#327de7,#3676df)" : st === "done" ? "#f7fdf9" : "#fafbfc";
+  const border = st === "current" ? "#327de7" : st === "done" ? "#bce9d3" : "#e4ebf5";
+  const titleColor = st === "current" ? "#fff" : st === "done" ? "#172b4d" : "#8b98aa";
+  const descColor = st === "current" ? "#dbeaff" : "#8291a5";
+  const numBg = st === "current" ? "rgba(255,255,255,0.25)" : st === "done" ? "#e4f8ed" : "#eef1f5";
+  const numColor = st === "current" ? "#fff" : st === "done" ? "#27a66d" : "#a0aab8";
+  const btnBg = st === "current" ? "#fff" : st === "done" ? "#52c41a" : "#d9d9d9";
+  const btnColor = st === "current" ? "#327de7" : "#fff";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 0", borderTop: "1px solid #f0f0f0" }}>
-      {/* 左侧蓝色圆形数字 */}
-      <span style={{
-        width: 32, height: 32, borderRadius: "50%",
-        background: disabled ? "#d9d9d9" : "#4E63F0",
-        color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 14, fontWeight: 700, flexShrink: 0,
-      }}>
-        {num}
-      </span>
-      {/* 中间文字 */}
-      <div style={{ flex: 1 }}>
-        <strong style={{ display: "block", fontSize: 14, color: "#172b4d" }}>{title}</strong>
-        <span style={{ fontSize: 12, color: "#8b98aa" }}>{desc}</span>
+    <div style={{
+      display: "flex", flexDirection: "column", gap: 10,
+      padding: "15px 16px", borderRadius: 13,
+      border: `1px solid ${border}`,
+      background: bg,
+      minWidth: 0, opacity: st === "locked" ? 0.58 : 1,
+      boxShadow: st === "current" ? "0 10px 24px rgba(47,116,235,0.2)" : "0 5px 16px rgba(65,94,156,0.04)",
+      transition: "all 0.2s",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{
+          width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 12, fontWeight: 800,
+          background: numBg, color: numColor,
+        }}>
+          {st === "done" ? "✓" : st === "locked" ? "🔒" : num}
+        </span>
+        <h3 style={{ margin: 0, fontSize: 13, color: titleColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</h3>
       </div>
-      {/* 右侧按钮 */}
+      <p style={{ margin: "0 0 0 38px", fontSize: 11, color: descColor, lineHeight: 1.6 }}>{desc}</p>
       <button
         type="button"
         disabled={disabled}
         onClick={onAction}
         style={{
-          padding: "6px 20px", borderRadius: 6, fontSize: 13, fontWeight: 500,
+          marginLeft: 38, padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600,
           border: "none", cursor: disabled ? "not-allowed" : "pointer",
-          background: disabled ? "#f5f5f5" : "#4E63F0",
-          color: disabled ? "#bfbfbf" : "#fff",
+          background: btnBg, color: btnColor, alignSelf: "flex-start",
         }}
       >
         {actionLabel}
@@ -244,7 +259,7 @@ export default function TaskDetailPage() {
             <span style={{
               padding: "2px 10px", borderRadius: 4, fontSize: 12, fontWeight: 500,
               background: task.status === "completed" ? "#f6ffed" : task.status === "overdue" ? "#fff7e6" : "#e6f4ff",
-              color: task.status === "completed" ? "#52c41a" : task.status === "overdue" ? "#e6a23c" : "#4E63F0",
+              color: task.status === "completed" ? "#52c41a" : task.status === "overdue" ? "#e6a23c" : "#327de7",
             }}>
               {statusLabel(task.status)}
             </span>
@@ -263,8 +278,8 @@ export default function TaskDetailPage() {
         <p style={{ margin: "4px 0 0", color: "#8b98aa", fontSize: 13 }}>任务编号: {task.code || task.id}</p>
       </div>
 
-      {/* ===== 2. 任务描述 ===== */}
-      <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+      {/* ===== 2. 任务描述（原型：蓝色左边条卡片） ===== */}
+      <div className="card" style={{ padding: "20px 25px", marginBottom: 20, borderLeft: "5px solid #357feb" }}>
         <h3 style={{ margin: "0 0 8px", fontSize: 15, color: "#172b4d", fontWeight: 600 }}>任务描述</h3>
         <p style={{ color: "#52657f", lineHeight: 1.7, marginBottom: 16, fontSize: 14 }}>
           {task.description || "完成场景学习、对练与考试。"}
@@ -322,13 +337,13 @@ export default function TaskDetailPage() {
                   minWidth: 0, opacity: locked ? 0.45 : 1,
                   background: completed
                     ? (active ? "#52c41a" : "#f6ffed")
-                    : (active ? "linear-gradient(135deg, #4E63F0 0%, #6B7FF0 100%)" : "#f7f8fa"),
+                    : (active ? "linear-gradient(110deg, #327de7 0%, #3676df 100%)" : "#f7f8fa"),
                   color: locked
                     ? "#bfbfbf"
                     : completed
                       ? (active ? "#fff" : "#52c41a")
                       : (active ? "#fff" : "#52657f"),
-                  boxShadow: active && !locked ? "0 2px 8px rgba(78,99,240,0.25)" : "0 1px 2px rgba(0,0,0,0.04)",
+                  boxShadow: active && !locked ? "0 2px 8px rgba(50,125,231,0.25)" : "0 1px 2px rgba(0,0,0,0.04)",
                   transition: "all 0.2s",
                   width: "calc(33.33% - 8px)",
                   flexShrink: 0,
@@ -383,38 +398,45 @@ export default function TaskDetailPage() {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-            {/* 左侧：学习步骤流 */}
+            {/* 左侧：学习步骤流（原型横排 3 tab + 箭头） */}
             <div>
               <div style={{ marginBottom: 12 }}>
                 <h3 style={{ margin: 0, fontSize: 14, color: "#172b4d", fontWeight: 600 }}>场景学习</h3>
                 <span style={{ fontSize: 12, color: "#8b98aa" }}>{currentScene.sceneName || "场景名称"}</span>
               </div>
 
-              <StepItem
-                num={1}
-                title="资料学习"
-                desc="查看学习资料，掌握场景要点。"
-                actionLabel="开始学习"
-                onAction={() => {}}
-              />
-              <StepItem
-                num={2}
-                title="AI对练"
-                desc="与AI进行模拟对练训练。"
-                actionLabel="开始对练"
-                onAction={() => startPractice(currentScene)}
-              />
-              <StepItem
-                num={3}
-                title="场景考试"
-                desc="完成场景相关综合能力测评。"
-                actionLabel="开始考试"
-                disabled
-              />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 26px 1fr 26px 1fr", gap: 10, alignItems: "center", marginBottom: 12 }}>
+                <StepItem
+                  num={1}
+                  title="资料学习"
+                  desc="查看学习资料，掌握场景要点。"
+                  actionLabel="开始学习"
+                  onAction={() => {}}
+                  state="current"
+                />
+                <span style={{ textAlign: "center", color: "#aebbd0", fontSize: 24, fontWeight: 300 }}>›</span>
+                <StepItem
+                  num={2}
+                  title="AI对练"
+                  desc="与AI进行模拟对练训练。"
+                  actionLabel="开始对练"
+                  onAction={() => startPractice(currentScene)}
+                  state="current"
+                />
+                <span style={{ textAlign: "center", color: "#aebbd0", fontSize: 24, fontWeight: 300 }}>›</span>
+                <StepItem
+                  num={3}
+                  title="场景考试"
+                  desc="完成场景相关综合能力测评。"
+                  actionLabel="开始考试"
+                  disabled
+                  state="locked"
+                />
+              </div>
 
               <p style={{
-                background: "#fdf6ec", borderRadius: 6,
-                padding: "10px 12px", fontSize: 12, color: "#e6a23c", marginTop: 8,
+                background: "#f0f6ff", borderRadius: 6,
+                padding: "10px 12px", fontSize: 12, color: "#4b8ce9", marginTop: 8,
               }}>
                 资料学习和AI对练均可直接开始，完成AI对练后解锁场景考试。
               </p>
@@ -433,9 +455,9 @@ export default function TaskDetailPage() {
                   style={{
                     padding: "0 0 8px", border: "none", background: "transparent",
                     fontSize: 13, cursor: "pointer",
-                    color: recordTab === "practice" ? "#4E63F0" : "#8b98aa",
+                    color: recordTab === "practice" ? "#327de7" : "#8b98aa",
                     fontWeight: recordTab === "practice" ? 600 : 400,
-                    borderBottom: recordTab === "practice" ? "2px solid #4E63F0" : "2px solid transparent",
+                    borderBottom: recordTab === "practice" ? "2px solid #327de7" : "2px solid transparent",
                   }}
                 >
                   对练记录
@@ -446,9 +468,9 @@ export default function TaskDetailPage() {
                   style={{
                     padding: "0 0 8px", border: "none", background: "transparent",
                     fontSize: 13, cursor: "pointer",
-                    color: recordTab === "exam" ? "#4E63F0" : "#8b98aa",
+                    color: recordTab === "exam" ? "#327de7" : "#8b98aa",
                     fontWeight: recordTab === "exam" ? 600 : 400,
-                    borderBottom: recordTab === "exam" ? "2px solid #4E63F0" : "2px solid transparent",
+                    borderBottom: recordTab === "exam" ? "2px solid #327de7" : "2px solid transparent",
                   }}
                 >
                   考试记录

@@ -139,6 +139,17 @@ export default function PracticePage() {
   const [voiceMode, setVoiceMode] = useState(true); // 默认语音模式：AI 默认播报、学员默认语音输入
   const [chatFinished, setChatFinished] = useState(false);
   const [chatResult, setChatResult] = useState<TrainingRecordResult | null>(null);
+  // 对练前引导数据 + 引导层显隐 + 轮次进度
+  const [sceneBrief, setSceneBrief] = useState<{
+    description?: string;
+    aiRole?: { identity?: string; background?: string; goal?: string } | null;
+    learnerRole?: { identity?: string; goal?: string } | null;
+    scoringRules: Array<{ name: string; score: number; criteria?: string }>;
+    passScore: number;
+    endCondition?: string;
+  } | null>(null);
+  const [showBrief, setShowBrief] = useState(false);
+  const [chatRound, setChatRound] = useState(0);
   // 当前场景的评分维度（满分）与场景合格线
   const [sceneRules, setSceneRules] = useState<Array<{ id: string; name: string; score: number }>>([]);
 
@@ -356,11 +367,25 @@ export default function PracticePage() {
         ? crypto.randomUUID()
         : `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
       setView("chat");
+      setShowBrief(true);
+      setChatRound(0);
       try {
-        const detail = await apiGet<{ scene: { passScore: number; mode: string }; scoringRules: Array<{ id: string; name: string; score: number }> }>(`/scenes/${scene.id}`);
+        const detail = await apiGet<{
+          scene: { passScore: number; mode: string; description?: string };
+          roles?: Array<{ roleType: string; identity?: string; background?: string; goal?: string }>;
+          scoringRules: Array<{ id: string; name: string; score: number; criteria?: string }>;
+          rule?: { endCondition?: string };
+        }>(`/scenes/${scene.id}`);
         setSceneRules(detail.scoringRules || []);
-        // AI 先开口
-        await triggerAiFirst(scene, detail.scoringRules || []);
+        setSceneBrief({
+          description: detail.scene?.description || "",
+          aiRole: detail.roles?.find((r) => r.roleType === "ai") || null,
+          learnerRole: detail.roles?.find((r) => r.roleType === "learner") || null,
+          scoringRules: detail.scoringRules || [],
+          passScore: detail.scene?.passScore ?? 80,
+          endCondition: detail.rule?.endCondition || undefined,
+        });
+        // 引导页展示后,由"开始训练"触发 AI 首问
       } catch (err) {
         setError(err instanceof Error ? err.message : "进入对话失败");
       }
@@ -372,7 +397,7 @@ export default function PracticePage() {
     async (scene: Scene, _rules: Array<{ id: string; name: string; score: number }>) => {
       setChatSending(true);
       try {
-        const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; coachTip: string | null; emotion: string }>(`/ai/chat`, {
+        const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; coachTip: string | null; emotion: string; round?: number }>(`/ai/chat`, {
           sceneId: scene.id,
           messages: [],
           sessionId: sessionIdRef.current || undefined,
@@ -381,6 +406,7 @@ export default function PracticePage() {
         const voice = ttsVoice || pickSceneVoice(scene.id);
         setChatMessages([{ role: "ai", content: data.aiReply, emotion }]);
         setCoachTip(data.coachTip || null);
+        setChatRound(data.round ?? 0);
         // AI 先开口默认自动语音播报
         isFirstAiRef.current = true;
         if (voiceMode) void playTts(data.aiReply, emotion, voice);
@@ -398,6 +424,14 @@ export default function PracticePage() {
     [apiPost, pickSceneVoice, playTts, ttsVoice, voiceMode, pollTrainingResult],
   );
 
+  // 引导页"开始训练":关闭引导并触发 AI 首问
+  const startTraining = useCallback(async () => {
+    setShowBrief(false);
+    if (selectedScene) {
+      await triggerAiFirst(selectedScene, sceneRules);
+    }
+  }, [selectedScene, sceneRules, triggerAiFirst]);
+
   // ===== 发送消息 =====
   const sendChatMessage = useCallback(
     async (text: string) => {
@@ -409,7 +443,7 @@ export default function PracticePage() {
       setChatSending(true);
       setCoachTip(null);
       try {
-        const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; coachTip: string | null; emotion: string }>(`/ai/chat`, {
+        const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; coachTip: string | null; emotion: string; round?: number }>(`/ai/chat`, {
           sceneId: selectedScene.id,
           messages: nextMessages,
           sessionId: sessionIdRef.current || undefined,
@@ -418,6 +452,7 @@ export default function PracticePage() {
         const voice = ttsVoice || pickSceneVoice(selectedScene.id);
         setChatMessages([...nextMessages, { role: "ai", content: data.aiReply, emotion }]);
         setCoachTip(data.coachTip || null);
+        setChatRound(data.round ?? 0);
         // 仅在语音模式下且未录音时自动播放 AI 语音
         if (voiceMode && !recordingRef.current) void playTts(data.aiReply, emotion, voice);
         if (data.isFinished) {
@@ -841,6 +876,9 @@ export default function PracticePage() {
             <div className="pc-chat-head">
               <div className="pc-chat-title">
                 <strong>{selectedScene.name || "对练中"}</strong>
+                {chatRound > 0 && !chatFinished && (
+                  <span className="pc-round">第 {chatRound}/10 轮</span>
+                )}
                 <span className="pc-mode">
                   <button className={voiceMode ? "active" : ""} type="button" onClick={() => setVoiceMode(true)}>语音模式</button>
                   <button className={!voiceMode ? "active" : ""} type="button" onClick={() => setVoiceMode(false)}>文本模式</button>
@@ -861,6 +899,44 @@ export default function PracticePage() {
                 <button className="pc-back-mini" type="button" onClick={backToHistory}>← 返回历史</button>
               </div>
             </div>
+
+            {showBrief && sceneBrief && (
+              <div className="pc-brief">
+                <h3>{selectedScene.name || "训练说明"}</h3>
+                {sceneBrief.description ? <p className="pc-brief-desc">{sceneBrief.description}</p> : null}
+                <div className="pc-brief-grid">
+                  {sceneBrief.learnerRole?.identity ? (
+                    <div className="pc-brief-item">
+                      <span className="pc-brief-label">你的角色</span>
+                      <span className="pc-brief-value">{sceneBrief.learnerRole.identity}</span>
+                    </div>
+                  ) : null}
+                  {sceneBrief.aiRole?.identity ? (
+                    <div className="pc-brief-item">
+                      <span className="pc-brief-label">AI 扮演</span>
+                      <span className="pc-brief-value">{sceneBrief.aiRole.identity}</span>
+                    </div>
+                  ) : null}
+                  {sceneBrief.endCondition ? (
+                    <div className="pc-brief-item">
+                      <span className="pc-brief-label">训练目标</span>
+                      <span className="pc-brief-value">{sceneBrief.endCondition}</span>
+                    </div>
+                  ) : null}
+                </div>
+                {sceneBrief.scoringRules.length > 0 && (
+                  <div className="pc-brief-rules">
+                    <span className="pc-brief-label">评分标准(及格 {sceneBrief.passScore} 分)</span>
+                    <div className="pc-brief-rules-list">
+                      {sceneBrief.scoringRules.map((r) => (
+                        <span className="pc-brief-rule" key={r.name}>{r.name} {r.score}分</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <button className="pc-btn-primary" type="button" onClick={() => void startTraining()}>开始训练</button>
+              </div>
+            )}
 
             <div className="pc-messages">
               {chatMessages.length === 0 && (

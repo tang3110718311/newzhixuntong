@@ -259,7 +259,7 @@ export async function POST(request: Request) {
       traceId,
     });
 
-    return ok({ aiReply, isFinished, trainingRecord, recordPending, coachTip, emotion }, traceId);
+    return ok({ aiReply, isFinished, trainingRecord, recordPending, coachTip, emotion, round: learnerMessageCount }, traceId);
   } catch (error) {
     if (tenantIdForLog) {
       try {

@@ -226,6 +226,85 @@
 .pc-chat-title strong {
   font-size: 15px;
 }
+.pc-round {
+  font-size: 12px;
+  color: var(--brand);
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pc-brief {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(135deg, #f5f7ff, #eef2ff);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pc-brief h3 {
+  margin: 0;
+  font-size: 17px;
+  color: #312e81;
+}
+.pc-brief-desc {
+  margin: 0;
+  font-size: 13px;
+  color: #4c5085;
+  line-height: 1.6;
+}
+.pc-brief-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.pc-brief-item {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pc-brief-label {
+  font-size: 12px;
+  color: #86909c;
+  font-weight: 600;
+}
+.pc-brief-value {
+  font-size: 14px;
+  color: #1f2329;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.pc-brief-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pc-brief-rules-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pc-brief-rule {
+  font-size: 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 12px;
+  color: #312e81;
+  font-weight: 600;
+}
+.pc-brief .pc-btn-primary {
+  align-self: flex-start;
+  min-width: 140px;
+  padding: 11px 24px;
+  font-size: 15px;
+}
 .pc-end {
   border: 1px solid var(--amber);
   color: var(--amber);
