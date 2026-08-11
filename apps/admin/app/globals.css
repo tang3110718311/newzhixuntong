@@ -156,7 +156,7 @@ h1 {
 
 .card {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 20px;
   background: var(--panel);
   box-shadow: var(--shadow);
 }
@@ -748,9 +748,9 @@ textarea:focus {
   place-items: center;
   padding: 24px;
   background:
-    radial-gradient(1200px 600px at 15% 10%, #a5b4fc 0%, transparent 60%),
-    radial-gradient(1000px 500px at 85% 90%, #c4b5fd 0%, transparent 60%),
-    linear-gradient(135deg, #eef2ff 0%, #ede9fe 50%, #fce7f3 100%);
+    radial-gradient(ellipse 920px 920px at -10% -20%, rgba(116, 166, 255, 0.6) 0%, rgba(147, 185, 255, 0.25) 51%, transparent 70%),
+    radial-gradient(1000px 500px at 90% 110%, rgba(140, 190, 248, 0.45) 0%, transparent 60%),
+    linear-gradient(118deg, #c8dcff 0%, #d9eaff 43%, #b5ddf8 100%);
 }
 
 .login-card {
@@ -759,11 +759,11 @@ textarea:focus {
   width: min(440px, 100%);
   padding: 32px 28px;
   border: 1px solid rgba(255, 255, 255, 0.55);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.65);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.68);
   -webkit-backdrop-filter: blur(18px) saturate(160%);
   backdrop-filter: blur(18px) saturate(160%);
-  box-shadow: 0 24px 60px rgba(76, 29, 149, 0.18);
+  box-shadow: 0 24px 60px rgba(47, 116, 235, 0.18);
 }
 
 .login-card .login-hint {
@@ -1147,7 +1147,7 @@ body {
 
 .card {
   border-color: rgba(255, 255, 255, 0.68);
-  border-radius: 18px;
+  border-radius: 20px;
   background: var(--panel);
   box-shadow: var(--shadow);
   backdrop-filter: blur(14px);
