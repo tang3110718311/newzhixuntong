@@ -520,6 +520,7 @@ ensureColumn("tasks", "description", "text not null default ''");
 ensureColumn("scenes", "pass_score", "integer not null default 80");
 ensureColumn("training_records", "session_id", "text");
 ensureColumn("training_records", "suggestions", "text not null default '[]'");
+ensureColumn("training_records", "summary_json", "text");
 
 // ---- 核心表索引（查询以 tenant_id + deleted_at 过滤，按 record/scene/user/task join）----
 exec(`create index if not exists idx_tr_tenant_user_status on training_records(tenant_id, user_id, status)`);

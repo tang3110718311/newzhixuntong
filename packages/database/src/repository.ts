@@ -238,6 +238,7 @@ export type TrainingRecordRow = {
   startedAt: string | null;
   finishedAt: string | null;
   sessionId?: string | null;
+  summaryJson?: string | null;
 };
 
 export type TrainingTurnRow = {
@@ -262,6 +263,8 @@ export type TrainingRecordDetail = {
   turns: TrainingTurnRow[];
   scores: ScoreDetailRow[];
   suggestions: string[];
+  highlights?: string[];
+  weaknesses?: string[];
 };
 
 export type CreateTrainingRecordInput = {
@@ -273,6 +276,8 @@ export type CreateTrainingRecordInput = {
   score: number;
   sessionId?: string | null;
   suggestions?: string[];
+  highlights?: string[];
+  weaknesses?: string[];
   startedAt?: string | null;
   finishedAt?: string | null;
   turns: Array<{ speaker: "ai" | "learner"; text: string; durationMs?: number; startedAt?: string | null; emotion?: string }>;
@@ -1192,10 +1197,11 @@ export function createTrainingRecord(tenantId: string, input: CreateTrainingReco
   const startedAt = input.startedAt ?? new Date().toISOString();
   const finishedAt = input.finishedAt ?? (input.status === "completed" ? new Date().toISOString() : null);
   const suggestionsJson = JSON.stringify(input.suggestions ?? []);
+  const summaryJson = JSON.stringify({ highlights: input.highlights ?? [], weaknesses: input.weaknesses ?? [] });
   run(
-    `insert into training_records (id, tenant_id, record_no, task_id, scene_id, user_id, mode, status, score, session_id, suggestions, started_at, finished_at, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-    [id, tenantId, recordNo, input.taskId ?? null, input.sceneId, input.userId ?? null, input.mode, input.status, input.score, input.sessionId ?? null, suggestionsJson, startedAt, finishedAt],
+    `insert into training_records (id, tenant_id, record_no, task_id, scene_id, user_id, mode, status, score, session_id, suggestions, summary_json, started_at, finished_at, created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+    [id, tenantId, recordNo, input.taskId ?? null, input.sceneId, input.userId ?? null, input.mode, input.status, input.score, input.sessionId ?? null, suggestionsJson, summaryJson, startedAt, finishedAt],
   );
   input.turns.forEach((turn) => {
     run(
@@ -1224,6 +1230,7 @@ export function getTrainingRecordDetail(tenantId: string, recordId: string): Tra
   const record = get<TrainingRecordRow>(
     `select tr.id, tr.record_no as recordNo, tr.task_id as taskId, t.name as taskName, tr.scene_id as sceneId, s.name as sceneName,
             tr.user_id as userId, u.name as userName, tr.mode, tr.status, tr.score, tr.session_id as sessionId,
+            tr.summary_json as summaryJson,
             tr.started_at as startedAt, tr.finished_at as finishedAt
      from training_records tr
      left join tasks t on t.id = tr.task_id and t.tenant_id = tr.tenant_id
@@ -1256,7 +1263,16 @@ export function getTrainingRecordDetail(tenantId: string, recordId: string): Tra
       if (Array.isArray(parsed)) suggestions = parsed.filter((s) => typeof s === "string");
     } catch { /* ignore invalid json */ }
   }
-  return { record, turns, scores, suggestions };
+  let highlights: string[] = [];
+  let weaknesses: string[] = [];
+  if (record.summaryJson) {
+    try {
+      const parsed = JSON.parse(record.summaryJson) as { highlights?: unknown; weaknesses?: unknown };
+      if (Array.isArray(parsed.highlights)) highlights = parsed.highlights.filter((s): s is string => typeof s === "string");
+      if (Array.isArray(parsed.weaknesses)) weaknesses = parsed.weaknesses.filter((s): s is string => typeof s === "string");
+    } catch { /* ignore invalid json */ }
+  }
+  return { record, turns, scores, suggestions, highlights, weaknesses };
 }
 
 /** 按对练会话查询训练记录（评分异步完成后前端轮询用） */

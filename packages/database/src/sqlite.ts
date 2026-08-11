@@ -259,6 +259,7 @@ function applyMigrations() {
   ensureColumn("tasks", "answer_form", "text not null default 'voice'");
   ensureColumn("training_records", "session_id", "text");
   ensureColumn("training_records", "suggestions", "text not null default '[]'");
+  ensureColumn("training_records", "summary_json", "text");
   ensureColumn("training_turns", "emotion", "text not null default ''");
   // 核心表索引（已有库同样补齐，与 init.mjs 保持一致）
   db.run("create index if not exists idx_tr_tenant_user_status on training_records(tenant_id, user_id, status)");
