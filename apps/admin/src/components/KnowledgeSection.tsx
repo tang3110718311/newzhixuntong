@@ -155,6 +155,8 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
   const [filesLoading, setFilesLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 文件预览
+  const [previewFile, setPreviewFile] = useState<KnowledgeFile | null>(null);
 
   // Search & filter state
   const [searchText, setSearchText] = useState("");
@@ -516,7 +518,7 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
                         <td className="muted-text">{file.uploaderName || "—"}</td>
                         <td className="muted-text">{formatTime(file.createdAt)}</td>
                         <td>
-                          <button className="link-btn" type="button" style={{ color: "#4080ff" }}>查看</button>
+                          <button className="link-btn" type="button" style={{ color: "#4080ff" }} onClick={() => setPreviewFile(file)}>查看</button>
                           <button className="link-btn danger" type="button" style={{ color: "#ed2633" }} onClick={() => handleDeleteFile(file)}>删除</button>
                         </td>
                       </tr>
@@ -569,6 +571,36 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
               <button className="btn primary" type="submit">创建</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* ── 文件预览弹层 ── */}
+      {previewFile && (
+        <div className="modal-overlay" onClick={() => setPreviewFile(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 760, maxWidth: "calc(100vw - 48px)", display: "flex", flexDirection: "column", maxHeight: "80vh" }}>
+            <div className="modal-head">
+              <div style={{ minWidth: 0 }}>
+                <h2 style={{ margin: 0, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{previewFile.name}</h2>
+                <p className="muted-text" style={{ margin: "4px 0 0", fontSize: 12 }}>{fileTypeLabel(previewFile.mimeType)} · {formatSize(previewFile.size)} · 上传人 {previewFile.uploaderName || "—"}</p>
+              </div>
+              <button className="link-btn" type="button" onClick={() => setPreviewFile(null)}>关闭</button>
+            </div>
+            {previewFile.parseStatus === "failed" ? (
+              <div className="empty" style={{ padding: 40 }}>该文件解析失败，无法预览内容。</div>
+            ) : previewFile.content ? (
+              <div style={{ flex: 1, overflow: "auto", border: "1px solid var(--line)", borderRadius: 10, padding: "20px 24px", background: "#fff", lineHeight: 1.9, fontSize: 14, color: "#333", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                {previewFile.content.slice(0, 20000)}
+                {previewFile.content.length > 20000 ? <p className="muted-text" style={{ marginTop: 12 }}>内容过长，仅显示前 20000 字。</p> : null}
+              </div>
+            ) : (
+              <div className="empty" style={{ padding: 40 }}>暂无可预览的内容（该文件可能仅作为附件存储）。</div>
+            )}
+            {previewFile.summary ? (
+              <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 10, background: "#f0f6ff", border: "1px solid #dfeaff", fontSize: 13, color: "#3d5a80" }}>
+                <strong style={{ color: "#3477e8" }}>AI 摘要：</strong>{previewFile.summary}
+              </div>
+            ) : null}
+          </div>
         </div>
       )}
     </section>

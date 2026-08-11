@@ -800,13 +800,45 @@ export function listScenes(tenantId: string, options: { page: number; pageSize: 
   return { items, total, page: options.page, pageSize: options.pageSize };
 }
 
-export function createScene(tenantId: string, input: { industryPackageId?: string | null; name: string; code: string; mode: string; sceneType: string; description: string }) {
+export function createScene(tenantId: string, input: { industryPackageId?: string | null; name: string; code: string; mode: string; sceneType: string; description: string; aiRole?: { identity: string; background: string; personality: string; emotion: string; goal: string }; learnerRole?: { identity: string; goal: string }; endCondition?: string; interruptCondition?: string; dialogueExample?: string; initiator?: string; scoringRules?: Array<{ name: string; score: number; criteria: string; deductionRule: string; evidenceRequired: string }> }) {
   const id = createId("scene");
   run(
     `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, scene_type, description, status, source_type, is_template, version, created_at, updated_at)
      values (?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'manual', 0, '1.0.0', datetime('now'), datetime('now'))`,
     [id, tenantId, input.industryPackageId ?? null, input.name, input.code, input.mode, input.sceneType, input.description],
   );
+  // AI 角色
+  if (input.aiRole?.identity) {
+    run(
+      `insert into scene_roles (id, tenant_id, scene_id, role_type, identity, background, personality, emotion, goal, created_at, updated_at)
+       values (?, ?, ?, 'ai', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [createId("role"), tenantId, id, input.aiRole.identity, input.aiRole.background || "", input.aiRole.personality || "", input.aiRole.emotion || "", input.aiRole.goal || ""],
+    );
+  }
+  // 学员角色
+  if (input.learnerRole?.identity) {
+    run(
+      `insert into scene_roles (id, tenant_id, scene_id, role_type, identity, goal, created_at, updated_at)
+       values (?, ?, ?, 'learner', ?, ?, datetime('now'), datetime('now'))`,
+      [createId("role"), tenantId, id, input.learnerRole.identity, input.learnerRole.goal || ""],
+    );
+  }
+  // 对话规则（结束/中断条件/发起人）
+  if (input.endCondition || input.interruptCondition) {
+    run(
+      `insert into scene_rules (id, tenant_id, scene_id, initiator, end_condition, interrupt_condition, description, created_at, updated_at)
+       values (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [createId("rule"), tenantId, id, input.initiator || "ai", input.endCondition || "", input.interruptCondition || "", input.dialogueExample || ""],
+    );
+  }
+  // 评分规则
+  input.scoringRules?.forEach((rule, index) => {
+    run(
+      `insert into scoring_rules (id, tenant_id, scene_id, name, score, criteria, deduction_rule, evidence_required, sort_order, created_at, updated_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [createId("score"), tenantId, id, rule.name, rule.score, rule.criteria, rule.deductionRule, rule.evidenceRequired, index + 1],
+    );
+  });
   return get<SceneRow>(
     "select id, name, code, industry_package_id as industryPackageId, scene_type as sceneType, mode, status, is_template as isTemplate, source_type as sourceType, description, coalesce(pass_score, 80) as passScore from scenes where id = ?",
     [id],
@@ -1056,12 +1088,12 @@ export function getTaskDetail(tenantId: string, taskId: string): TaskDetail | un
   );
   return { task, scenes, participants };
 }
-export function createTask(tenantId: string, input: { name: string; code: string; type: string; sceneIds: string[]; participantUserIds?: string[]; participantOrgIds?: string[]; startAt?: string; endAt?: string }) {
+export function createTask(tenantId: string, input: { name: string; code: string; type: string; sceneIds: string[]; participantUserIds?: string[]; participantOrgIds?: string[]; startAt?: string; endAt?: string; answerForm?: string }) {
   const id = createId("task");
   run(
-    `insert into tasks (id, tenant_id, name, code, type, status, start_at, end_at, created_at, updated_at)
-     values (?, ?, ?, ?, ?, 'draft', ?, ?, datetime('now'), datetime('now'))`,
-    [id, tenantId, input.name, input.code, input.type, input.startAt ?? null, input.endAt ?? null],
+    `insert into tasks (id, tenant_id, name, code, type, status, answer_form, start_at, end_at, created_at, updated_at)
+     values (?, ?, ?, ?, ?, 'draft', ?, ?, ?, datetime('now'), datetime('now'))`,
+    [id, tenantId, input.name, input.code, input.type, input.answerForm ?? "voice", input.startAt ?? null, input.endAt ?? null],
   );
   input.sceneIds.forEach((sceneId, index) => {
     run(

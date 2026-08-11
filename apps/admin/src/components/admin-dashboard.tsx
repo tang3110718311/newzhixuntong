@@ -408,6 +408,7 @@ const initialTaskForm = {
   startAt: "",
   endAt: "",
   publishNow: true,
+  answerForm: "voice" as "voice" | "text",
 };
 
 const initialOrgForm = {
@@ -654,6 +655,9 @@ export function AdminDashboard() {
     dialogueGoal: "",
     initiator: "ai",
     endCondition: "",
+    interruptCondition: "",
+    dialogueExample: "",
+    sceneDescription: "",
   });
   const [aiGenerateDraft, setAiGenerateDraft] = useState<{ name: string; sceneType: string; description: string; aiRole: { identity: string; background: string; personality: string; emotion: string; goal: string }; learnerRole: { identity: string; goal: string }; endCondition: string; interruptCondition: string; scoringRules: ScoringRuleDraft[] } | null>(null);
   const [wizardScoringRules, setWizardScoringRules] = useState<ScoringRule[]>([
@@ -663,6 +667,7 @@ export function AdminDashboard() {
     { name: "闭环推进", score: 30, criteria: "明确下一步动作和反馈时限", deductionRule: "", evidenceRequired: "" },
   ]);
   const [showTaskCreate, setShowTaskCreate] = useState(false);
+  const [taskWizardStep, setTaskWizardStep] = useState(1);
   const [showIndustryCreate, setShowIndustryCreate] = useState(false);
   const [showOrgCreate, setShowOrgCreate] = useState(false);
   const [showUserCreate, setShowUserCreate] = useState(false);
@@ -1064,6 +1069,9 @@ export function AdminDashboard() {
         dialogueGoal: draft.learnerRole?.goal || "",
         initiator: "ai",
         endCondition: draft.endCondition || "",
+        interruptCondition: draft.interruptCondition || "",
+        dialogueExample: "",
+        sceneDescription: draft.description || "",
       });
       // Fill scoring rules from AI draft
       if (draft.scoringRules?.length) {
@@ -1141,12 +1149,15 @@ export function AdminDashboard() {
           participantOrgIds: taskForm.participantOrgIds,
           startAt: toIso(taskForm.startAt),
           endAt: toIso(taskForm.endAt),
+          answerForm: taskForm.answerForm,
         }),
       });
       if (taskForm.publishNow) {
         await apiFetch(`/tasks/${task.id}/publish`, { method: "POST", body: JSON.stringify({}) });
       }
       setTaskForm(initialTaskForm);
+      setTaskWizardStep(1);
+      setShowTaskCreate(false);
     });
   }
 
@@ -1295,6 +1306,28 @@ export function AdminDashboard() {
             mode: aiGenerateForm.mode,
             sceneType: wizardRoleForm.aiIdentity ? "对话" : "常规对话",
             description: aiGenerateForm.sceneDescription,
+            aiRole: {
+              identity: wizardRoleForm.aiIdentity,
+              background: wizardRoleForm.aiBackground,
+              personality: wizardRoleForm.aiPersonality,
+              emotion: wizardRoleForm.aiEmotion,
+              goal: wizardRoleForm.dialogueGoal,
+            },
+            learnerRole: {
+              identity: wizardRoleForm.learnerIdentity,
+              goal: wizardRoleForm.dialogueGoal,
+            },
+            endCondition: wizardRoleForm.endCondition,
+            interruptCondition: wizardRoleForm.interruptCondition,
+            dialogueExample: wizardRoleForm.dialogueExample,
+            initiator: wizardRoleForm.initiator,
+            scoringRules: wizardScoringRules.map((r) => ({
+              name: r.name,
+              score: r.score,
+              criteria: r.criteria,
+              deductionRule: r.deductionRule,
+              evidenceRequired: r.evidenceRequired,
+            })),
           }),
         });
         setMessage("场景已创建为草稿。");
@@ -1302,7 +1335,7 @@ export function AdminDashboard() {
       setShowSceneWizard(false);
       setSceneWizardStep(1);
       setAiGenerateDraft(null);
-      setWizardRoleForm({ aiIdentity: "", aiBackground: "", aiPersonality: "", aiEmotion: "", learnerIdentity: "", dialogueGoal: "", initiator: "ai", endCondition: "" });
+      setWizardRoleForm({ aiIdentity: "", aiBackground: "", aiPersonality: "", aiEmotion: "", learnerIdentity: "", dialogueGoal: "", initiator: "ai", endCondition: "", interruptCondition: "", dialogueExample: "", sceneDescription: "" });
       setWizardScoringRules([
         { name: "需求识别", score: 25, criteria: "准确识别客户核心诉求", deductionRule: "", evidenceRequired: "" },
         { name: "合规表达", score: 25, criteria: "按业务规范说明边界", deductionRule: "", evidenceRequired: "" },
@@ -1778,7 +1811,7 @@ export function AdminDashboard() {
                         <div className="wizard-col">
                           <h3>人员角色配置</h3>
                           <Field label="* AI扮演角色"><input value={wizardRoleForm.aiIdentity} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiIdentity: e.target.value })} placeholder="如：投诉客户" required /></Field>
-                          <Field label="身份地位"><input value={wizardRoleForm.aiBackground} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiBackground: e.target.value })} placeholder="如：长期客户，对服务有较高期待" /></Field>
+                          <Field label="背景简介"><textarea value={wizardRoleForm.aiBackground} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiBackground: e.target.value })} placeholder="如：长期客户，对服务有较高期待，投诉过两次宽带故障" style={{ minHeight: 60 }} /></Field>
                           <Field label="AI角色性格"><input value={wizardRoleForm.aiPersonality} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiPersonality: e.target.value })} placeholder="如：急躁但理性" /></Field>
                           <Field label="* AI情绪设置">
                             <select value={wizardRoleForm.aiEmotion} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiEmotion: e.target.value })}>
@@ -1797,6 +1830,7 @@ export function AdminDashboard() {
                           <h3>对话设置</h3>
                           <Field label="* 学员角色扮演"><input value={wizardRoleForm.learnerIdentity} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, learnerIdentity: e.target.value })} placeholder="如：客服坐席" required /></Field>
                           <Field label="* 对话目标"><textarea value={wizardRoleForm.dialogueGoal} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, dialogueGoal: e.target.value })} placeholder="如：识别诉求、安抚情绪、给出解决方案" required /></Field>
+                          <Field label="场景说明"><textarea value={wizardRoleForm.sceneDescription} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, sceneDescription: e.target.value })} placeholder="补充场景背景、关键流程或注意事项（选填）" style={{ minHeight: 60 }} /></Field>
                           <Field label="对话发起人">
                             <select value={wizardRoleForm.initiator} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, initiator: e.target.value })}>
                               <option value="ai">AI</option>
@@ -1805,6 +1839,8 @@ export function AdminDashboard() {
                             </select>
                           </Field>
                           <Field label="结束条件"><input value={wizardRoleForm.endCondition} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, endCondition: e.target.value })} placeholder="如：学员给出明确处理时限" /></Field>
+                          <Field label="中断条件"><input value={wizardRoleForm.interruptCondition} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, interruptCondition: e.target.value })} placeholder="如：学员情绪失控或出现人身攻击" /></Field>
+                          <Field label="对话实例"><textarea value={wizardRoleForm.dialogueExample} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, dialogueExample: e.target.value })} placeholder="示例对话（可选）：客户：宽带又断了！客服：非常抱歉，我先帮您查一下线路状态…" style={{ minHeight: 70 }} /></Field>
                         </div>
                       </div>
                     </div>
@@ -2217,54 +2253,134 @@ export function AdminDashboard() {
                       <div className="section-head">
                         <div>
                           <h2 className="section-title">创建训练任务</h2>
-                          <p className="section-note">先选择场景和学员，创建后可直接发布。</p>
+                          <p className="section-note">按向导完成基础信息、业务场景、回答形式与参与学员配置。</p>
                         </div>
                       </div>
-                      <form onSubmit={handleCreateTask}>
-                        <div className="form-card" style={{ display: "grid", gap: 14 }}>
-                          <Field label="任务名称"><input value={taskForm.name} onChange={(e) => setTaskForm({ ...taskForm, name: e.target.value })} placeholder="如：客服投诉处理专项训练" required /></Field>
-                          <Field label="任务编码"><input value={taskForm.code} onChange={(e) => setTaskForm({ ...taskForm, code: e.target.value })} placeholder="留空自动生成" /></Field>
-                          <div className="score-editor-grid">
-                            <Field label="任务类型"><select value={taskForm.type} onChange={(e) => setTaskForm({ ...taskForm, type: e.target.value })}><option value="scenario_training">课程学习</option><option value="exam">在线考试</option><option value="mixed">学练考混合</option></select></Field>
-                            <Field label="开始时间"><input type="datetime-local" value={taskForm.startAt} onChange={(e) => setTaskForm({ ...taskForm, startAt: e.target.value })} /></Field>
-                          </div>
-                          <Field label="截止时间"><input type="datetime-local" value={taskForm.endAt} onChange={(e) => setTaskForm({ ...taskForm, endAt: e.target.value })} /></Field>
-                          <div className="check-list">
-                            <span className="field-label">选择场景</span>
-                            {scenes.map((scene) => (
-                              <label key={scene.id} className="check-row">
-                                <input type="checkbox" checked={taskForm.sceneIds.includes(scene.id)} onChange={() => toggleTaskScene(scene.id)} />
-                                <span>{scene.name}</span>
-                                {statusBadge(scene.status)}
-                              </label>
-                            ))}
-                            {!scenes.length ? <div className="empty">请先在场景管理里创建场景</div> : null}
-                          </div>
-                          <div className="check-list">
-                            <span className="field-label">选择学员</span>
-                            {users.filter((user) => user.roleCode === "learner").map((user) => (
-                              <label key={user.id} className="check-row">
-                                <input type="checkbox" checked={taskForm.participantUserIds.includes(user.id)} onChange={() => toggleTaskParticipant(user.id)} />
-                                <span>{user.name} · {user.mobile}</span>
-                              </label>
-                            ))}
-                            {!users.filter((user) => user.roleCode === "learner").length ? <div className="empty">请先在人员管理里新增学员</div> : null}
-                          </div>
-                          <div className="check-list">
-                            <span className="field-label">选择组织</span>
-                            {organizations.map((org) => (
-                              <label key={org.id} className="check-row">
-                                <input type="checkbox" checked={taskForm.participantOrgIds.includes(org.id)} onChange={() => toggleTaskOrg(org.id)} />
-                                <span>{org.name} · {organizationTypeLabel(org.type)}</span>
-                                <span className="muted-text">{org.userCount}人</span>
-                              </label>
-                            ))}
-                          </div>
-                          <label className="check-row solo"><input type="checkbox" checked={taskForm.publishNow} onChange={(e) => setTaskForm({ ...taskForm, publishNow: e.target.checked })} /> 创建后立即发布</label>
+
+                      {/* 4 步进度条 */}
+                      <div className="wizard-steps">
+                        <div className={`wizard-step ${taskWizardStep >= 1 ? "active" : ""} ${taskWizardStep > 1 ? "done" : ""}`}>
+                          <span className="step-num">{taskWizardStep > 1 ? "✓" : "1"}</span>
+                          <span className="step-label">基础信息</span>
                         </div>
+                        <div className={`wizard-line ${taskWizardStep > 1 ? "done" : ""}`} />
+                        <div className={`wizard-step ${taskWizardStep >= 2 ? "active" : ""} ${taskWizardStep > 2 ? "done" : ""}`}>
+                          <span className="step-num">{taskWizardStep > 2 ? "✓" : "2"}</span>
+                          <span className="step-label">配置业务场景</span>
+                        </div>
+                        <div className={`wizard-line ${taskWizardStep > 2 ? "done" : ""}`} />
+                        <div className={`wizard-step ${taskWizardStep >= 3 ? "active" : ""} ${taskWizardStep > 3 ? "done" : ""}`}>
+                          <span className="step-num">{taskWizardStep > 3 ? "✓" : "3"}</span>
+                          <span className="step-label">回答形式</span>
+                        </div>
+                        <div className={`wizard-line ${taskWizardStep > 3 ? "done" : ""}`} />
+                        <div className={`wizard-step ${taskWizardStep >= 4 ? "active" : ""}`}>
+                          <span className="step-num">4</span>
+                          <span className="step-label">参与学员</span>
+                        </div>
+                      </div>
+
+                      <form onSubmit={handleCreateTask}>
+                        {taskWizardStep === 1 && (
+                          <div className="wizard-body">
+                            <h2>基础信息</h2>
+                            <p className="field-hint">先填写任务的基本信息，后续可继续配置场景和学员。</p>
+                            <div className="form-card" style={{ display: "grid", gap: 14 }}>
+                              <Field label="任务名称"><input value={taskForm.name} onChange={(e) => setTaskForm({ ...taskForm, name: e.target.value })} placeholder="如：客服投诉处理专项训练" required /></Field>
+                              <div className="score-editor-grid">
+                                <Field label="任务类型"><select value={taskForm.type} onChange={(e) => setTaskForm({ ...taskForm, type: e.target.value })}><option value="scenario_training">课程学习</option><option value="exam">在线考试</option><option value="mixed">学练考混合</option></select></Field>
+                                <Field label="任务编码"><input value={taskForm.code} onChange={(e) => setTaskForm({ ...taskForm, code: e.target.value })} placeholder="留空自动生成" /></Field>
+                              </div>
+                              <div className="score-editor-grid">
+                                <Field label="开始时间"><input type="datetime-local" value={taskForm.startAt} onChange={(e) => setTaskForm({ ...taskForm, startAt: e.target.value })} /></Field>
+                                <Field label="截止时间"><input type="datetime-local" value={taskForm.endAt} onChange={(e) => setTaskForm({ ...taskForm, endAt: e.target.value })} /></Field>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {taskWizardStep === 2 && (
+                          <div className="wizard-body">
+                            <h2>配置业务场景</h2>
+                            <p className="field-hint">添加任务所需的业务场景，并为每个场景配置对应的 AI 对练。</p>
+                            <div className="check-list">
+                              {scenes.map((scene) => (
+                                <label key={scene.id} className="check-row">
+                                  <input type="checkbox" checked={taskForm.sceneIds.includes(scene.id)} onChange={() => toggleTaskScene(scene.id)} />
+                                  <span>{scene.name}</span>
+                                  {statusBadge(scene.status)}
+                                </label>
+                              ))}
+                              {!scenes.length ? <div className="empty">请先在场景管理里创建场景</div> : null}
+                            </div>
+                            <button className="btn" type="button" onClick={() => setShowSceneWizard(true)}><Plus size={16} /> 添加业务场景</button>
+                            <p className="field-hint">已添加 {taskForm.sceneIds.length} 个场景</p>
+                          </div>
+                        )}
+
+                        {taskWizardStep === 3 && (
+                          <div className="wizard-body">
+                            <h2>回答形式</h2>
+                            <p className="field-hint">选择学员在本任务中的作答方式，场景默认语音模式。</p>
+                            <div className="score-editor-grid">
+                              <label className={`check-row solo ${taskForm.answerForm === "voice" ? "active-option" : ""}`} style={{ padding: 16, border: "1px solid var(--line)", borderRadius: 12, cursor: "pointer" }}>
+                                <input type="radio" name="answerForm" checked={taskForm.answerForm === "voice"} onChange={() => setTaskForm({ ...taskForm, answerForm: "voice" })} />
+                                <span><strong>语音对练</strong> — 学员通过语音与 AI 角色实时对话，自动语音识别与合成。</span>
+                              </label>
+                              <label className={`check-row solo ${taskForm.answerForm === "text" ? "active-option" : ""}`} style={{ padding: 16, border: "1px solid var(--line)", borderRadius: 12, cursor: "pointer" }}>
+                                <input type="radio" name="answerForm" checked={taskForm.answerForm === "text"} onChange={() => setTaskForm({ ...taskForm, answerForm: "text" })} />
+                                <span><strong>文本对练</strong> — 学员通过文字输入与 AI 角色对话，适合文字考核场景。</span>
+                              </label>
+                            </div>
+                          </div>
+                        )}
+
+                        {taskWizardStep === 4 && (
+                          <div className="wizard-body">
+                            <h2>参与学员</h2>
+                            <p className="field-hint">选择参与本次任务的学员或组织，也可一键选择全部学员。</p>
+                            <div className="check-list">
+                              <div style={{ display: "flex", gap: 10, marginBottom: 6 }}>
+                                <button className="btn" type="button" onClick={() => {
+                                  const allLearners = users.filter((u) => u.roleCode === "learner");
+                                  setTaskForm({ ...taskForm, participantUserIds: allLearners.map((u) => u.id) });
+                                }}>选全员</button>
+                                <span className="field-hint" style={{ alignSelf: "center" }}>已选 {taskForm.participantUserIds.length} 名学员 / {taskForm.participantOrgIds.length} 个组织</span>
+                              </div>
+                              {users.filter((user) => user.roleCode === "learner").map((user) => (
+                                <label key={user.id} className="check-row">
+                                  <input type="checkbox" checked={taskForm.participantUserIds.includes(user.id)} onChange={() => toggleTaskParticipant(user.id)} />
+                                  <span>{user.name} · {user.mobile}</span>
+                                </label>
+                              ))}
+                              {!users.filter((user) => user.roleCode === "learner").length ? <div className="empty">请先在人员管理里新增学员</div> : null}
+                            </div>
+                            <div className="check-list">
+                              <span className="field-label">选择组织（可空）</span>
+                              {organizations.map((org) => (
+                                <label key={org.id} className="check-row">
+                                  <input type="checkbox" checked={taskForm.participantOrgIds.includes(org.id)} onChange={() => toggleTaskOrg(org.id)} />
+                                  <span>{org.name} · {organizationTypeLabel(org.type)}</span>
+                                  <span className="muted-text">{org.userCount}人</span>
+                                </label>
+                              ))}
+                            </div>
+                            <label className="check-row solo"><input type="checkbox" checked={taskForm.publishNow} onChange={(e) => setTaskForm({ ...taskForm, publishNow: e.target.checked })} /> 创建后立即发布</label>
+                          </div>
+                        )}
+
                         <div className="wizard-footer">
-                          <button className="btn" type="button" onClick={() => setShowTaskCreate(false)}>取消</button>
-                          <button className="btn primary" type="submit" disabled={submitting || !taskForm.sceneIds.length || (!taskForm.participantUserIds.length && !taskForm.participantOrgIds.length)}><Send size={16} /> 保存任务</button>
+                          <div style={{ display: "flex", gap: 10 }}>
+                            <button className="btn" type="button" onClick={() => setShowTaskCreate(false)}>取消</button>
+                            {taskWizardStep > 1 && (
+                              <button className="btn" type="button" onClick={() => setTaskWizardStep(taskWizardStep - 1)}>上一步</button>
+                            )}
+                          </div>
+                          {taskWizardStep < 4 ? (
+                            <button className="btn primary" type="button" disabled={taskWizardStep === 1 && !taskForm.name.trim()} onClick={() => setTaskWizardStep(taskWizardStep + 1)}>下一步</button>
+                          ) : (
+                            <button className="btn primary" type="submit" disabled={submitting || !taskForm.sceneIds.length || (!taskForm.participantUserIds.length && !taskForm.participantOrgIds.length)}><Send size={16} /> 保存任务</button>
+                          )}
                         </div>
                       </form>
                     </div>

@@ -80,6 +80,28 @@ export const createSceneSchema = z.object({
   mode: z.enum(["voice", "text"]).default("voice"),
   sceneType: z.string().min(1).max(80),
   description: z.string().min(1).max(2000),
+  aiRole: z.object({
+    identity: z.string().max(200).optional().default(""),
+    background: z.string().max(300).optional().default(""),
+    personality: z.string().max(200).optional().default(""),
+    emotion: z.string().max(50).optional().default(""),
+    goal: z.string().max(200).optional().default(""),
+  }).optional(),
+  learnerRole: z.object({
+    identity: z.string().max(200).optional().default(""),
+    goal: z.string().max(500).optional().default(""),
+  }).optional(),
+  endCondition: z.string().max(300).optional().default(""),
+  interruptCondition: z.string().max(300).optional().default(""),
+  dialogueExample: z.string().max(2000).optional().default(""),
+  initiator: z.enum(["ai", "learner", "random"]).optional().default("ai"),
+  scoringRules: z.array(z.object({
+    name: z.string().min(1).max(80),
+    score: z.number().min(0).max(100),
+    criteria: z.string().max(500).optional().default(""),
+    deductionRule: z.string().max(500).optional().default(""),
+    evidenceRequired: z.string().max(500).optional().default(""),
+  })).optional().default([]),
 });
 
 
@@ -129,6 +151,7 @@ export const createTaskSchema = z.object({
   participantOrgIds: z.array(z.string()).default([]),
   startAt: z.string().datetime().optional(),
   endAt: z.string().datetime().optional(),
+  answerForm: z.enum(["voice", "text"]).optional().default("voice"),
 });
 
 export const trainingTurnInputSchema = z.object({

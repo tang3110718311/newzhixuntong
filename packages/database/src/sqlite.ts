@@ -256,6 +256,7 @@ function applyMigrations() {
     db.run(sql);
   }
   ensureColumn("tasks", "description", "text not null default ''");
+  ensureColumn("tasks", "answer_form", "text not null default 'voice'");
   ensureColumn("training_records", "session_id", "text");
   ensureColumn("training_records", "suggestions", "text not null default '[]'");
   ensureColumn("training_turns", "emotion", "text not null default ''");

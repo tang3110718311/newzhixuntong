@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, ArrowRight, FileText, Rocket, TrendingDown, TrendingUp, Lightbulb, HelpCircle } from "lucide-react";
 import type { AuthSession } from "./dashboard-shared";
+import { navigateTo } from "@/lib/navigation";
 
 type HomeProps = {
   auth: AuthSession;
@@ -548,6 +549,7 @@ export function HomeSection({ auth, submitting, onRefresh }: HomeProps) {
                 <span style={{ color: C.green, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: 3, background: C.green, display: "inline-block" }} />已更新 {updatedTime}</span>
                 <span style={{ fontSize: 13, color: C.text3, border: "1px solid #E5E6EB", borderRadius: 4, padding: "5px 10px" }}>公司：按公司 ▼</span>
                 <span style={{ fontSize: 13, color: C.text3, border: "1px solid #E5E6EB", borderRadius: 4, padding: "5px 10px" }}>近30天 ▼</span>
+                <button className="btn" type="button" style={{ fontSize: 13, background: C.brand, color: "#fff", border: "none" }} onClick={() => navigateTo("/practice")}><Rocket size={14} /> 开始专项对练</button>
                 <button className="btn" type="button" style={{ fontSize: 13, background: C.brand, color: "#fff", border: "none" }}><FileText size={14} /> 专属报告</button>
               </div>
             </div>
