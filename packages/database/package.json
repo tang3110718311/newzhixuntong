@@ -5,6 +5,7 @@
   "main": "src/client.ts",
   "types": "src/client.ts",
   "exports": {
+    ".": "./src/client.ts",
     "./client": "./src/client.ts"
   },
   "scripts": {
