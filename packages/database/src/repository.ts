@@ -100,13 +100,20 @@ export type SceneRow = {
   name: string;
   code: string;
   industryPackageId?: string | null;
+  industryPackageName?: string | null;
   sceneType: string;
   mode: string;
+  createMode: string;
   status: string;
   isTemplate: number;
   sourceType: string;
   description?: string;
   passScore: number;
+  taskCount?: number;
+  creatorName?: string | null;
+  creatorOrgName?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 
@@ -117,6 +124,7 @@ export type SceneRoleRow = {
   background: string;
   personality: string;
   emotion: string;
+  languageStyle?: string;
   goal: string;
 };
 
@@ -256,6 +264,8 @@ export type ScoreDetailRow = {
   score: number;
   deductionReason: string;
   evidenceText: string;
+  /** 能力评级：excellent（精通）/ pass（达标）/ developing（待提升）/ 空（无） */
+  level?: string | null;
 };
 
 export type TrainingRecordDetail = {
@@ -265,6 +275,8 @@ export type TrainingRecordDetail = {
   suggestions: string[];
   highlights?: string[];
   weaknesses?: string[];
+  /** 能力综述（P0 胜任力画像） */
+  capabilityProfile?: string;
 };
 
 export type CreateTrainingRecordInput = {
@@ -280,8 +292,9 @@ export type CreateTrainingRecordInput = {
   weaknesses?: string[];
   startedAt?: string | null;
   finishedAt?: string | null;
+  capabilityProfile?: string | null;
   turns: Array<{ speaker: "ai" | "learner"; text: string; durationMs?: number; startedAt?: string | null; emotion?: string }>;
-  scores: Array<{ scoringRuleId?: string | null; score: number; deductionReason?: string; evidenceText?: string }>;
+  scores: Array<{ scoringRuleId?: string | null; score: number; deductionReason?: string; evidenceText?: string; level?: string | null }>;
 };
 
 export type AppealRow = {
@@ -307,6 +320,8 @@ export type GeneratedSceneInput = {
   name: string;
   code?: string;
   mode: "voice" | "text";
+  createMode?: string;
+  createdBy?: string | null;
   sceneType: string;
   description: string;
   sourceType: string;
@@ -315,6 +330,7 @@ export type GeneratedSceneInput = {
     background: string;
     personality: string;
     emotion: string;
+    languageStyle?: string;
     goal: string;
   };
   learnerRole: {
@@ -784,41 +800,65 @@ export function createCapabilityModel(
   });
   return getCapabilityModel(tenantId, id);
 }
-export function listScenes(tenantId: string, options: { page: number; pageSize: number; keyword?: string; status?: string }) {
-  const filters = ["tenant_id = ?", "deleted_at is null"];
+export function listScenes(tenantId: string, options: { page: number; pageSize: number; keyword?: string; status?: string; mode?: string; createMode?: string; orgId?: string }) {
+  const filters = ["s.tenant_id = ?", "s.deleted_at is null"];
   const params: unknown[] = [tenantId];
   if (options.status) {
-    filters.push("status = ?");
+    filters.push("s.status = ?");
     params.push(options.status);
   }
+  if (options.mode) {
+    filters.push("s.mode = ?");
+    params.push(options.mode);
+  }
+  if (options.createMode) {
+    filters.push("s.create_mode = ?");
+    params.push(options.createMode);
+  }
   if (options.keyword) {
-    filters.push("(name like ? or code like ? or scene_type like ?)");
+    filters.push("(s.name like ? or s.code like ? or s.scene_type like ?)");
     params.push(`%${options.keyword}%`, `%${options.keyword}%`, `%${options.keyword}%`);
   }
+  if (options.orgId) {
+    filters.push("u.org_id = ?");
+    params.push(options.orgId);
+  }
   const where = filters.join(" and ");
-  const total = get<{ count: number }>(`select count(*) as count from scenes where ${where}`, params)?.count ?? 0;
+  const total = get<{ count: number }>(
+    `select count(*) as count from scenes s
+     left join users u on u.id = s.created_by and u.tenant_id = s.tenant_id
+     where ${where}`,
+    params,
+  )?.count ?? 0;
   const items = all<SceneRow>(
-    `select id, name, code, industry_package_id as industryPackageId, scene_type as sceneType, mode, status, is_template as isTemplate, source_type as sourceType, description,
-            coalesce(pass_score, 80) as passScore
-     from scenes where ${where} order by is_template desc, created_at desc limit ? offset ?`,
+    `select s.id, s.name, s.code, s.industry_package_id as industryPackageId, ip.name as industryPackageName,
+            s.scene_type as sceneType, s.mode, coalesce(s.create_mode, 'ai_practice') as createMode, s.status,
+            s.is_template as isTemplate, s.source_type as sourceType, s.description, coalesce(s.pass_score, 80) as passScore,
+            s.created_at as createdAt, s.updated_at as updatedAt, u.name as creatorName, o.name as creatorOrgName,
+            (select count(*) from task_scenes ts where ts.tenant_id = s.tenant_id and ts.scene_id = s.id and ts.deleted_at is null) as taskCount
+     from scenes s
+     left join industry_packages ip on ip.id = s.industry_package_id and ip.tenant_id = s.tenant_id
+     left join users u on u.id = s.created_by and u.tenant_id = s.tenant_id
+     left join organizations o on o.id = u.org_id and o.tenant_id = u.tenant_id
+     where ${where} order by s.is_template desc, s.created_at desc limit ? offset ?`,
     [...params, options.pageSize, (options.page - 1) * options.pageSize],
   );
   return { items, total, page: options.page, pageSize: options.pageSize };
 }
 
-export function createScene(tenantId: string, input: { industryPackageId?: string | null; name: string; code: string; mode: string; sceneType: string; description: string; aiRole?: { identity: string; background: string; personality: string; emotion: string; goal: string }; learnerRole?: { identity: string; goal: string }; endCondition?: string; interruptCondition?: string; dialogueExample?: string; initiator?: string; scoringRules?: Array<{ name: string; score: number; criteria: string; deductionRule: string; evidenceRequired: string }> }) {
+export function createScene(tenantId: string, input: { industryPackageId?: string | null; name: string; code: string; mode: string; createMode?: string; createdBy?: string | null; sceneType: string; description: string; aiRole?: { identity: string; background: string; personality: string; emotion: string; languageStyle?: string; goal: string }; learnerRole?: { identity: string; goal: string }; endCondition?: string; interruptCondition?: string; dialogueExample?: string; initiator?: string; scoringRules?: Array<{ name: string; score: number; criteria: string; deductionRule: string; evidenceRequired: string }> }) {
   const id = createId("scene");
   run(
-    `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, scene_type, description, status, source_type, is_template, version, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'manual', 0, '1.0.0', datetime('now'), datetime('now'))`,
-    [id, tenantId, input.industryPackageId ?? null, input.name, input.code, input.mode, input.sceneType, input.description],
+    `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, create_mode, scene_type, description, status, source_type, is_template, version, created_by, created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'manual', 0, '1.0.0', ?, datetime('now'), datetime('now'))`,
+    [id, tenantId, input.industryPackageId ?? null, input.name, input.code, input.mode, input.createMode ?? "ai_practice", input.sceneType, input.description, input.createdBy ?? null],
   );
   // AI 角色
   if (input.aiRole?.identity) {
     run(
-      `insert into scene_roles (id, tenant_id, scene_id, role_type, identity, background, personality, emotion, goal, created_at, updated_at)
-       values (?, ?, ?, 'ai', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      [createId("role"), tenantId, id, input.aiRole.identity, input.aiRole.background || "", input.aiRole.personality || "", input.aiRole.emotion || "", input.aiRole.goal || ""],
+      `insert into scene_roles (id, tenant_id, scene_id, role_type, identity, background, personality, emotion, language_style, goal, created_at, updated_at)
+       values (?, ?, ?, 'ai', ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [createId("role"), tenantId, id, input.aiRole.identity, input.aiRole.background || "", input.aiRole.personality || "", input.aiRole.emotion || "", input.aiRole.languageStyle || "", input.aiRole.goal || ""],
     );
   }
   // 学员角色
@@ -846,7 +886,7 @@ export function createScene(tenantId: string, input: { industryPackageId?: strin
     );
   });
   return get<SceneRow>(
-    "select id, name, code, industry_package_id as industryPackageId, scene_type as sceneType, mode, status, is_template as isTemplate, source_type as sourceType, description, coalesce(pass_score, 80) as passScore from scenes where id = ?",
+    "select id, name, code, industry_package_id as industryPackageId, scene_type as sceneType, mode, coalesce(create_mode, 'ai_practice') as createMode, status, is_template as isTemplate, source_type as sourceType, description, coalesce(pass_score, 80) as passScore, created_at as createdAt from scenes where id = ?",
     [id],
   );
 }
@@ -855,14 +895,14 @@ export function createGeneratedScene(tenantId: string, input: GeneratedSceneInpu
   const id = createId("scene");
   const safeCode = input.code || `AI-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
   run(
-    `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, scene_type, description, status, source_type, is_template, version, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, 0, '1.0.0', datetime('now'), datetime('now'))`,
-    [id, tenantId, input.industryPackageId ?? null, input.name, safeCode, input.mode, input.sceneType, input.description, input.sourceType],
+    `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, create_mode, scene_type, description, status, source_type, is_template, version, created_by, created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, 0, '1.0.0', ?, datetime('now'), datetime('now'))`,
+    [id, tenantId, input.industryPackageId ?? null, input.name, safeCode, input.mode, input.createMode ?? "ai_practice", input.sceneType, input.description, input.sourceType, input.createdBy ?? null],
   );
   run(
-    `insert into scene_roles (id, tenant_id, scene_id, role_type, identity, background, personality, emotion, goal, created_at, updated_at)
-     values (?, ?, ?, 'ai', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-    [createId("role"), tenantId, id, input.aiRole.identity, input.aiRole.background, input.aiRole.personality, input.aiRole.emotion, input.aiRole.goal],
+    `insert into scene_roles (id, tenant_id, scene_id, role_type, identity, background, personality, emotion, language_style, goal, created_at, updated_at)
+     values (?, ?, ?, 'ai', ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+    [createId("role"), tenantId, id, input.aiRole.identity, input.aiRole.background, input.aiRole.personality, input.aiRole.emotion, input.aiRole.languageStyle || "", input.aiRole.goal],
   );
   run(
     `insert into scene_roles (id, tenant_id, scene_id, role_type, identity, goal, created_at, updated_at)
@@ -883,7 +923,7 @@ export function createGeneratedScene(tenantId: string, input: GeneratedSceneInpu
   });
 
   return get<SceneRow>(
-    "select id, name, code, industry_package_id as industryPackageId, scene_type as sceneType, mode, status, is_template as isTemplate, source_type as sourceType, description, coalesce(pass_score, 80) as passScore from scenes where id = ?",
+    "select id, name, code, industry_package_id as industryPackageId, scene_type as sceneType, mode, coalesce(create_mode, 'ai_practice') as createMode, status, is_template as isTemplate, source_type as sourceType, description, coalesce(pass_score, 80) as passScore, created_at as createdAt from scenes where id = ?",
     [id],
   );
 }
@@ -891,16 +931,20 @@ export function createGeneratedScene(tenantId: string, input: GeneratedSceneInpu
 export function getSceneDetail(tenantId: string, sceneId: string): SceneDetail | undefined {
   const scene = get<SceneRow & { industryPackageName: string | null }>(
     `select s.id, s.name, s.code, s.industry_package_id as industryPackageId, ip.name as industryPackageName,
-            s.scene_type as sceneType, s.mode, s.status, s.is_template as isTemplate, s.source_type as sourceType, s.description,
-            coalesce(s.pass_score, 80) as passScore
+            s.scene_type as sceneType, s.mode, coalesce(s.create_mode, 'ai_practice') as createMode, s.status, s.is_template as isTemplate, s.source_type as sourceType, s.description,
+            coalesce(s.pass_score, 80) as passScore, s.created_at as createdAt, s.updated_at as updatedAt,
+            u.name as creatorName, o.name as creatorOrgName,
+            (select count(*) from task_scenes ts where ts.tenant_id = s.tenant_id and ts.scene_id = s.id and ts.deleted_at is null) as taskCount
      from scenes s
      left join industry_packages ip on ip.id = s.industry_package_id and ip.tenant_id = s.tenant_id
+     left join users u on u.id = s.created_by and u.tenant_id = s.tenant_id
+     left join organizations o on o.id = u.org_id and o.tenant_id = u.tenant_id
      where s.tenant_id = ? and s.id = ? and s.deleted_at is null limit 1`,
     [tenantId, sceneId],
   );
   if (!scene) return undefined;
   const roles = all<SceneRoleRow>(
-    `select id, role_type as roleType, identity, background, personality, emotion, goal
+    `select id, role_type as roleType, identity, background, personality, emotion, coalesce(language_style, '') as languageStyle, goal
      from scene_roles where tenant_id = ? and scene_id = ? and deleted_at is null order by role_type asc, created_at asc`,
     [tenantId, sceneId],
   );
@@ -948,9 +992,118 @@ export function replaceSceneScoringRules(
 export function updateSceneStatus(tenantId: string, sceneId: string, status: "draft" | "published" | "disabled") {
   run("update scenes set status = ?, updated_at = datetime('now') where tenant_id = ? and id = ? and deleted_at is null", [status, tenantId, sceneId]);
   return get<SceneRow>(
-    "select id, name, code, industry_package_id as industryPackageId, scene_type as sceneType, mode, status, is_template as isTemplate, source_type as sourceType, description, coalesce(pass_score, 80) as passScore from scenes where tenant_id = ? and id = ?",
+    "select id, name, code, industry_package_id as industryPackageId, scene_type as sceneType, mode, coalesce(create_mode, 'ai_practice') as createMode, status, is_template as isTemplate, source_type as sourceType, description, coalesce(pass_score, 80) as passScore from scenes where tenant_id = ? and id = ?",
     [tenantId, sceneId],
   );
+}
+
+export function updateSceneDetail(
+  tenantId: string,
+  sceneId: string,
+  input: {
+    name?: string;
+    description?: string;
+    aiRole?: { identity: string; background: string; personality: string; emotion: string; languageStyle?: string; goal: string };
+    learnerRole?: { identity: string; goal: string };
+    endCondition?: string;
+    interruptCondition?: string;
+    dialogueExample?: string;
+    initiator?: string;
+    scoringRules?: Array<{ name: string; score: number; criteria: string; deductionRule?: string; evidenceRequired?: string }>;
+  },
+): SceneDetail | undefined {
+  const exists = get<{ id: string }>(
+    "select id from scenes where tenant_id = ? and id = ? and deleted_at is null limit 1",
+    [tenantId, sceneId],
+  );
+  if (!exists) return undefined;
+  run("update scenes set updated_at = datetime('now') where tenant_id = ? and id = ?", [tenantId, sceneId]);
+  if (input.name !== undefined || input.description !== undefined) {
+    const scene = get<{ name: string; description: string }>(
+      "select name, description from scenes where id = ?", [sceneId],
+    ) ?? { name: "", description: "" };
+    run(
+      "update scenes set name = ?, description = ?, updated_at = datetime('now') where tenant_id = ? and id = ?",
+      [input.name ?? scene.name, input.description ?? scene.description, tenantId, sceneId],
+    );
+  }
+  // 角色：整体替换（先软删旧角色，再按当前表单插入）
+  if (input.aiRole !== undefined || input.learnerRole !== undefined) {
+    run(
+      "update scene_roles set deleted_at = datetime('now'), updated_at = datetime('now') where tenant_id = ? and scene_id = ? and deleted_at is null",
+      [tenantId, sceneId],
+    );
+    if (input.aiRole?.identity) {
+      run(
+        `insert into scene_roles (id, tenant_id, scene_id, role_type, identity, background, personality, emotion, language_style, goal, created_at, updated_at)
+         values (?, ?, ?, 'ai', ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        [createId("role"), tenantId, sceneId, input.aiRole.identity, input.aiRole.background || "", input.aiRole.personality || "", input.aiRole.emotion || "", input.aiRole.languageStyle || "", input.aiRole.goal || ""],
+      );
+    }
+    if (input.learnerRole?.identity) {
+      run(
+        `insert into scene_roles (id, tenant_id, scene_id, role_type, identity, goal, created_at, updated_at)
+         values (?, ?, ?, 'learner', ?, ?, datetime('now'), datetime('now'))`,
+        [createId("role"), tenantId, sceneId, input.learnerRole.identity, input.learnerRole.goal || ""],
+      );
+    }
+  }
+  // 对话规则：整体替换（scene_rules 有 (tenant_id, scene_id) 唯一约束，必须物理删除旧记录再插入）
+  if (input.endCondition !== undefined || input.interruptCondition !== undefined || input.dialogueExample !== undefined || input.initiator !== undefined) {
+    const oldRule = get<{ initiator: string; endCondition: string; interruptCondition: string; description: string }>(
+      "select initiator, end_condition as endCondition, interrupt_condition as interruptCondition, description from scene_rules where tenant_id = ? and scene_id = ? limit 1",
+      [tenantId, sceneId],
+    ) ?? { initiator: "ai", endCondition: "", interruptCondition: "", description: "" };
+    run(
+      "delete from scene_rules where tenant_id = ? and scene_id = ?",
+      [tenantId, sceneId],
+    );
+    run(
+      `insert into scene_rules (id, tenant_id, scene_id, initiator, end_condition, interrupt_condition, description, created_at, updated_at)
+       values (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [
+        createId("rule"), tenantId, sceneId,
+        input.initiator ?? oldRule.initiator,
+        input.endCondition ?? oldRule.endCondition,
+        input.interruptCondition ?? oldRule.interruptCondition,
+        input.dialogueExample ?? oldRule.description,
+      ],
+    );
+  }
+  // 评分规则：整体替换
+  if (input.scoringRules !== undefined) {
+    run(
+      "update scoring_rules set deleted_at = datetime('now'), updated_at = datetime('now') where tenant_id = ? and scene_id = ? and deleted_at is null",
+      [tenantId, sceneId],
+    );
+    input.scoringRules.forEach((rule, index) => {
+      run(
+        `insert into scoring_rules (id, tenant_id, scene_id, name, score, criteria, deduction_rule, evidence_required, sort_order, created_at, updated_at)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        [createId("score"), tenantId, sceneId, rule.name, rule.score, rule.criteria, rule.deductionRule ?? "", rule.evidenceRequired ?? "", index + 1],
+      );
+    });
+  }
+  return getSceneDetail(tenantId, sceneId);
+}
+
+export function deleteScene(tenantId: string, sceneId: string): boolean {
+  const result = run(
+    "update scenes set deleted_at = datetime('now'), updated_at = datetime('now') where tenant_id = ? and id = ? and deleted_at is null",
+    [tenantId, sceneId],
+  );
+  return result.changes > 0;
+}
+
+export function batchDeleteScenes(tenantId: string, sceneIds: string[]): number {
+  if (!sceneIds.length) return 0;
+  const placeholders = sceneIds.map(() => "?").join(", ");
+  const result = run(
+    `update scenes set deleted_at = datetime('now'), updated_at = datetime('now')
+     where tenant_id = ? and id in (${placeholders}) and deleted_at is null`,
+    [tenantId, ...sceneIds],
+  );
+  return result.changes;
 }
 
 export function listMaterials(tenantId: string, options: { page: number; pageSize: number; keyword?: string; status?: string }) {
@@ -1198,10 +1351,11 @@ export function createTrainingRecord(tenantId: string, input: CreateTrainingReco
   const finishedAt = input.finishedAt ?? (input.status === "completed" ? new Date().toISOString() : null);
   const suggestionsJson = JSON.stringify(input.suggestions ?? []);
   const summaryJson = JSON.stringify({ highlights: input.highlights ?? [], weaknesses: input.weaknesses ?? [] });
+  const capabilityProfileJson = JSON.stringify([{ name: "能力综述", text: input.capabilityProfile ?? "" }]);
   run(
-    `insert into training_records (id, tenant_id, record_no, task_id, scene_id, user_id, mode, status, score, session_id, suggestions, summary_json, started_at, finished_at, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-    [id, tenantId, recordNo, input.taskId ?? null, input.sceneId, input.userId ?? null, input.mode, input.status, input.score, input.sessionId ?? null, suggestionsJson, summaryJson, startedAt, finishedAt],
+    `insert into training_records (id, tenant_id, record_no, task_id, scene_id, user_id, mode, status, score, session_id, suggestions, summary_json, capability_profile, started_at, finished_at, created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+    [id, tenantId, recordNo, input.taskId ?? null, input.sceneId, input.userId ?? null, input.mode, input.status, input.score, input.sessionId ?? null, suggestionsJson, summaryJson, capabilityProfileJson, startedAt, finishedAt],
   );
   input.turns.forEach((turn) => {
     run(
@@ -1212,9 +1366,9 @@ export function createTrainingRecord(tenantId: string, input: CreateTrainingReco
   });
   input.scores.forEach((score) => {
     run(
-      `insert into score_details (id, tenant_id, record_id, scoring_rule_id, score, deduction_reason, evidence_text, created_at, updated_at)
-       values (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      [createId("sd"), tenantId, id, score.scoringRuleId ?? null, score.score, score.deductionReason ?? "", score.evidenceText ?? ""],
+      `insert into score_details (id, tenant_id, record_id, scoring_rule_id, score, deduction_reason, evidence_text, level, created_at, updated_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [createId("sd"), tenantId, id, score.scoringRuleId ?? null, score.score, score.deductionReason ?? "", score.evidenceText ?? "", score.level ?? ""],
     );
   });
   if (input.taskId && input.userId && input.status === "completed") {
@@ -1246,7 +1400,7 @@ export function getTrainingRecordDetail(tenantId: string, recordId: string): Tra
     [tenantId, recordId],
   );
   const scores = all<ScoreDetailRow>(
-    `select sd.id, sr.name as ruleName, sd.score, sd.deduction_reason as deductionReason, sd.evidence_text as evidenceText
+    `select sd.id, sr.name as ruleName, sd.score, sd.deduction_reason as deductionReason, sd.evidence_text as evidenceText, sd.level as level
      from score_details sd
      left join scoring_rules sr on sr.id = sd.scoring_rule_id and sr.tenant_id = sd.tenant_id
      where sd.tenant_id = ? and sd.record_id = ? and sd.deleted_at is null order by sd.created_at asc`,
@@ -1272,7 +1426,21 @@ export function getTrainingRecordDetail(tenantId: string, recordId: string): Tra
       if (Array.isArray(parsed.weaknesses)) weaknesses = parsed.weaknesses.filter((s): s is string => typeof s === "string");
     } catch { /* ignore invalid json */ }
   }
-  return { record, turns, scores, suggestions, highlights, weaknesses };
+  let capabilityProfile = "";
+  const profileRow = get<{ capabilityProfile: string }>(
+    "select capability_profile as capabilityProfile from training_records where tenant_id = ? and id = ? and deleted_at is null limit 1",
+    [tenantId, recordId],
+  );
+  if (profileRow?.capabilityProfile) {
+    try {
+      const parsed = JSON.parse(profileRow.capabilityProfile) as Array<{ name?: unknown; text?: unknown }>;
+      if (Array.isArray(parsed)) {
+        const first = parsed.find((p) => p && p.name === "能力综述");
+        if (first && typeof first.text === "string") capabilityProfile = first.text;
+      }
+    } catch { /* ignore invalid json */ }
+  }
+  return { record, turns, scores, suggestions, highlights, weaknesses, capabilityProfile };
 }
 
 /** 按对练会话查询训练记录（评分异步完成后前端轮询用） */
@@ -2259,15 +2427,21 @@ export function bumpKnowledgeFolderStats(tenantId: string, folderId: string, del
   );
 }
 
-// 出题联动：拉取已解析知识文件摘要
-export function listKnowledgeSummaries(tenantId: string, limit = 20) {
+// 出题联动：拉取已解析知识文件摘要（可选按文件 ID 过滤）
+export function listKnowledgeSummaries(tenantId: string, limit = 20, fileIds?: string[]) {
+  const filters = ["kf.tenant_id = ?", "kf.parse_status = 'done'", "kf.deleted_at is null", "kf.summary <> ''"];
+  const params: unknown[] = [tenantId];
+  if (fileIds && fileIds.length > 0) {
+    filters.push(`kf.id in (${fileIds.map(() => "?").join(", ")})`);
+    params.push(...fileIds);
+  }
   return all<{ folderName: string; name: string; summary: string }>(
     `select kf.name, kf.summary, kfolder.name as folderName
      from knowledge_files kf
      left join knowledge_folders kfolder on kfolder.id = kf.folder_id and kfolder.tenant_id = kf.tenant_id and kfolder.deleted_at is null
-     where kf.tenant_id = ? and kf.parse_status = 'done' and kf.deleted_at is null and kf.summary <> ''
+     where ${filters.join(" and ")}
      order by kf.created_at desc limit ?`,
-    [tenantId, limit],
+    [...params, limit],
   );
 }
 

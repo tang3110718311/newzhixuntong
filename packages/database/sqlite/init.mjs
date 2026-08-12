@@ -165,6 +165,7 @@ create table if not exists scenes (
   name text not null,
   code text not null,
   mode text not null default 'voice',
+  create_mode text not null default 'ai_practice',
   status text not null default 'draft',
   version text not null default '1.0.0',
   is_template integer not null default 0,
@@ -188,6 +189,7 @@ create table if not exists scene_roles (
   background text not null default '',
   personality text not null default '',
   emotion text not null default 'calm',
+  language_style text not null default '',
   goal text not null default '',
   created_at text not null default current_timestamp,
   updated_at text not null default current_timestamp,
@@ -522,6 +524,8 @@ ensureColumn("scenes", "pass_score", "integer not null default 80");
 ensureColumn("training_records", "session_id", "text");
 ensureColumn("training_records", "suggestions", "text not null default '[]'");
 ensureColumn("training_records", "summary_json", "text");
+ensureColumn("score_details", "level", "text not null default ''");
+ensureColumn("training_records", "capability_profile", "text not null default '[]'");
 
 // ---- 核心表索引（查询以 tenant_id + deleted_at 过滤，按 record/scene/user/task join）----
 exec(`create index if not exists idx_tr_tenant_user_status on training_records(tenant_id, user_id, status)`);

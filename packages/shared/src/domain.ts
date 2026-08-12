@@ -1,6 +1,9 @@
 export const sceneModes = ["voice", "text"] as const;
 export type SceneMode = (typeof sceneModes)[number];
 
+export const sceneCreateModes = ["ai_practice", "ai_exam", "fixed_practice", "fixed_exam"] as const;
+export type SceneCreateMode = (typeof sceneCreateModes)[number];
+
 export const sceneStatuses = ["draft", "published", "disabled"] as const;
 export type SceneStatus = (typeof sceneStatuses)[number];
 

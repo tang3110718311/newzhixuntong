@@ -18,11 +18,17 @@ type SceneDetail = {
     industryPackageName?: string | null;
     sceneType: string;
     mode: string;
+    createMode?: string;
     status: string;
     isTemplate: number;
     sourceType: string;
     description?: string;
     passScore: number;
+    taskCount?: number;
+    creatorName?: string | null;
+    creatorOrgName?: string | null;
+    createdAt?: string | null;
+    updatedAt?: string | null;
   };
   roles: Array<{
     id: string;
@@ -31,6 +37,7 @@ type SceneDetail = {
     background: string;
     personality: string;
     emotion: string;
+    languageStyle?: string;
     goal: string;
   }>;
   rule: {
@@ -81,12 +88,13 @@ export default function SceneEditPage() {
   const [submitting, setSubmitting] = useState(false);
   const [rightRail, setRightRail] = useState<RightRailData | undefined>(undefined);
 
-  // 编辑态表单
-  const [aiRoleGoal, setAiRoleGoal] = useState("");
-  const [aiRoleBackground, setAiRoleBackground] = useState("");
-  const [aiRolePersonality, setAiRolePersonality] = useState("");
-  const [aiRoleEmotion, setAiRoleEmotion] = useState("");
-  const [learnerRoleGoal, setLearnerRoleGoal] = useState("");
+  // 编辑态表单（AI 角色与学员角色字段分开，避免复用错误）
+  const [aiIdentity, setAiIdentity] = useState("");
+  const [aiBackground, setAiBackground] = useState("");
+  const [aiPersonality, setAiPersonality] = useState("");
+  const [aiEmotion, setAiEmotion] = useState("");
+  const [aiLanguageStyle, setAiLanguageStyle] = useState("");
+  const [learnerIdentity, setLearnerIdentity] = useState("");
   const [dialogGoal, setDialogGoal] = useState("");
   const [dialogDesc, setDialogDesc] = useState("");
   const [dialogInitiator, setDialogInitiator] = useState("");
@@ -117,12 +125,13 @@ export default function SceneEditPage() {
   function initFormFromDetail(d: SceneDetail) {
     const ai = d.roles.find((r) => r.roleType === "ai");
     const learner = d.roles.find((r) => r.roleType !== "ai");
-    setAiRoleGoal(ai?.goal || "");
-    setAiRoleBackground(ai?.background || "");
-    setAiRolePersonality(ai?.personality || "");
-    setAiRoleEmotion(ai?.emotion || "");
-    setLearnerRoleGoal(learner?.goal || "");
-    setDialogGoal(d.rule?.endCondition || "");
+    setAiIdentity(ai?.identity || "");
+    setAiBackground(ai?.background || "");
+    setAiPersonality(ai?.personality || "");
+    setAiEmotion(ai?.emotion || "");
+    setAiLanguageStyle(ai?.languageStyle || "");
+    setLearnerIdentity(learner?.identity || "");
+    setDialogGoal(learner?.goal || "");
     setDialogDesc(d.rule?.description || "");
     setDialogInitiator(d.rule?.initiator || "");
     setDialogEndCondition(d.rule?.endCondition || "");
@@ -172,9 +181,35 @@ export default function SceneEditPage() {
     setMessage("");
     setError("");
     try {
-      const updated = await apiFetch<SceneDetail>(`/scenes/${detail.scene.id}/scoring-rules`, {
+      const updated = await apiFetch<SceneDetail>(`/scenes/${detail.scene.id}`, {
         method: "PUT",
-        body: JSON.stringify({ rules: scoringRuleForms }),
+        body: JSON.stringify({
+          name: detail.scene.name,
+          description: detail.scene.description,
+          aiRole: {
+            identity: aiIdentity,
+            background: aiBackground,
+            personality: aiPersonality,
+            emotion: aiEmotion,
+            languageStyle: aiLanguageStyle,
+            goal: dialogGoal,
+          },
+          learnerRole: {
+            identity: learnerIdentity,
+            goal: dialogGoal,
+          },
+          endCondition: dialogEndCondition,
+          interruptCondition: dialogInterrupt,
+          dialogueExample: dialogDesc,
+          initiator: dialogInitiator,
+          scoringRules: scoringRuleForms.map((r) => ({
+            name: r.name,
+            score: r.score,
+            criteria: r.criteria,
+            deductionRule: r.deductionRule,
+            evidenceRequired: r.evidenceRequired,
+          })),
+        }),
       });
       setDetail(updated);
       setScoringRuleForms(updated.scoringRules.map((r) => ({ ...r })));
@@ -243,19 +278,19 @@ export default function SceneEditPage() {
                 <div style={{ display: "grid", gap: 14 }}>
                   <div className="field">
                     <span className="field-label">*AI扮演角色</span>
-                    <input value={aiRoleGoal} onChange={(e) => setAiRoleGoal(e.target.value)} placeholder="如：业务客户" />
+                    <input value={aiIdentity} onChange={(e) => setAiIdentity(e.target.value)} placeholder="如：业务客户" />
+                  </div>
+                  <div className="field">
+                    <span className="field-label">身份地位</span>
+                    <input value={aiPersonality} onChange={(e) => setAiPersonality(e.target.value)} placeholder="描述 AI 角色的身份地位" />
                   </div>
                   <div className="field">
                     <span className="field-label">背景简介</span>
-                    <textarea value={aiRoleBackground} onChange={(e) => setAiRoleBackground(e.target.value)} placeholder="描述 AI 角色的背景信息" style={{ minHeight: 72 }} />
+                    <textarea value={aiBackground} onChange={(e) => setAiBackground(e.target.value)} placeholder="描述 AI 角色的背景信息" style={{ minHeight: 72 }} />
                   </div>
                   <div className="field">
-                    <span className="field-label">*AI语速设置</span>
-                    <select value={aiRoleEmotion} onChange={(e) => setAiRoleEmotion(e.target.value)}>
-                      <option value="calm">正常语速</option>
-                      <option value="slow">慢速</option>
-                      <option value="fast">快速</option>
-                    </select>
+                    <span className="field-label">AI语言风格</span>
+                    <input value={aiLanguageStyle} onChange={(e) => setAiLanguageStyle(e.target.value)} placeholder="如：礼貌、简洁，适当使用行业术语" />
                   </div>
                   <div className="field">
                     <span className="field-label">上传附件</span>
@@ -293,16 +328,25 @@ export default function SceneEditPage() {
                 {/* 右列 */}
                 <div style={{ display: "grid", gap: 14 }}>
                   <div className="field">
-                    <span className="field-label">身份地位</span>
-                    <input value={aiRolePersonality} onChange={(e) => setAiRolePersonality(e.target.value)} placeholder="描述 AI 角色的身份地位" />
+                    <span className="field-label">AI角色性格</span>
+                    <input value={aiPersonality} onChange={(e) => setAiPersonality(e.target.value)} placeholder="描述 AI 角色性格特征" />
                   </div>
                   <div className="field">
-                    <span className="field-label">AI角色性格</span>
-                    <input value={aiRoleEmotion} onChange={(e) => setAiRoleEmotion(e.target.value)} placeholder="描述 AI 角色性格特征" />
+                    <span className="field-label">*AI情绪设置</span>
+                    <select value={aiEmotion} onChange={(e) => setAiEmotion(e.target.value)}>
+                      <option value="">请选择 AI 情绪</option>
+                      <option value="calm">平静</option>
+                      <option value="kind">亲切</option>
+                      <option value="anxious">焦急</option>
+                      <option value="angry">生气</option>
+                      <option value="furious">愤怒</option>
+                      <option value="depressed">沮丧</option>
+                      <option value="professional">专业</option>
+                    </select>
                   </div>
                   <div className="field">
                     <span className="field-label">*学员角色扮演</span>
-                    <textarea value={learnerRoleGoal} onChange={(e) => setLearnerRoleGoal(e.target.value)} placeholder="描述学员扮演的角色" style={{ minHeight: 72 }} />
+                    <input value={learnerIdentity} onChange={(e) => setLearnerIdentity(e.target.value)} placeholder="如：客服坐席" />
                   </div>
                 </div>
               </div>
@@ -329,6 +373,7 @@ export default function SceneEditPage() {
                     <select value={dialogInitiator} onChange={(e) => setDialogInitiator(e.target.value)}>
                       <option value="ai">AI 发起</option>
                       <option value="learner">学员发起</option>
+                      <option value="random">随机</option>
                     </select>
                   </div>
                   <div className="field">

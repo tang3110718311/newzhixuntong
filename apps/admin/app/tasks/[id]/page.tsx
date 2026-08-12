@@ -654,47 +654,58 @@ export default function TaskDetailPage() {
         </div>
       </div>
 
-      {/* ===== 3. 蓝色步骤横条（按原型："✓ 学完理论知识模块"）===== */}
+      {/* ===== 3. 蓝色步骤横条（按原型："✓ 学完理论知识模块"） ===== */}
+      {/* 容器用 flex-wrap，每个 step 条 width:fit-content 单场景不再占满整行 */}
       <div
         style={{
-          background: ACCENT_GRADIENT,
-          color: "#fff",
-          borderRadius: 12,
-          padding: "14px 22px",
           display: "flex",
-          alignItems: "center",
+          flexWrap: "wrap",
           gap: 12,
           marginBottom: 16,
-          boxShadow: "0 6px 18px rgba(78,99,240,.25)",
         }}
       >
-        <span
+        <div
           style={{
-            width: 26,
-            height: 26,
-            borderRadius: "50%",
-            background: "rgba(255,255,255,.22)",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          <Check size={15} />
-        </span>
-        <strong style={{ fontSize: 14 }}>学完理论知识模块</strong>
-        <span
-          style={{
-            marginLeft: 8,
-            fontSize: 12,
-            padding: "2px 10px",
-            borderRadius: 999,
-            background: "rgba(255,255,255,.18)",
+            background: ACCENT_GRADIENT,
             color: "#fff",
+            borderRadius: 12,
+            padding: "14px 22px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            width: "fit-content",
+            maxWidth: "100%",
+            boxShadow: "0 6px 18px rgba(78,99,240,.25)",
           }}
         >
-          基础知识
-        </span>
+          <span
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,.22)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <Check size={15} />
+          </span>
+          <strong style={{ fontSize: 14 }}>学完理论知识模块</strong>
+          <span
+            style={{
+              marginLeft: 8,
+              fontSize: 12,
+              padding: "2px 10px",
+              borderRadius: 999,
+              background: "rgba(255,255,255,.18)",
+              color: "#fff",
+            }}
+          >
+            基础知识
+          </span>
+        </div>
       </div>
 
       {/* ===== 4. 客户场景应对对练大卡 ===== */}

@@ -5,6 +5,9 @@ export const paginationQuerySchema = z.object({
   pageSize: z.coerce.number().int().positive().max(1000).default(20),
   keyword: z.string().optional().default(""),
   status: z.string().optional().default(""),
+  mode: z.string().optional().default(""),
+  createMode: z.string().optional().default(""),
+  orgId: z.string().optional().default(""),
 });
 
 export const updateTenantSettingsSchema = z.object({
@@ -77,11 +80,19 @@ export const createCapabilityModelSchema = z.object({
   message: "能力项权重合计必须等于 100。",
   path: ["items"],
 });
+export const sceneCreateModeSchema = z.enum(["ai_practice", "ai_exam", "fixed_practice", "fixed_exam"]);
+export const sceneCreateModeLabels: Record<string, string> = {
+  ai_practice: "AI对练模式",
+  ai_exam: "AI对练+考试模式",
+  fixed_practice: "固定对练模式",
+  fixed_exam: "固定对练+考试模式",
+};
 export const createSceneSchema = z.object({
   industryPackageId: z.string().optional().nullable(),
   name: z.string().min(2).max(120),
   code: z.string().min(2).max(60),
   mode: z.enum(["voice", "text"]).default("voice"),
+  createMode: sceneCreateModeSchema.default("ai_practice"),
   sceneType: z.string().min(1).max(80),
   description: z.string().min(1).max(2000),
   aiRole: z.object({
@@ -89,6 +100,7 @@ export const createSceneSchema = z.object({
     background: z.string().max(300).optional().default(""),
     personality: z.string().max(200).optional().default(""),
     emotion: z.string().max(50).optional().default(""),
+    languageStyle: z.string().max(200).optional().default(""),
     goal: z.string().max(200).optional().default(""),
   }).optional(),
   learnerRole: z.object({
@@ -108,6 +120,34 @@ export const createSceneSchema = z.object({
   })).optional().default([]),
 });
 
+
+export const updateSceneSchema = z.object({
+  name: z.string().min(2).max(120).optional(),
+  description: z.string().max(2000).optional(),
+  aiRole: z.object({
+    identity: z.string().max(200).optional().default(""),
+    background: z.string().max(300).optional().default(""),
+    personality: z.string().max(200).optional().default(""),
+    emotion: z.string().max(50).optional().default(""),
+    languageStyle: z.string().max(200).optional().default(""),
+    goal: z.string().max(200).optional().default(""),
+  }).optional(),
+  learnerRole: z.object({
+    identity: z.string().max(200).optional().default(""),
+    goal: z.string().max(500).optional().default(""),
+  }).optional(),
+  endCondition: z.string().max(300).optional(),
+  interruptCondition: z.string().max(300).optional(),
+  dialogueExample: z.string().max(2000).optional(),
+  initiator: z.enum(["ai", "learner", "random"]).optional(),
+  scoringRules: z.array(z.object({
+    name: z.string().min(1).max(80),
+    score: z.number().min(0).max(100),
+    criteria: z.string().max(500).optional().default(""),
+    deductionRule: z.string().max(500).optional().default(""),
+    evidenceRequired: z.string().max(500).optional().default(""),
+  })).optional(),
+});
 
 export const createMaterialSchema = z.object({
   name: z.string().min(2).max(120),
@@ -199,6 +239,7 @@ export const generateSceneSchema = z.object({
   sceneDescription: z.string().min(10).max(2000),
   targetRole: z.string().min(1).max(120),
   mode: z.enum(["voice", "text"]).default("voice"),
+  createMode: sceneCreateModeSchema.default("ai_practice"),
   attachmentFileIds: z.array(z.string()).default([]),
 });
 export const transcribeAudioSchema = z.object({
