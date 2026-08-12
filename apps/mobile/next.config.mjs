@@ -1,5 +1,8 @@
 /** @type {import("next").NextConfig} */
-const API_ORIGIN = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+// API 完整地址（含 /api 路径，供 api.ts 使用）
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
+// CSP connect-src 需要裸 origin（不含路径），否则带 path 的 host-source 无法匹配子路径请求
+const API_ORIGIN = API_BASE.replace(/\/+$/, "").replace(/\/api$/, "") || API_BASE;
 
 const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
