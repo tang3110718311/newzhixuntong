@@ -27,7 +27,6 @@ import {
   Sparkles,
   Trash2,
   Users,
-  Mic,
   Wand2,
 } from "lucide-react";
 import { AppealsSection } from "./AppealsSection";
@@ -1498,7 +1497,6 @@ export function AdminDashboard() {
     { id: "student-home", key: "student-home", label: "学员首页", icon: <Users size={18} /> },
     { id: "my-tasks", key: "my-tasks", label: "我的任务", icon: <ClipboardList size={18} />, badge: tasks.filter((task) => task.status !== "completed").length },
     { id: "my-exams", key: "my-exams", label: "我的考试", icon: <FileText size={18} />, badge: 0 },
-    { id: "practice", key: "practice", label: "对练中心", icon: <Mic size={18} /> },
     { id: "scenes", key: "scenes", label: "场景管理", icon: <Bot size={18} /> },
     { id: "knowledge", key: "knowledge", label: "企业知识库", icon: <Database size={18} /> },
     { id: "tasks", key: "tasks", label: "任务管理", icon: <ClipboardList size={18} /> },
