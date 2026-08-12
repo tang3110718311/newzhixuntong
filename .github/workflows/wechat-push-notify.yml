@@ -1,0 +1,83 @@
+name: WeChat Push Notify
+
+on:
+  push:
+    branches:
+      - main
+      - feat-mobile
+
+jobs:
+  notify:
+    name: Notify WeChat
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Enterprise WeChat message
+        if: ${{ secrets.WECHAT_ROBOT_WEBHOOK != '' }}
+        env:
+          WECHAT_ROBOT_WEBHOOK: ${{ secrets.WECHAT_ROBOT_WEBHOOK }}
+          REPOSITORY: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+          PUSHER: ${{ github.event.pusher.name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          COMPARE_URL: ${{ github.event.compare }}
+          COMMITS_JSON: ${{ toJson(github.event.commits) }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          import urllib.request
+
+          webhook = os.environ["WECHAT_ROBOT_WEBHOOK"].strip()
+          commits = json.loads(os.environ.get("COMMITS_JSON") or "[]")
+          branch = os.environ["BRANCH"]
+          repo = os.environ["REPOSITORY"]
+          actor = os.environ["ACTOR"]
+          pusher = os.environ["PUSHER"] or actor
+          compare_url = os.environ["COMPARE_URL"]
+          after = os.environ["AFTER"][:7]
+
+          lines = [
+              f"## 智训通代码推送通知",
+              f"> 仓库：{repo}",
+              f"> 分支：{branch}",
+              f"> 推送人：{pusher} / {actor}",
+              f"> 最新提交：{after}",
+              "",
+              f"本次提交数：{len(commits)}",
+          ]
+
+          for commit in commits[:8]:
+              message = (commit.get("message") or "").splitlines()[0]
+              commit_id = (commit.get("id") or "")[:7]
+              url = commit.get("url") or compare_url
+              lines.append(f"- [{commit_id}]({url}) {message}")
+
+          if len(commits) > 8:
+              lines.append(f"- 其余 {len(commits) - 8} 个提交请打开 Compare 查看")
+
+          if compare_url:
+              lines.extend(["", f"[查看本次推送详情]({compare_url})"])
+
+          payload = {
+              "msgtype": "markdown",
+              "markdown": {"content": "\n".join(lines)},
+          }
+          data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+          req = urllib.request.Request(
+              webhook,
+              data=data,
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+
+          with urllib.request.urlopen(req, timeout=20) as resp:
+              body = resp.read().decode("utf-8", errors="replace")
+              if resp.status >= 300:
+                  print(body)
+                  sys.exit(1)
+              print(body)
+          PY
+
