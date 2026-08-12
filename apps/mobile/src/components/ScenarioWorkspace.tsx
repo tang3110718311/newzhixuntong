@@ -1,5 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { recordApi } from "@/lib/api";
+import { isMaterialDone, getExamCount } from "@/lib/sceneProgress";
+import { taskFormText } from "@/lib/types";
+
 interface ScenarioWorkspaceProps {
   scene: any;
   task: any;
@@ -7,7 +12,9 @@ interface ScenarioWorkspaceProps {
   index: number;
   total: number;
   onBackToDetail: () => void;
+  onEnterMaterial: () => void;
   onEnterPractice: () => void;
+  onEnterExam: () => void;
   showToast: (msg: string) => void;
 }
 
@@ -18,85 +25,215 @@ export default function ScenarioWorkspace({
   index,
   total,
   onBackToDetail,
+  onEnterMaterial,
   onEnterPractice,
+  onEnterExam,
   showToast,
 }: ScenarioWorkspaceProps) {
   const s = scene?.scene;
   const aiRole = scene?.roles?.find((r: any) => r.roleType === "ai");
   const learnerRole = scene?.roles?.find((r: any) => r.roleType === "learner");
-  const materials = scene?.materials || [];
+  const sceneId = sceneMeta?.sceneId;
+  const trainCount = sceneMeta?.completedTrainCount || 0;
+  const required = sceneMeta?.requiredTrainTimes || 1;
+  const materialDone = !!sceneId && (isMaterialDone(sceneId) || trainCount > 0);
+  const practiceDone = trainCount >= required;
+  const examCount = sceneId ? getExamCount(sceneId) : 0;
+  const sceneDone = practiceDone && examCount > 0;
+
+  // ===== 历史记录（对练记录来自后端）=====
+  const [recordTab, setRecordTab] = useState<"practice" | "exam">("practice");
+  const [records, setRecords] = useState<any[]>([]);
+  const [recordLoading, setRecordLoading] = useState(false);
+
+  useEffect(() => {
+    if (!sceneId) return;
+    setRecordLoading(true);
+    recordApi
+      .list({ page: 1, pageSize: 20, sceneId })
+      .then((res: any) => setRecords(res?.items || []))
+      .catch(() => setRecords([]))
+      .finally(() => setRecordLoading(false));
+  }, [sceneId]);
+
+  const latestScore = records.length > 0 ? records[0]?.score : null;
+
+  const openPractice = () => {
+    if (!materialDone) {
+      showToast("请先完成资料学习，再开始 AI 对练");
+      return;
+    }
+    onEnterPractice();
+  };
+
+  const openExam = () => {
+    if (!practiceDone) {
+      showToast("请先完成 AI 对练，再进行考试");
+      return;
+    }
+    onEnterExam();
+  };
 
   return (
     <>
+      {/* ===== 顶部导航 ===== */}
       <div className="task-detail-head">
         <button className="task-detail-back" type="button" onClick={onBackToDetail} aria-label="返回任务详情">
           ‹
         </button>
         <div className="task-detail-title">
-          <h1>场景工作台</h1>
+          <h1>场景详情</h1>
+          <p>查看场景要求与学习进度</p>
+        </div>
+      </div>
+
+      {/* ===== 场景基础信息栏 ===== */}
+      <div className="scenario-detail-hero">
+        <span className="scenario-index">{String(index + 1).padStart(2, "0")}</span>
+        <div className="scenario-detail-main">
+          <h2>{s?.name || sceneMeta?.sceneName}</h2>
           <p>
-            场景 {index + 1}/{total} · {sceneMeta?.sceneName}
+            {s?.scene_type || sceneMeta?.sceneType || "场景训练"} · 场景 {index + 1}/{total} ·{" "}
+            {task?.primaryMode ? taskFormText(task.primaryMode) : "语音形式"}
           </p>
         </div>
+        <span className={`scene-status-pill ${sceneDone ? "done" : "doing"}`}>
+          {sceneDone ? "已完成" : "进行中"}
+        </span>
       </div>
-      <div className="scenario-workspace-head">
-        <span className="scenario-index">{String(index + 1).padStart(2, "0")}</span>
-        <div>
-          <h2>{s?.name || sceneMeta?.sceneName}</h2>
-          <p>{s?.description || sceneMeta?.sceneType || "完成本场景的学习、对练与考试。"}</p>
+
+      {/* ===== 本场景完成路径 ===== */}
+      <div className="scene-path-card">
+        <div className="path-card-head">
+          <div>
+            <h3>本场景完成路径</h3>
+            <span>按顺序完成资料、对练和考试</span>
+          </div>
+          <span className="path-done-tag">{sceneDone ? "本场景已完成" : "进行中"}</span>
         </div>
-        <span className="scene-status-pill doing">进行中</span>
-      </div>
-
-      <div className="scene-work-card">
-        <h3>对话目标</h3>
-        <p className="card-sub">{aiRole?.goal || "完成一次专业、自然的沟通，准确识别对方关注点，并推动下一步。"}</p>
-        <h3>AI 角色</h3>
-        <p className="card-sub">
-          {aiRole?.identity || "场景角色"} · {aiRole?.personality || "专业"} （{aiRole?.roleType === "ai" ? "AI" : "学员"}）
-        </p>
-        {aiRole?.background && <p className="card-sub">{aiRole.background}</p>}
-      </div>
-
-      {materials.length > 0 && (
-        <div className="scene-work-card">
-          <h3>学习资料</h3>
-          <div className="scene-material">
-            <span className="material-icon">📄</span>
-            <div className="material-main">
-              <b>{materials[0].name}</b>
-              <span>{materials[0].type} 资料</span>
-            </div>
+        <div className="path-steps">
+          <div className={`path-step ${materialDone ? "done" : ""}`}>
+            <span className="path-step-num">1</span>
+            <b>学习资料</b>
+            <em>{materialDone ? "已完成" : "待完成"}</em>
+            <button type="button" onClick={onEnterMaterial}>
+              查看资料 ›
+            </button>
+          </div>
+          <span className="path-step-arrow">›</span>
+          <div className={`path-step ${practiceDone ? "done" : ""}`}>
+            <span className="path-step-num">2</span>
+            <b>AI 对练</b>
+            <em>{practiceDone ? "已完成" : trainCount > 0 ? `进行中 ${trainCount}/${required}` : "待完成"}</em>
+            <button type="button" onClick={openPractice}>
+              {trainCount > 0 ? "再次对练" : "开始对练"} ›
+            </button>
+          </div>
+          <span className="path-step-arrow">›</span>
+          <div className={`path-step ${examCount > 0 ? "done" : ""}`}>
+            <span className="path-step-num">3</span>
+            <b>场景考试</b>
+            <em>{examCount > 0 ? "已完成" : "待完成"}</em>
+            <button type="button" onClick={openExam}>
+              {examCount > 0 ? "再次考试" : "开始考试"} ›
+            </button>
           </div>
         </div>
-      )}
+      </div>
 
-      <div className="scene-work-card">
-        <h3>训练流程</h3>
-        <div className="task-detail-list">
-          <li>阅读学习资料，掌握场景背景与沟通目标</li>
-          <li>进入 AI 对练，与 AI 角色完成多轮模拟对话</li>
-          <li>完成场景考试，检验学习成果</li>
+      {/* ===== 场景介绍 ===== */}
+      <div className="scene-info-card">
+        <h3>场景介绍</h3>
+        <p className="card-sub">{s?.description || "完成本场景的学习、对练与考试。"}</p>
+        <div className="scene-info-box">
+          <span className="info-box-label">对话目标</span>
+          <p>{aiRole?.goal || "完成一次专业、自然的沟通，准确识别对方关注点，并推动下一步。"}</p>
         </div>
       </div>
 
-      <div className="task-detail-actions">
-        <button
-          className="secondary"
-          type="button"
-          onClick={() => {
-            if (materials.length > 0) {
-              showToast("资料：请先阅读《" + materials[0].name + "》");
-            } else {
-              showToast("本场景暂无资料，可直接对练");
-            }
-          }}
-        >
-          查看资料
-        </button>
-        <button className="primary" type="button" onClick={onEnterPractice}>
-          开始 AI 对练
-        </button>
+      {/* ===== AI 角色扮演 ===== */}
+      <div className="scene-info-card">
+        <h3>AI 角色扮演</h3>
+        <div className="scene-info-box violet">
+          <span className="info-box-label">角色背景</span>
+          <p>{aiRole?.background || "围绕场景主题与用户展开多轮对话。"}</p>
+        </div>
+        <div className="scene-role-grid">
+          <div className="scene-role-cell">
+            <span className="role-tag">AI 身份</span>
+            <b>{aiRole?.identity || "场景角色"}</b>
+          </div>
+          <div className="scene-role-cell">
+            <span className="role-tag">学员身份</span>
+            <b>{learnerRole?.identity || "学员"}</b>
+          </div>
+        </div>
+      </div>
+
+      {/* ===== 历史记录 ===== */}
+      <div className="scene-info-card">
+        <h3>历史记录</h3>
+        <p className="card-sub">查看本场景的 AI 对练与考试记录。</p>
+        <div className="history-tabs">
+          <button
+            type="button"
+            className={`history-tab ${recordTab === "practice" ? "active" : ""}`}
+            onClick={() => setRecordTab("practice")}
+          >
+            对练记录
+          </button>
+          <button
+            type="button"
+            className={`history-tab ${recordTab === "exam" ? "active" : ""}`}
+            onClick={() => setRecordTab("exam")}
+          >
+            考试记录
+          </button>
+        </div>
+        <div className="history-stat">
+          <div className="history-stat-item">
+            <strong>{recordTab === "practice" ? records.length : examCount}</strong>
+            <span>最近完成次数</span>
+          </div>
+          <div className="history-stat-item">
+            <strong>{recordTab === "practice" ? (latestScore ?? "-") : examCount > 0 ? "已通过" : "-"}</strong>
+            <span>最近得分</span>
+          </div>
+        </div>
+
+        {recordTab === "practice" ? (
+          <div className="history-list">
+            {recordLoading ? (
+              <div className="history-empty">加载中…</div>
+            ) : records.length === 0 ? (
+              <div className="history-empty">暂无对练记录</div>
+            ) : (
+              records.map((r: any, i: number) => (
+                <div className="record-history-row" key={r.id}>
+                  <div className="history-date">
+                    <b>{(r.finishedAt || r.startedAt || "").slice(0, 16).replace("T", " ")}</b>
+                    <span>AI 对练 · 第 {records.length - i} 次</span>
+                  </div>
+                  <strong className="history-score">{r.score ?? "-"} 分</strong>
+                  <button
+                    type="button"
+                    onClick={() => showToast("对练报告：得分 " + (r.score ?? "-") + " 分")}
+                  >
+                    查看报告
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
+          <div className="history-list">
+            {examCount === 0 ? (
+              <div className="history-empty">暂无考试记录</div>
+            ) : (
+              <div className="history-empty">本机已完成 {examCount} 次场景考试</div>
+            )}
+          </div>
+        )}
       </div>
     </>
   );

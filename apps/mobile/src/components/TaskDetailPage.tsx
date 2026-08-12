@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { taskApi, sceneApi, recordApi, aiApi } from "@/lib/api";
 import { taskStatusText, taskTypeText, taskFormText } from "@/lib/types";
+import { isMaterialDone, markMaterialDone, getExamCount, addExamCount } from "@/lib/sceneProgress";
 
 interface TaskDetailPageProps {
   taskId: string | null;
@@ -11,58 +12,6 @@ interface TaskDetailPageProps {
 }
 
 type View = "detail" | "workspace" | "practice" | "exam" | "material";
-
-/** 资料学习完成标记（本地存储，key 含用户 + 场景，防止跨用户串数据） */
-const MATERIAL_DONE_KEY = "zxt-material-done";
-/** 场景考试完成次数（本地存储，key 含用户 + 场景） */
-const EXAM_COUNT_KEY = "zxt-exam-count";
-
-function currentUserId(): string {
-  try {
-    const raw = localStorage.getItem("zxt-mobile-auth");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return parsed?.user?.id || "anonymous";
-    }
-  } catch {
-    /* ignore */
-  }
-  return "anonymous";
-}
-
-function isMaterialDone(sceneId: string): boolean {
-  try {
-    return localStorage.getItem(`${MATERIAL_DONE_KEY}-${currentUserId()}-${sceneId}`) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function markMaterialDone(sceneId: string) {
-  try {
-    localStorage.setItem(`${MATERIAL_DONE_KEY}-${currentUserId()}-${sceneId}`, "1");
-  } catch {
-    /* ignore */
-  }
-}
-
-function getExamCount(sceneId: string): number {
-  try {
-    return Number(localStorage.getItem(`${EXAM_COUNT_KEY}-${currentUserId()}-${sceneId}`) || 0) || 0;
-  } catch {
-    return 0;
-  }
-}
-
-function addExamCount(sceneId: string): number {
-  const next = getExamCount(sceneId) + 1;
-  try {
-    localStorage.setItem(`${EXAM_COUNT_KEY}-${currentUserId()}-${sceneId}`, String(next));
-  } catch {
-    /* ignore */
-  }
-  return next;
-}
 
 export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetailPageProps) {
   const [detail, setDetail] = useState<any>(null);
@@ -179,7 +128,9 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
         index={sceneIndex}
         total={scenes.length}
         onBackToDetail={() => setView("detail")}
+        onEnterMaterial={() => setView("material")}
         onEnterPractice={() => setView("practice")}
+        onEnterExam={() => setView("exam")}
         showToast={showToast}
       />
     );
