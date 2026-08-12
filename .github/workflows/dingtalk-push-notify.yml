@@ -1,4 +1,4 @@
-name: WeChat Push Notify
+name: DingTalk Push Notify
 
 on:
   push:
@@ -8,29 +8,45 @@ on:
 
 jobs:
   notify:
-    name: Notify WeChat
+    name: Notify DingTalk
     runs-on: ubuntu-latest
     steps:
-      - name: Send Enterprise WeChat message
-        if: ${{ secrets.WECHAT_ROBOT_WEBHOOK != '' }}
+      - name: Send DingTalk message
         env:
-          WECHAT_ROBOT_WEBHOOK: ${{ secrets.WECHAT_ROBOT_WEBHOOK }}
+          DINGTALK_ROBOT_WEBHOOK: ${{ secrets.DINGTALK_ROBOT_WEBHOOK }}
+          DINGTALK_ROBOT_SECRET: ${{ secrets.DINGTALK_ROBOT_SECRET }}
           REPOSITORY: ${{ github.repository }}
           BRANCH: ${{ github.ref_name }}
           ACTOR: ${{ github.actor }}
           PUSHER: ${{ github.event.pusher.name }}
-          BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
           COMPARE_URL: ${{ github.event.compare }}
           COMMITS_JSON: ${{ toJson(github.event.commits) }}
         run: |
           python - <<'PY'
+          import base64
+          import hashlib
+          import hmac
           import json
           import os
           import sys
+          import time
+          import urllib.parse
           import urllib.request
 
-          webhook = os.environ["WECHAT_ROBOT_WEBHOOK"].strip()
+          webhook = os.environ["DINGTALK_ROBOT_WEBHOOK"].strip()
+          secret = os.environ["DINGTALK_ROBOT_SECRET"].strip()
+          if not webhook or not secret:
+              print("DingTalk webhook or signing secret is not configured; skip notification.")
+              sys.exit(0)
+
+          timestamp = str(int(time.time() * 1000))
+          string_to_sign = f"{timestamp}\n{secret}".encode("utf-8")
+          digest = hmac.new(secret.encode("utf-8"), string_to_sign, hashlib.sha256).digest()
+          sign = urllib.parse.quote_plus(base64.b64encode(digest).decode("utf-8"))
+          sep = "&" if "?" in webhook else "?"
+          signed_url = f"{webhook}{sep}timestamp={timestamp}&sign={sign}"
+
           commits = json.loads(os.environ.get("COMMITS_JSON") or "[]")
           branch = os.environ["BRANCH"]
           repo = os.environ["REPOSITORY"]
@@ -40,13 +56,15 @@ jobs:
           after = os.environ["AFTER"][:7]
 
           lines = [
-              f"## 智训通代码推送通知",
-              f"> 仓库：{repo}",
-              f"> 分支：{branch}",
-              f"> 推送人：{pusher} / {actor}",
-              f"> 最新提交：{after}",
+              "## 智训通 GitHub 代码推送通知",
               "",
-              f"本次提交数：{len(commits)}",
+              f"- 仓库：{repo}",
+              f"- 分支：{branch}",
+              f"- 推送人：{pusher} / {actor}",
+              f"- 最新提交：{after}",
+              f"- 本次提交数：{len(commits)}",
+              "",
+              "### 提交摘要",
           ]
 
           for commit in commits[:8]:
@@ -56,18 +74,21 @@ jobs:
               lines.append(f"- [{commit_id}]({url}) {message}")
 
           if len(commits) > 8:
-              lines.append(f"- 其余 {len(commits) - 8} 个提交请打开 Compare 查看")
+              lines.append(f"- 其余 {len(commits) - 8} 个提交请打开详情查看")
 
           if compare_url:
               lines.extend(["", f"[查看本次推送详情]({compare_url})"])
 
           payload = {
               "msgtype": "markdown",
-              "markdown": {"content": "\n".join(lines)},
+              "markdown": {
+                  "title": "智训通 GitHub 代码推送通知",
+                  "text": "\n".join(lines),
+              },
           }
           data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
           req = urllib.request.Request(
-              webhook,
+              signed_url,
               data=data,
               headers={"Content-Type": "application/json"},
               method="POST",
@@ -75,9 +96,7 @@ jobs:
 
           with urllib.request.urlopen(req, timeout=20) as resp:
               body = resp.read().decode("utf-8", errors="replace")
-              if resp.status >= 300:
-                  print(body)
-                  sys.exit(1)
               print(body)
+              if resp.status >= 300:
+                  sys.exit(1)
           PY
-
