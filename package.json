@@ -9,8 +9,6 @@
   "scripts": {
     "dev:admin": "npm --workspace @zxt/admin run dev",
     "dev:api": "npm --workspace @zxt/api run dev",
-    "dev:chattts": "node scripts/start-chattts.mjs",
-    "stop:chattts": "node scripts/stop-chattts.mjs",
     "start:local": "node scripts/start-local.mjs",
     "stop:local": "node scripts/stop-local.mjs",
     "build": "node scripts/build.mjs all",

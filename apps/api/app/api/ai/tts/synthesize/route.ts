@@ -11,14 +11,6 @@ const execFileAsync = promisify(execFile);
 
 const PYTHON = process.env.TTS_PYTHON_BIN || "python";
 const SYNTH_SCRIPT = join(process.cwd(), "tts_synth.py");
-const SHERPA_TTS_BASE_URL = stripTrailingSlash(
-  process.env.SHERPA_TTS_BASE_URL || "http://localhost:8180",
-);
-const CHAT_TTS_BASE_URL = stripTrailingSlash(
-  process.env.CHAT_TTS_BASE_URL || process.env.CHATTS_BASE_URL || "http://localhost:8179",
-);
-const SHERPA_TTS_TIMEOUT_MS = Number(process.env.SHERPA_TTS_TIMEOUT_MS || 15000);
-const CHAT_TTS_TIMEOUT_MS = Number(process.env.CHAT_TTS_TIMEOUT_MS || 60000);
 const EDGE_TTS_TIMEOUT_MS = Number(process.env.EDGE_TTS_TIMEOUT_MS || 25000);
 const ZXT_TTS_TIMEOUT_MS = Number(process.env.ZXT_TTS_TIMEOUT_MS || 30000);
 // 旧版智训通语音服务(OpenAI 兼容 /v1/audio/speech,实测 171.109.109.90:10030 可用),配置后 AI 说话声音优先走自有服务
@@ -95,78 +87,10 @@ export async function POST(request: Request) {
         engine: "edge-tts",
       }, traceId);
     } catch (edgeError) {
-      // 2. 本地降级：sherpa-onnx（离线可用，音质略机械）
-      try {
-        const sherpaResult = await synthesizeWithSherpaTts({ text, voice, emotion });
-        logAiCall({ tenantId, providerType: "tts", modelName: "sherpa-melotts", bizType: "tts_synthesize", durationMs: Date.now() - started, success: true, traceId });
-        return ok({
-          audioBase64: sherpaResult.audioBase64,
-          format: sherpaResult.format || "wav",
-          engine: sherpaResult.engine || "sherpa-melotts",
-          cached: Boolean(sherpaResult.cached),
-        }, traceId);
-      } catch (sherpaError) {
-        // 3. 兜底：ChatTTS（慢但多声，离线）
-        try {
-          const chatTtsResult = await synthesizeWithChatTts({ text, voice, emotion });
-          logAiCall({ tenantId, providerType: "tts", modelName: "ChatTTS", bizType: "tts_synthesize", durationMs: Date.now() - started, success: true, traceId });
-          return ok({
-            audioBase64: chatTtsResult.audioBase64,
-            format: chatTtsResult.format || "wav",
-            engine: chatTtsResult.engine || "chattts",
-            cached: Boolean(chatTtsResult.cached),
-          }, traceId);
-        } catch (_chatTtsError) {
-          return fail("TTS_FAILED", `语音合成失败：${errorMessage(edgeError) || errorMessage(sherpaError) || "unknown"}`, 502, traceId);
-        }
-      }
+      return fail("TTS_FAILED", `语音合成失败：${errorMessage(edgeError) || "unknown"}`, 502, traceId);
     }
   } catch (error) {
     return handleRouteError(error, traceId);
-  }
-}
-
-async function synthesizeWithSherpaTts(payload: TtsPayload): Promise<TtsEngineResult> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SHERPA_TTS_TIMEOUT_MS);
-  try {
-    const response = await fetch(`${SHERPA_TTS_BASE_URL}/synthesize`, {
-      method: "POST",
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`sherpa-tts HTTP ${response.status}`);
-    const result = await response.json() as TtsEngineResult;
-    if (!result || result.ok === false || !result.audioBase64) {
-      throw new Error(result?.error || "sherpa-tts returned empty audio");
-    }
-    return result;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function synthesizeWithChatTts(payload: TtsPayload): Promise<TtsEngineResult> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), CHAT_TTS_TIMEOUT_MS);
-  try {
-    const response = await fetch(`${CHAT_TTS_BASE_URL}/synthesize`, {
-      method: "POST",
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`ChatTTS HTTP ${response.status}`);
-    const result = await response.json() as TtsEngineResult;
-    if (!result || result.ok === false || !result.audioBase64) {
-      throw new Error(result?.error || "ChatTTS returned empty audio");
-    }
-    return result;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
