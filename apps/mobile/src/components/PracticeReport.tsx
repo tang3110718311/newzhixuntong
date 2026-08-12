@@ -4,7 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { recordApi } from "@/lib/api";
 
 interface PracticeReportProps {
-  sessionId: string;
+  /** 对练会话（练习完成后进入报告流程时使用，轮询 by-session 等待后台评分） */
+  sessionId?: string;
+  /** 训练记录 ID（从历史记录"查看报告"进入时使用，直接拉取详情，无需轮询） */
+  recordId?: string;
   scene: any;
   task: any;
   onClose: () => void;
@@ -76,14 +79,33 @@ function PassTag({ passed }: { passed: boolean }) {
   return <span className={`pr-pass-tag ${passed ? "ok" : "no"}`}>{passed ? "合格" : "未合格"}</span>;
 }
 
-export default function PracticeReport({ sessionId, scene, task, onClose, showToast }: PracticeReportProps) {
+export default function PracticeReport({ sessionId, recordId, scene, task, onClose, showToast }: PracticeReportProps) {
   const [detail, setDetail] = useState<any>(null);
   const [failed, setFailed] = useState(false);
   const [tab, setTab] = useState<"report" | "transcript">("report");
 
+  // 历史记录入口：直接按记录 ID 拉取详情渲染（不轮询）
+  useEffect(() => {
+    if (recordId) {
+      let cancelled = false;
+      recordApi
+        .detail(recordId)
+        .then((data: any) => {
+          if (!cancelled) setDetail(data);
+        })
+        .catch(() => {
+          if (!cancelled) setFailed(true);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+    return undefined;
+  }, [recordId]);
+
   // 轮询 by-session：评分后台异步生成，未完成前停留"报告生成中"中转页
   useEffect(() => {
-    if (!sessionId) return;
+    if (recordId || !sessionId) return;
     let cancelled = false;
     let tries = 0;
     const poll = () => {
@@ -115,7 +137,7 @@ export default function PracticeReport({ sessionId, scene, task, onClose, showTo
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, recordId]);
 
   const passScore = scene?.scene?.passScore ?? 80;
   const score = detail?.record?.score ?? 0;
