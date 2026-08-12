@@ -162,20 +162,24 @@ function buildTrend(records: RecordRow[], days = 14): TrendDay[] {
 }
 
 function buildWeakPoints(details: ScoreDetailRow[], rules: RuleRow[], scenes: SceneRow[], limit = 3): WeakPoint[] {
-  const grouped = new Map<string, { got: number; full: number; dim: string; sceneId: string }>();
-  // 按 维度名 + 场景 聚合：完整分取该场景该维度规则分
+  const grouped = new Map<string, { gap: number; full: number; dim: string; sceneId: string }>();
+  // 按 维度名 + 场景 聚合：完整分取该场景该维度规则分；失分率 = 每条记录失分之和 / 满分之和
   const fullByKey = new Map<string, number>();
   for (const rule of rules) {
     fullByKey.set(`${rule.sceneId}|${rule.name}`, rule.score);
   }
   for (const d of details) {
     const key = `${d.sceneId}|${d.dim}`;
+    const full = fullByKey.get(key) ?? 0;
     let item = grouped.get(key);
     if (!item) {
-      item = { got: 0, full: fullByKey.get(key) ?? 100, dim: d.dim, sceneId: d.sceneId };
+      item = { gap: 0, full: 0, dim: d.dim, sceneId: d.sceneId };
       grouped.set(key, item);
     }
-    item.got += d.score;
+    if (full > 0) {
+      item.gap += Math.max(0, full - Math.min(d.score, full));
+      item.full += full;
+    }
   }
   const sceneName = (id: string) => scenes.find((s) => s.id === id)?.name || "综合场景";
   const list: WeakPoint[] = [];
@@ -184,7 +188,7 @@ function buildWeakPoints(details: ScoreDetailRow[], rules: RuleRow[], scenes: Sc
     list.push({
       title: item.dim,
       scene: sceneName(item.sceneId),
-      rate: Math.round(((item.full - Math.min(item.got, item.full)) / item.full) * 100),
+      rate: Math.round((item.gap / item.full) * 100),
       suggestion: FIX_SUGGESTIONS[item.dim] || "增加针对性对练训练",
     });
   }
@@ -368,7 +372,8 @@ export function getLearnerBoardData(tenantId: string, userId: string): LearnerBo
   const { learners, allUsers, participants, records, exams, scenes, rules, details } = loadBase(tenantId);
   const user = allUsers.find((u) => u.id === userId);
   if (!user) return null;
-  const userName = user.id.replace(/^user_/, "").replace(/\d+$/, "") || user.id;
+  const userRow = get<{ name: string }>("select name from users where id = ?", [userId]);
+  const userName = userRow?.name || user.id.replace(/^user_/, "").replace(/\d+$/, "") || user.id;
   const orgName = get<{ name: string }>("select name from organizations where id = ?", [user.orgId ?? ""])?.name || "";
   const userRecords = records.filter((r) => r.userId === userId);
   const userExams = exams.filter((e) => e.userId === userId);

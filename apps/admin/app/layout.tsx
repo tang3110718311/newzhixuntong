@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./dashboard-boards.css";
 
 export const metadata: Metadata = {
   title: "AI 智训通管理端",

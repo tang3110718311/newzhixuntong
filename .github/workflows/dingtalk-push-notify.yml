@@ -1,0 +1,102 @@
+name: DingTalk Push Notify
+
+on:
+  push:
+    branches:
+      - main
+      - feat-mobile
+
+jobs:
+  notify:
+    name: Notify DingTalk
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send DingTalk message
+        env:
+          DINGTALK_ROBOT_WEBHOOK: ${{ secrets.DINGTALK_ROBOT_WEBHOOK }}
+          DINGTALK_ROBOT_SECRET: ${{ secrets.DINGTALK_ROBOT_SECRET }}
+          REPOSITORY: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+          PUSHER: ${{ github.event.pusher.name }}
+          AFTER: ${{ github.sha }}
+          COMPARE_URL: ${{ github.event.compare }}
+          COMMITS_JSON: ${{ toJson(github.event.commits) }}
+        run: |
+          python - <<'PY'
+          import base64
+          import hashlib
+          import hmac
+          import json
+          import os
+          import sys
+          import time
+          import urllib.parse
+          import urllib.request
+
+          webhook = os.environ["DINGTALK_ROBOT_WEBHOOK"].strip()
+          secret = os.environ["DINGTALK_ROBOT_SECRET"].strip()
+          if not webhook or not secret:
+              print("DingTalk webhook or signing secret is not configured; skip notification.")
+              sys.exit(0)
+
+          timestamp = str(int(time.time() * 1000))
+          string_to_sign = f"{timestamp}\n{secret}".encode("utf-8")
+          digest = hmac.new(secret.encode("utf-8"), string_to_sign, hashlib.sha256).digest()
+          sign = urllib.parse.quote_plus(base64.b64encode(digest).decode("utf-8"))
+          sep = "&" if "?" in webhook else "?"
+          signed_url = f"{webhook}{sep}timestamp={timestamp}&sign={sign}"
+
+          commits = json.loads(os.environ.get("COMMITS_JSON") or "[]")
+          branch = os.environ["BRANCH"]
+          repo = os.environ["REPOSITORY"]
+          actor = os.environ["ACTOR"]
+          pusher = os.environ["PUSHER"] or actor
+          compare_url = os.environ["COMPARE_URL"]
+          after = os.environ["AFTER"][:7]
+
+          lines = [
+              "## 智训通 GitHub 代码推送通知",
+              "",
+              f"- 仓库：{repo}",
+              f"- 分支：{branch}",
+              f"- 推送人：{pusher} / {actor}",
+              f"- 最新提交：{after}",
+              f"- 本次提交数：{len(commits)}",
+              "",
+              "### 提交摘要",
+          ]
+
+          for commit in commits[:8]:
+              message = (commit.get("message") or "").splitlines()[0]
+              commit_id = (commit.get("id") or "")[:7]
+              url = commit.get("url") or compare_url
+              lines.append(f"- [{commit_id}]({url}) {message}")
+
+          if len(commits) > 8:
+              lines.append(f"- 其余 {len(commits) - 8} 个提交请打开详情查看")
+
+          if compare_url:
+              lines.extend(["", f"[查看本次推送详情]({compare_url})"])
+
+          payload = {
+              "msgtype": "markdown",
+              "markdown": {
+                  "title": "智训通 GitHub 代码推送通知",
+                  "text": "\n".join(lines),
+              },
+          }
+          data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+          req = urllib.request.Request(
+              signed_url,
+              data=data,
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+
+          with urllib.request.urlopen(req, timeout=20) as resp:
+              body = resp.read().decode("utf-8", errors="replace")
+              print(body)
+              if resp.status >= 300:
+                  sys.exit(1)
+          PY
