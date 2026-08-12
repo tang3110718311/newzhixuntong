@@ -404,7 +404,7 @@ export default function SceneNewPage() {
               </div>
               <div className="form-item full">
                 <label>对话实例</label>
-                <textarea className="field" maxLength={500} value={dialogExample} onChange={(e) => setDialogExample(e.target.value)} placeholder="请输入示例对话内容，例如：AI：您好，请问有什么可以帮您？\n学员：我想咨询套餐资费。" style={{ minHeight: 90, resize: "vertical" }} />
+                <textarea className="field" maxLength={500} value={dialogExample} onChange={(e) => setDialogExample(e.target.value)} placeholder={"请输入示例对话内容，例如：AI：您好，请问有什么可以帮您？\n学员：我想咨询套餐资费。"} style={{ minHeight: 90, resize: "vertical" }} />
                 <div className="field-count"><span>{dialogExample.length}</span>/500</div>
               </div>
             </div>
