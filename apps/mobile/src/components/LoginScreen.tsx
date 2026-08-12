@@ -54,9 +54,6 @@ export default function LoginScreen({ onLoginSuccess, showToast }: LoginScreenPr
               <span>智训通</span>
             </h1>
             <div className="sms-field phone-field">
-              <button className="country-code" type="button">
-                +86⌄
-              </button>
               <input
                 inputMode="numeric"
                 maxLength={11}
