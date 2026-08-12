@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { aiApi } from "@/lib/api";
+import { aiApi, recordApi } from "@/lib/api";
 
 interface PracticeViewProps {
   scene: any;
@@ -16,20 +16,36 @@ interface ChatMsg {
   who: "ai" | "user" | "feedback";
   text: string;
   time?: string;
-  score?: number;
+  isVoice?: boolean;
+  // 反馈卡结构化数据
+  score?: number | null;
   issues?: string[];
   advice?: string[];
-  isVoice?: boolean;
+}
+
+/** 解析教练提示：点评 → 问题定位，可以说：xxx → 改进建议 */
+function parseCoachTip(tip: string): { issues: string[]; advice: string[] } {
+  const idx = tip.indexOf("可以说");
+  if (idx > -1) {
+    const issues = [tip.slice(0, idx).replace(/[，,。；;\s]+$/, "").trim()].filter(Boolean);
+    const advicePart = tip.slice(idx).replace(/^可以说[:：]?\s*/, "可以说：");
+    return { issues, advice: [advicePart] };
+  }
+  return { issues: [tip.trim()].filter(Boolean), advice: [] };
 }
 
 export default function PracticeView({ scene, task, onBack, showToast, onReport }: PracticeViewProps) {
   const sceneId = scene?.scene?.id;
+  // 文本形式：仅文本框+发送；语音形式：仅语音输入区（参考图还原）
+  const isTextMode = scene?.scene?.mode === "text";
+
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [round, setRound] = useState(0);
   const [recording, setRecording] = useState(false);
+  const [liveText, setLiveText] = useState("");
   const [hintVisible, setHintVisible] = useState(false);
   const [score, setScore] = useState<number | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
@@ -38,6 +54,14 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const streamRef = useRef<MediaStream | null>(null);
   const msgSeq = useRef(0);
   const startedRef = useRef(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastSoundRef = useRef(Date.now());
+  const recogRef = useRef<any>(null);
+  const liveTextRef = useRef("");
+  const submittingRef = useRef(false);
+  const voiceTextSentRef = useRef(false);
 
   const sceneName = scene?.scene?.name || "场景对练";
   const aiRole = scene?.roles?.find((r: any) => r.roleType === "ai");
@@ -54,7 +78,6 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     startedRef.current = true;
     const sid = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setSessionId(sid);
-    // 发送开场消息
     setSending(true);
     aiApi
       .chat({
@@ -64,7 +87,6 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       })
       .then((res) => {
         pushAiMsgAndSpeak(res.aiReply || "你好，我是" + aiName + "，我们开始吧。");
-        if (res.coachTip) pushMsg({ who: "feedback", text: res.coachTip });
         setRound(res.round || 0);
       })
       .catch(() => pushMsg({ who: "ai", text: "（AI 对练服务暂时不可用，请稍后重试）" }))
@@ -76,14 +98,25 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  // 组件卸载时释放录音资源
+  useEffect(() => {
+    return () => {
+      try {
+        recogRef.current?.stop();
+      } catch { /* ignore */ }
+      if (silenceTimerRef.current) clearInterval(silenceTimerRef.current);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
+
   const now = () => {
     const d = new Date();
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   };
 
-  const sendText = async (text: string) => {
+  const sendText = async (text: string, isVoice = false) => {
     if (!text.trim() || !sceneId) return;
-    pushMsg({ who: "user", text: text.trim(), time: now() });
+    pushMsg({ who: "user", text: text.trim(), time: now(), isVoice });
     setInput("");
     setSending(true);
     try {
@@ -92,13 +125,29 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         messages: [{ role: "learner", content: text.trim() }],
         sessionId: sessionId || undefined,
       });
+      // 参考图顺序：用户消息 → 反馈卡 → AI 回复
+      if (res.coachTip) {
+        const { issues, advice } = parseCoachTip(res.coachTip);
+        pushMsg({ who: "feedback", text: res.coachTip, issues, advice });
+      }
       if (res.aiReply) pushAiMsgAndSpeak(res.aiReply);
-      if (res.coachTip) pushMsg({ who: "feedback", text: res.coachTip });
       setRound(res.round || 0);
       if (res.isFinished) {
-        setScore(res.round || 0);
+        // 优先使用同步返回的训练记录得分；异步评分时稍后轮询一次
+        if (res.trainingRecord?.score != null) {
+          setScore(res.trainingRecord.score);
+        } else if (res.recordPending) {
+          setTimeout(() => {
+            recordApi
+              .bySession(sessionId || "")
+              .then((rec: any) => {
+                if (rec?.score != null) setScore(rec.score);
+              })
+              .catch(() => { /* 轮询失败不影响主流程 */ });
+          }, 2500);
+        }
         showToast("训练结束，正在生成报告…");
-        setTimeout(() => onReport(sessionId || ""), 600);
+        setTimeout(() => onReport(sessionId || ""), 700);
       }
     } catch (e: any) {
       pushMsg({ who: "ai", text: "（回复失败：" + (e.message || "网络错误") + "）" });
@@ -112,9 +161,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     sendText(input);
   };
 
-  // ===== 语音录音（webm → 16kHz/16bit PCM → STT）=====
-  const audioCtxRef = useRef<AudioContext | null>(null);
-
+  // ===== 语音链路 =====
   const getAudioCtx = () => {
     if (!audioCtxRef.current) {
       audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -127,7 +174,6 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     const arrayBuf = await blob.arrayBuffer();
     const ctx = getAudioCtx();
     const audioBuf = await ctx.decodeAudioData(arrayBuf);
-    // 取左声道
     const src = audioBuf.getChannelData(0);
     const targetRate = 16000;
     const ratio = src.length / (audioBuf.duration * targetRate || 1);
@@ -138,7 +184,6 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       const s = Math.max(-1, Math.min(1, src[idx]));
       pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
     }
-    // Int16Array → base64
     const bytes = new Uint8Array(pcm.buffer);
     let bin = "";
     const CHUNK = 0x8000;
@@ -171,7 +216,6 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     }
   }, []);
 
-  // AI 回复后自动播放语音
   const pushAiMsgAndSpeak = useCallback(
     (text: string) => {
       pushMsg({ who: "ai", text, time: now() });
@@ -180,46 +224,169 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     [pushMsg, speakText]
   );
 
+  /** 停止 Web Speech 实时识别与静音检测 */
+  const stopLiveRecognition = () => {
+    if (recogRef.current) {
+      try {
+        recogRef.current.onresult = null;
+        recogRef.current.onend = null;
+        recogRef.current.stop();
+      } catch { /* ignore */ }
+      recogRef.current = null;
+    }
+    if (silenceTimerRef.current) {
+      clearInterval(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  };
+
+  /** 停止录音器与麦克风流 */
+  const stopRecorderAndStream = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+  };
+
   const startRecording = async () => {
-    if (!sceneId) return;
+    if (!sceneId || submittingRef.current) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+      // MediaRecorder（无实时识别能力时的 STT 回退录音）
       const rec = new MediaRecorder(stream);
       chunksRef.current = [];
+      voiceTextSentRef.current = false;
       rec.ondataavailable = (e) => {
         if (e.data?.size) chunksRef.current.push(e.data);
       };
       rec.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
+        // 已通过实时识别文本直接发送 / 用户取消 → 不再走 STT
+        if (voiceTextSentRef.current) return;
         try {
+          const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
           showToast("语音识别中…");
           const pcmBase64 = await blobToPcmBase64(blob);
           const stt = await aiApi.stt(pcmBase64, "pcm");
           if (stt.text) {
-            await sendText(stt.text);
+            await sendText(stt.text, true);
           } else {
             showToast("未识别到有效语音");
           }
         } catch {
           showToast("语音转写失败");
         }
-        stream.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
       };
       rec.start();
       mediaRecorderRef.current = rec;
+
+      // 音量分析（波形 + 静音自动提交判定）
+      const ctx = getAudioCtx();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      ctx.createMediaStreamSource(stream).connect(analyser);
+      analyserRef.current = analyser;
+      const dataArr = new Uint8Array(analyser.frequencyBinCount);
+      lastSoundRef.current = Date.now();
+      silenceTimerRef.current = setInterval(() => {
+        try {
+          analyser.getByteFrequencyData(dataArr);
+          let sum = 0;
+          for (let i = 0; i < dataArr.length; i++) sum += dataArr[i];
+          const avg = sum / dataArr.length / 255;
+          if (avg > 0.02) {
+            lastSoundRef.current = Date.now();
+          } else if (Date.now() - lastSoundRef.current >= 3500) {
+            // 静音超过 3.5s：有识别文本则自动提交，否则继续聆听
+            if (liveTextRef.current.trim()) {
+              submitVoice();
+            } else {
+              lastSoundRef.current = Date.now();
+            }
+          }
+        } catch { /* ignore */ }
+      }, 250);
+
+      // 实时听写（Web Speech API，Safari/Chrome 移动端可用时启用）
+      const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SR) {
+        try {
+          const recog = new SR();
+          recog.lang = "zh-CN";
+          recog.continuous = true;
+          recog.interimResults = true;
+          recog.onresult = (e: any) => {
+            let final = "";
+            let interim = "";
+            for (let i = e.resultIndex; i < e.results.length; i++) {
+              const r = e.results[i];
+              if (r.isFinal) final += r[0].transcript;
+              else interim += r[0].transcript;
+            }
+            const combined = (final + interim).trim();
+            liveTextRef.current = combined;
+            setLiveText(combined);
+          };
+          recog.onend = () => {
+            // 浏览器偶发自动停止：仍在聆听状态则重启
+            if (recordingRef.current && !submittingRef.current) {
+              try {
+                recog.start();
+              } catch { /* ignore */ }
+            }
+          };
+          recogRef.current = recog;
+          recog.start();
+        } catch { /* 实时识别启动失败，回退整段录音 STT */ }
+      }
+
       setRecording(true);
     } catch {
       showToast("无法访问麦克风，请检查浏览器权限");
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      mediaRecorderRef.current.stop();
-    }
+  // 供 onend 判断"仍在聆听"的同步引用
+  const recordingRef = useRef(false);
+  recordingRef.current = recording;
+
+  /** 发送语音：有实时识别文本直接发送，否则等待 STT 回退 */
+  const submitVoice = () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setRecording(false);
+    stopLiveRecognition();
+    const live = liveTextRef.current.trim();
+    if (live) {
+      voiceTextSentRef.current = true;
+      stopRecorderAndStream();
+      sendText(live, true);
+    } else {
+      stopRecorderAndStream(); // onstop 中走 STT
+    }
+    // 允许再次开始录音
+    setTimeout(() => {
+      submittingRef.current = false;
+    }, 300);
+  };
+
+  /** 关闭聆听面板（不发送） */
+  const closeListening = () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setRecording(false);
+    stopLiveRecognition();
+    voiceTextSentRef.current = true; // 取消本次，onstop 不再发送
+    stopRecorderAndStream();
+    setLiveText("");
+    liveTextRef.current = "";
+    // 允许再次开始
+    setTimeout(() => {
+      submittingRef.current = false;
+    }, 300);
   };
 
   const hint = (() => {
@@ -229,99 +396,206 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   })();
 
   return (
-    <>
-      <div className="task-detail-head">
-        <button className="task-detail-back" type="button" onClick={onBack} aria-label="返回场景工作台">
+    <div className="pv-shell">
+      {/* ===== 顶部导航（淡天蓝渐变） ===== */}
+      <header className="pv-nav">
+        <button className="pv-nav-back" type="button" onClick={onBack} aria-label="返回场景工作台">
           ‹
         </button>
-        <div className="task-detail-title">
-          <h1>AI 对练</h1>
-          <p>
-            {sceneName} · 第 {round} 轮
-          </p>
+        <div className="pv-nav-title">
+          <h1>AI对练</h1>
+          <span className="pv-live-badge">
+            <i></i>进行中
+          </span>
         </div>
-        <button className="task-detail-more" type="button" onClick={() => setHintVisible((v) => !v)} aria-label="灵感提示">
-          ?
-        </button>
+        <span className="pv-nav-spacer"></span>
+      </header>
+
+      {/* ===== 场景信息三栏卡 ===== */}
+      <div className="pv-scene-card">
+        <div className="pv-scene-col">
+          <span>对练场景 · AI角色</span>
+          <b>
+            {sceneName} · {aiName}
+          </b>
+        </div>
+        <div className="pv-scene-col">
+          <span>对练次数</span>
+          <b className="orange">第 {round + 1} 轮</b>
+        </div>
+        <div className="pv-scene-col">
+          <span>本轮得分</span>
+          <b className="blue">{score != null ? `${score}分` : "—"}</b>
+        </div>
       </div>
 
-      {hintVisible && (
-        <div className="scene-work-card" style={{ marginBottom: 10 }}>
-          <h3>💡 {hint.title}</h3>
-          <p className="card-sub">{hint.body}</p>
-        </div>
-      )}
-
-      <div className="chat-container" ref={chatRef}>
-        {messages.map((m) => (
-          <div key={m.id} className={`chat-row ${m.who === "user" ? "user" : ""}`}>
-            {m.who === "ai" && <span className="chat-mini-avatar ai-chat-avatar">AI</span>}
-            {m.who === "user" && <span className="chat-mini-avatar user-chat-avatar" />}
-            <div className="chat-message-wrap">
-              <span className="chat-time">{m.time}</span>
-              {m.who === "feedback" ? (
-                <div className="practice-feedback">
-                  <div className="feedback-head">
-                    <b>教练提示</b>
+      {/* ===== 对话区 ===== */}
+      <div className="pv-chat" ref={chatRef}>
+        {messages.map((m) => {
+          if (m.who === "feedback") {
+            return (
+              <div className="pv-msg feedback" key={m.id}>
+                <div className="pv-feedback-card">
+                  <div className="pv-feedback-head">
+                    <b>本次回答反馈</b>
+                    <span>{m.score != null ? `${m.score}分` : "—"}</span>
                   </div>
-                  <div className="feedback-advice">{m.text}</div>
-                </div>
-              ) : (
-                <div className={`chat-bubble ${m.isVoice ? "voice-bubble" : ""}`}>
-                  {m.text}
-                  {m.who === "ai" && !m.text.startsWith("（") && (
-                    <button
-                      className="chat-speak-btn"
-                      type="button"
-                      aria-label="播放语音"
-                      onClick={() => speakText(m.text)}
-                    >
-                      🔊
-                    </button>
+                  {m.issues && m.issues.length > 0 && (
+                    <div className="pv-feedback-sec">
+                      <span>问题定位</span>
+                      <p>{m.issues.join("；")}</p>
+                    </div>
+                  )}
+                  {m.advice && m.advice.length > 0 && (
+                    <>
+                      <div className="pv-feedback-divider"></div>
+                      <div className="pv-feedback-sec">
+                        <span>改进建议</span>
+                        <p>{m.advice.join("；")}</p>
+                      </div>
+                    </>
                   )}
                 </div>
+              </div>
+            );
+          }
+          return (
+            <div className={`pv-msg ${m.who}`} key={m.id}>
+              {m.who === "ai" ? (
+                <span className="pv-avatar ai" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" strokeWidth="1.7">
+                    <rect x="4.5" y="7" width="15" height="11" rx="3.2" />
+                    <circle cx="9.2" cy="12.2" r="1.2" fill="#fff" stroke="none" />
+                    <circle cx="14.8" cy="12.2" r="1.2" fill="#fff" stroke="none" />
+                    <path d="M12 4.5v2.5" />
+                    <circle cx="12" cy="3.6" r="1.1" fill="#fff" stroke="none" />
+                    <path d="M7 16.6h.01M11.5 16.6h.01M16 16.6h.01" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </span>
+              ) : (
+                <span className="pv-avatar user" aria-hidden="true"></span>
               )}
+              <div className="pv-msg-main">
+                <span className="pv-time">{m.time}</span>
+                <div className="pv-bubble">
+                  {m.who === "user" && m.isVoice && (
+                    <span className="pv-voice-wave" aria-hidden="true">
+                      <i></i>
+                      <i></i>
+                      <i></i>
+                      <i></i>
+                    </span>
+                  )}
+                  {m.text}
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {sending && (
-          <div className="chat-row">
-            <span className="chat-mini-avatar ai-chat-avatar">AI</span>
-            <div className="chat-message-wrap">
-              <div className="chat-bubble">正在思考…</div>
+          <div className="pv-msg ai">
+            <span className="pv-avatar ai" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" strokeWidth="1.7">
+                <rect x="4.5" y="7" width="15" height="11" rx="3.2" />
+                <circle cx="9.2" cy="12.2" r="1.2" fill="#fff" stroke="none" />
+                <circle cx="14.8" cy="12.2" r="1.2" fill="#fff" stroke="none" />
+                <path d="M12 4.5v2.5" />
+                <circle cx="12" cy="3.6" r="1.1" fill="#fff" stroke="none" />
+              </svg>
+            </span>
+            <div className="pv-msg-main">
+              <span className="pv-time">{now()}</span>
+              <div className="pv-bubble">正在思考…</div>
             </div>
           </div>
         )}
       </div>
 
-      <div className="practice-input-bar">
-        {recording ? (
-          <button className="practice-record-btn recording" type="button" onClick={stopRecording}>
-            ■ 停止录音
-          </button>
+      {/* ===== 底部输入区 ===== */}
+      <div className="pv-composer">
+        {isTextMode ? (
+          /* 文本形式：仅文本框 + 发送 */
+          <div className="pv-text-bar">
+            <input
+              className="pv-text-input"
+              placeholder="输入你的回答…"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSend();
+              }}
+              maxLength={500}
+            />
+            <button className="pv-text-send" type="button" onClick={handleSend} disabled={sending || !input.trim()}>
+              发送
+            </button>
+          </div>
         ) : (
-          <button
-            className="practice-record-btn"
-            type="button"
-            onClick={startRecording}
-            title="语音输入"
-          >
-            🎤
-          </button>
+          /* 语音形式：灵感提示 + 录音面板 */
+          <div className="pv-voice-area">
+            <button
+              className="pv-hint-pill"
+              type="button"
+              onClick={() => setHintVisible((v) => !v)}
+              aria-expanded={hintVisible}
+            >
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <path d="M12 3l9 9-9 9-9-9z" fill="#2563eb" />
+              </svg>
+              灵感提示
+            </button>
+
+            {hintVisible && (
+              <div className="pv-hint-card">
+                <h4>
+                  <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+                    <path d="M12 3l9 9-9 9-9-9z" fill="#2563eb" />
+                  </svg>
+                  {hint.title}
+                </h4>
+                <p>{hint.body}</p>
+                <em>根据当前对话上下文生成</em>
+              </div>
+            )}
+
+            {recording ? (
+              <div className="pv-listening-panel">
+                <div className="pv-listening-top">
+                  <b>正在聆听，请说话...</b>
+                  <button className="pv-listening-close" type="button" onClick={closeListening} aria-label="关闭聆听">
+                    ×
+                  </button>
+                </div>
+                <div className="pv-live-text">{liveText || "请自然表达你的回答，我会实时识别"}</div>
+                <div className="pv-wave" aria-hidden="true">
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                </div>
+                <button className="pv-send-big" type="button" onClick={submitVoice}>
+                  发送
+                </button>
+              </div>
+            ) : (
+              <button className="pv-record-btn" type="button" onClick={startRecording}>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="3" width="6" height="11" rx="3" />
+                  <path d="M5.5 11a6.5 6.5 0 0 0 13 0" />
+                  <path d="M12 17.5V21" />
+                </svg>
+                开始录音
+              </button>
+            )}
+          </div>
         )}
-        <input
-          className="practice-text-input"
-          placeholder="输入你的回答…"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleSend();
-          }}
-        />
-        <button className="practice-send-btn" type="button" onClick={handleSend} disabled={sending}>
-          发送
-        </button>
       </div>
-    </>
+    </div>
   );
 }
