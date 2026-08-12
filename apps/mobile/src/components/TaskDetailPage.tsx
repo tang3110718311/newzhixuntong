@@ -10,7 +10,39 @@ interface TaskDetailPageProps {
   showToast: (msg: string) => void;
 }
 
-type View = "detail" | "workspace" | "practice" | "exam";
+type View = "detail" | "workspace" | "practice" | "exam" | "material";
+
+/** 资料学习完成标记（本地存储，key 含用户 + 场景，防止跨用户串数据） */
+const MATERIAL_DONE_KEY = "zxt-material-done";
+
+function currentUserId(): string {
+  try {
+    const raw = localStorage.getItem("zxt-mobile-auth");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return parsed?.user?.id || "anonymous";
+    }
+  } catch {
+    /* ignore */
+  }
+  return "anonymous";
+}
+
+function isMaterialDone(sceneId: string): boolean {
+  try {
+    return localStorage.getItem(`${MATERIAL_DONE_KEY}-${currentUserId()}-${sceneId}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markMaterialDone(sceneId: string) {
+  try {
+    localStorage.setItem(`${MATERIAL_DONE_KEY}-${currentUserId()}-${sceneId}`, "1");
+  } catch {
+    /* ignore */
+  }
+}
 
 export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetailPageProps) {
   const [detail, setDetail] = useState<any>(null);
@@ -32,12 +64,30 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 
-  const openScenario = useCallback(
-    async (index: number) => {
+  /** 加载指定场景详情并跳转到目标视图 */
+  const enterSceneView = useCallback(
+    async (index: number, target: View) => {
       if (!detail || !detail.scenes || !detail.scenes[index]) return;
       const ts = detail.scenes[index];
       setSceneIndex(index);
+      try {
+        const sd = await sceneApi.detail(ts.sceneId);
+        setSceneDetail(sd);
+        setView(target);
+      } catch {
+        setSceneDetail(null);
+        showToast("场景加载失败");
+      }
+    },
+    [detail, showToast]
+  );
+
+  const openScenario = useCallback(
+    async (index: number) => {
+      if (!detail || !detail.scenes || !detail.scenes[index]) return;
+      setSceneIndex(index);
       setView("workspace");
+      const ts = detail.scenes[index];
       try {
         const sd = await sceneApi.detail(ts.sceneId);
         setSceneDetail(sd);
@@ -123,6 +173,22 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
     return <ScenarioExam scene={sceneDetail} task={task} onBack={() => setView("workspace")} showToast={showToast} />;
   }
 
+  if (view === "material") {
+    return (
+      <MaterialView
+        scene={sceneDetail}
+        sceneMeta={scenes[sceneIndex]}
+        onBack={() => setView("detail")}
+        onDone={() => {
+          const ts = scenes[sceneIndex];
+          if (ts) markMaterialDone(ts.sceneId);
+          setView("detail");
+        }}
+        showToast={showToast}
+      />
+    );
+  }
+
   return (
     <>
       <div className="task-detail-head">
@@ -133,14 +199,6 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
           <h1>任务详情</h1>
           <p>查看任务要求与学习进度</p>
         </div>
-        <button
-          className="task-detail-more"
-          type="button"
-          onClick={() => showToast("更多操作暂未开放")}
-          aria-label="更多操作"
-        >
-          ⋯
-        </button>
       </div>
       <div id="taskDetailContent">
         <div className="task-detail-hero compact">
@@ -185,11 +243,15 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
         </div>
         <div className="scenario-list">
           {scenes.map((sc: any, i: number) => {
-            const done = (sc.completedTrainCount || 0) > 0;
+            const trainDone = (sc.completedTrainCount || 0) > 0;
+            const required = sc.requiredTrainTimes || 1;
+            const practiceDone = (sc.completedTrainCount || 0) >= required;
+            // 已做过对练的场景必然已学过资料，本地标记丢失（换设备/清缓存）时不应反向锁住
+            const materialDone = isMaterialDone(sc.sceneId) || trainDone;
             return (
               <article
                 key={sc.id}
-                className={`scenario-card scene-layout ${done ? "done" : ""}`}
+                className={`scenario-card scene-layout ${trainDone ? "done" : ""}`}
                 onClick={() => openScenario(i)}
                 style={{ cursor: "pointer" }}
               >
@@ -206,20 +268,55 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
                     <span className="scenario-arrow">›</span>
                   </div>
                   <div className="scenario-state-row">
-                    <span className={`scenario-state ${done ? "done" : "doing"}`}>
-                      {done ? "已完成" : "可开始对练"}
+                    <span className={`scenario-state ${practiceDone ? "done" : "doing"}`}>
+                      {practiceDone ? "流程已完成" : "进行中"}
                     </span>
                     <span className="scenario-progress-text">
-                      {done ? "考试已完成" : "资料可查看"}
+                      {!materialDone ? "先学资料再对练" : practiceDone ? "可反复对练与考试" : `对练 ${sc.completedTrainCount || 0}/${required}`}
                     </span>
                     <div className="scenario-mini-progress">
-                      <span style={{ width: `${done ? 100 : 20}%` }} />
+                      <span style={{ width: `${practiceDone ? 100 : materialDone ? 55 : 20}%` }} />
                     </div>
                   </div>
-                  <div className="scenario-insights">
-                    <span className="scenario-tag">资料</span>
-                    <span className="scenario-tag ai">AI 对练</span>
-                    <span className="scenario-tag exam">考试</span>
+                  <div className="scenario-actions">
+                    <button
+                      type="button"
+                      className="material-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        enterSceneView(i, "material");
+                      }}
+                    >
+                      资料{materialDone ? " ✓" : ""}
+                    </button>
+                    <button
+                      type="button"
+                      className={`practice-btn${materialDone ? "" : " locked"}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!materialDone) {
+                          showToast("请先完成资料学习，再开始 AI 对练");
+                          return;
+                        }
+                        enterSceneView(i, "practice");
+                      }}
+                    >
+                      AI 对练
+                    </button>
+                    <button
+                      type="button"
+                      className={`exam-btn${practiceDone ? "" : " locked"}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!practiceDone) {
+                          showToast("请先完成 AI 对练，再进行考试");
+                          return;
+                        }
+                        enterSceneView(i, "exam");
+                      }}
+                    >
+                      考试
+                    </button>
                   </div>
                 </div>
               </article>
@@ -235,3 +332,4 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
 import ScenarioWorkspace from "./ScenarioWorkspace";
 import PracticeView from "./PracticeView";
 import ScenarioExam from "./ScenarioExam";
+import MaterialView from "./MaterialView";
