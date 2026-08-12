@@ -3154,3 +3154,68 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* 知识库文件卡片列表（替代 DataTable，更清爽） */
+.file-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.file-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #e6eaf2;
+  border-radius: 10px;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.file-card:hover {
+  border-color: #c7d2fe;
+  box-shadow: 0 4px 14px rgba(78, 99, 240, 0.08);
+}
+.file-card-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+}
+.file-card-main {
+  flex: 1;
+  min-width: 0;
+}
+.file-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #172b4d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 4px;
+}
+.file-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  font-size: 12px;
+  color: #86909c;
+}
+.file-card-type {
+  background: #eaf2ff;
+  color: #4e63f0;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.file-card-actions {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
