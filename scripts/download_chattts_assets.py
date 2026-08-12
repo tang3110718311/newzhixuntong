@@ -14,9 +14,9 @@ FILES: Dict[str, str] = {
     "asset/Vocos.safetensors": "07e5561491cce41f7f90cfdb94b2ff263ff5742c3d89339db99b17ad82cc3f44",
     "asset/gpt/config.json": "0aaa1ecd96c49ad4f473459eb1982fa7ad79fa5de08cde2781bf6ad1f9a0c236",
     "asset/gpt/model.safetensors": "cd0806fd971f52f6a22c923ec64982b305e817bcc41ca83417fcf9141b984a0f",
-    "asset/tokenizer/special_tokens_map.json": "bd0ac9d9bb1657996b5c5fbcaa7d80f8de530d01a283da97f89deae5b1b8d011",
-    "asset/tokenizer/tokenizer_config.json": "43e9d658b554fa5ee8d8e1d763349323bfef1ed7a89c0794220ab8861387d421",
-    "asset/tokenizer/tokenizer.json": "843838a64e121e23e774cc75874c6fe862198d9f7dd43747914633a8fd89c20e",
+    "asset/tokenizer/special_tokens_map.json": "bd0ac9d9bb1657996b5c5fbcaa7d80f8de530d01a283da97f89deae5b1b8d011",  # gitleaks:allow - ChatTTS asset SHA256 checksum, not a secret.
+    "asset/tokenizer/tokenizer_config.json": "43e9d658b554fa5ee8d8e1d763349323bfef1ed7a89c0794220ab8861387d421",  # gitleaks:allow - ChatTTS asset SHA256 checksum, not a secret.
+    "asset/tokenizer/tokenizer.json": "843838a64e121e23e774cc75874c6fe862198d9f7dd43747914633a8fd89c20e",  # gitleaks:allow - ChatTTS asset SHA256 checksum, not a secret.
 }
 
 DEFAULT_BASE_URLS = (

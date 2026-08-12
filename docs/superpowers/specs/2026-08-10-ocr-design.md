@@ -21,18 +21,18 @@ AIGC:
 目标：为知识库接入图片 OCR 能力，使图片（PNG/JPG/JPEG/BMP/WebP）上传后自动识别文字并入库，与其他文档走完全相同的"解析 → AI 摘要 → 出题联动"流程。
 
 **核心需求（宏哥确认）**：
-- OCR 方案：**百度 OCR 通用文字识别 API**（免费额度 1000 次/月，已验证密钥有效、识别可用）
+- OCR 方案：**百度 OCR 通用文字识别 API**（免费额度 1000 次/月，已验证 OCR 链路可用）
 - 密钥存放：环境变量（.env），不硬编码、不进 git
 - 大图处理：超 4MB 自动压缩（sharp）后再识别
-- 已提供密钥：API Key=pdtWrVE838auEqD4KQjox1cZ，Secret Key=L4V2Z6JvlHxUZtjD2Wmb7isnRxo5QaeD
+- 密钥提供方式：由部署环境或本地 `.env` 单独配置，文档和仓库不保存明文密钥
 
 ## 2. 环境变量
 
 `.env`（apps/api）增加：
 
 ```
-BAIDU_OCR_API_KEY=pdtWrVE838auEqD4KQjox1cZ
-BAIDU_OCR_SECRET_KEY=L4V2Z6JvlHxUZtjD2Wmb7isnRxo5QaeD
+BAIDU_OCR_API_KEY=<your-baidu-ocr-api-key>
+BAIDU_OCR_SECRET_KEY=<your-baidu-ocr-secret-key>
 ```
 
 ## 3. OCR 服务模块
