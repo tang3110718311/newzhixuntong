@@ -472,64 +472,42 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
                 </div>
               </div>
 
-              {/* 文件列表 */}
-              <DataTable headers={["文件名称", "文件类型", "文件大小", "解析状态", "上传人", "上传时间", "操作"]}>
+              {/* 文件列表（卡片式：左侧图标 + 主元数据 + 右侧操作） */}
+              <div className="file-cards">
                 {filesLoading ? (
-                  <tr><td colSpan={7}><div className="empty">正在加载文件数据…</div></td></tr>
+                  <div className="empty">正在加载文件数据…</div>
                 ) : (
                   filteredFiles.map((file) => {
                     const isVideo = file.mimeType.startsWith("video/");
-                    // 原型：视频=淡紫底#f0edff+深紫#7b61ff三角，其余=淡红底#ffeceb+红色#ed2633
-                    const iconBg = isVideo ? "#f0edff" : "#ffeceb";
-                    const iconColor = isVideo ? "#7b61ff" : "#ed2633";
+                    // 统一紫蓝品牌色：视频=淡紫底+深紫三角，其他=淡蓝底+紫蓝
+                    const iconBg = isVideo ? "#eef1fc" : "#eaf2ff";
+                    const iconColor = isVideo ? "#7b61ff" : "#4e63f0";
                     const iconLabel = isVideo ? "▶" : fileIconLabel(file.mimeType);
                     return (
-                      <tr key={file.id}>
-                        <td>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              width: 20,
-                              height: 20,
-                              borderRadius: 3,
-                              background: iconBg,
-                              color: iconColor,
-                              fontSize: isVideo ? 10 : 7,
-                              fontWeight: 700,
-                              flexShrink: 0,
-                            }}>{iconLabel}</span>
-                            <div>
-                              <div style={{ fontWeight: 600 }}>{file.name}</div>
-                              <div style={{ color: "#86909c", fontSize: 12, marginTop: 2 }}>文件夹: {expandedFolder.name}</div>
-                            </div>
+                      <div className="file-card" key={file.id}>
+                        <div className="file-card-icon" style={{ background: iconBg, color: iconColor }}>
+                          {iconLabel}
+                        </div>
+                        <div className="file-card-main">
+                          <div className="file-card-name">{file.name}</div>
+                          <div className="file-card-meta">
+                            <span className="file-card-type">{fileTypeLabel(file.mimeType)}</span>
+                            <span>{formatSize(file.size)}</span>
+                            <span>{renderParseStatusBadge(file)}</span>
+                            <span>上传人 {file.uploaderName || "—"}</span>
+                            <span>{formatTime(file.createdAt)}</span>
                           </div>
-                        </td>
-                        <td>
-                          <span style={{
-                            display: "inline-block",
-                            padding: "2px 8px",
-                            borderRadius: 4,
-                            background: "#eaf2ff",
-                            color: "#4080ff",
-                            fontSize: 12,
-                          }}>{fileTypeLabel(file.mimeType)}</span>
-                        </td>
-                        <td>{formatSize(file.size)}</td>
-                        <td>{renderParseStatusBadge(file)}</td>
-                        <td className="muted-text">{file.uploaderName || "—"}</td>
-                        <td className="muted-text">{formatTime(file.createdAt)}</td>
-                        <td>
-                          <button className="link-btn" type="button" style={{ color: "#4080ff" }} onClick={() => setPreviewFile(file)}>查看</button>
-                          <button className="link-btn danger" type="button" style={{ color: "#ed2633" }} onClick={() => setConfirmTarget({ type: "file", id: file.id, name: file.name })}>删除</button>
-                        </td>
-                      </tr>
+                        </div>
+                        <div className="file-card-actions">
+                          <button className="link-btn" type="button" onClick={() => setPreviewFile(file)}>查看</button>
+                          <button className="link-btn" type="button" style={{ color: "#8b98aa" }} onClick={() => setConfirmTarget({ type: "file", id: file.id, name: file.name })}>删除</button>
+                        </div>
+                      </div>
                     );
                   })
                 )}
-                {!filesLoading && !filteredFiles.length && <tr><td colSpan={7}><div className="empty">暂无文件</div></td></tr>}
-              </DataTable>
+                {!filesLoading && !filteredFiles.length && <div className="empty">暂无文件</div>}
+              </div>
               <div style={{ padding: "10px 0 4px", color: "#8b98aa", fontSize: 14 }}>
                 共 {filteredFiles.length} 个文件
               </div>
@@ -599,8 +577,8 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
               <div className="empty" style={{ padding: 40 }}>暂无可预览的内容（该文件可能仅作为附件存储）。</div>
             )}
             {previewFile.summary ? (
-              <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 10, background: "#f0f6ff", border: "1px solid #dfeaff", fontSize: 13, color: "#3d5a80" }}>
-                <strong style={{ color: "#3477e8" }}>AI 摘要：</strong>{previewFile.summary}
+              <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 10, background: "#eef1fc", border: "1px solid #d0d6fb", fontSize: 13, color: "#3949c9" }}>
+                <strong style={{ color: "#4e63f0" }}>AI 摘要：</strong>{previewFile.summary}
               </div>
             ) : null}
           </div>

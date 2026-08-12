@@ -1488,16 +1488,16 @@ function ScoreRadar({ scores, sceneRules }: { scores: ScoreDetail[]; sceneRules:
   const poly = items.map((_, i) => pt(i, items[i].value).join(",")).join(" ");
   return (
     <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="pc-radar" role="img" aria-label="能力维度雷达图">
-      {grids.map((g, i) => <polygon key={i} points={g} fill="none" stroke="rgba(99,102,241,0.16)" strokeWidth="1" />)}
-      <polygon points={poly} fill="rgba(99,102,241,0.28)" stroke="#6366f1" strokeWidth="1.5" strokeLinejoin="round" />
+      {grids.map((g, i) => <polygon key={i} points={g} fill="none" stroke="rgba(78,99,240,0.16)" strokeWidth="1" />)}
+      <polygon points={poly} fill="rgba(78,99,240,0.28)" stroke="#4e63f0" strokeWidth="1.5" strokeLinejoin="round" />
       {items.map((it, i) => {
         const a = angle(i);
         const p1 = pt(i, it.value);
         const p2 = pt(i, 1);
         return (
           <g key={i}>
-            <line x1={CX} y1={CY} x2={p2[0]} y2={p2[1]} stroke="rgba(99,102,241,0.12)" strokeWidth="1" />
-            <circle cx={p1[0]} cy={p1[1]} r="3.2" fill="#6366f1" />
+            <line x1={CX} y1={CY} x2={p2[0]} y2={p2[1]} stroke="rgba(78,99,240,0.12)" strokeWidth="1" />
+            <circle cx={p1[0]} cy={p1[1]} r="3.2" fill="#4e63f0" />
             <text x={CX + Math.cos(a) * (R + 16)} y={CY + Math.sin(a) * (R + 16)} textAnchor="middle" dominantBaseline="central" fontSize="10.5" fill="#4c5085">
               {it.label}
             </text>

@@ -349,6 +349,14 @@ type ActiveSection =
   | "records"
   | "practice";
 
+// 所有可导航的 section key（用于校验 URL ?section= 参数）
+const VALID_SECTIONS: ReadonlySet<string> = new Set([
+  "overview", "student-home", "my-tasks", "task-detail", "my-exams", "scenes", "knowledge",
+  "tasks", "appeals", "statistics-dept", "statistics-learner", "materials", "settings",
+  "sys-users", "sys-roles", "sys-menus", "sys-departments", "sys-posts", "sys-tenants",
+  "records", "practice",
+]);
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
 
@@ -738,6 +746,19 @@ export function AdminDashboard() {
   const [viewingExamResult, setViewingExamResult] = useState<ExamAttempt | null>(null);
   const [viewExamBankId, setViewExamBankId] = useState("");
   const [examFormQuestions, setExamFormQuestions] = useState<ExamQuestion[]>([]);
+
+  // 菜单点击：切换区块并同步 URL（?section=xxx），保证从其他页面跳转/刷新可恢复
+  function handleNavClick(key: string) {
+    if (!VALID_SECTIONS.has(key)) return;
+    setActiveSection(key as ActiveSection);
+    const url = new URL(window.location.href);
+    if (key === "overview") {
+      url.searchParams.delete("section");
+    } else {
+      url.searchParams.set("section", key);
+    }
+    window.history.replaceState({}, "", url.toString());
+  }
 
   async function loadData() {
     if (!getStoredAuthToken()) {
@@ -1377,7 +1398,7 @@ export function AdminDashboard() {
       const detail = await apiFetch<TaskDetail>(`/tasks/${taskId}`);
       setSelectedTaskDetail(detail);
       setSelectedTaskSceneId(detail.scenes[0]?.id ?? null);
-      setActiveSection("task-detail");
+      handleNavClick("task-detail");
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载任务详情失败");
     }
@@ -1442,7 +1463,7 @@ export function AdminDashboard() {
         body: JSON.stringify({ bizType: "training_record", bizId: appealForm.bizId, reason: appealForm.reason }),
       });
       setAppealForm((prev) => ({ ...initialAppealForm, bizId: prev.bizId }));
-      setActiveSection("appeals");
+      handleNavClick("appeals");
     });
   }
 
@@ -1554,12 +1575,17 @@ export function AdminDashboard() {
     }));
   }
 
+  // 首次加载：从 URL ?section=xxx 恢复目标菜单区块（从其他页面跳转回来时生效）
   useEffect(() => {
     const storedAuth = readStoredAuth();
-    if (storedAuth) {
-      setAuth(storedAuth);
-      void loadData();
+    if (!storedAuth) return;
+    setAuth(storedAuth);
+    const sectionParam = new URLSearchParams(window.location.search).get("section");
+    if (sectionParam && VALID_SECTIONS.has(sectionParam)) {
+      setActiveSection(sectionParam as ActiveSection);
     }
+    void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!auth) {
@@ -1730,7 +1756,7 @@ export function AdminDashboard() {
                           className={`nav-item sub ${child.key === activeSection ? "active" : ""}`}
                           key={child.id}
                           type="button"
-                          onClick={() => setActiveSection(child.key)}
+                          onClick={() => handleNavClick(child.key)}
                         >
                           <span className="nav-icon">{child.icon}</span>
                           <span className="nav-label">{child.label}</span>
@@ -1742,7 +1768,7 @@ export function AdminDashboard() {
               );
             }
             return (
-              <button className={`nav-item ${activeSection === item.key ? "active" : ""}`} key={item.id} onClick={() => setActiveSection(item.key as ActiveSection)} type="button">
+              <button className={`nav-item ${activeSection === item.key ? "active" : ""}`} key={item.id} onClick={() => handleNavClick(item.key)} type="button">
                 <span className="nav-icon">{item.icon}</span>
                 <span className="nav-label">{item.label}</span>
                 {typeof item.badge === "number" && item.badge > 0 ? <span className="nav-badge">{item.badge}</span> : null}
@@ -3023,12 +3049,12 @@ export function AdminDashboard() {
                   <section className="card section" style={{ padding: 20 }}>
                     <div className="section-head compact" style={{ marginBottom: 12 }}>
                       <h2 className="section-title">待完成学习任务</h2>
-                      <button className="link-btn" type="button" onClick={() => setActiveSection("my-tasks")}>查看全部 ›</button>
+                      <button className="link-btn" type="button" onClick={() => handleNavClick("my-tasks")}>查看全部 ›</button>
                     </div>
                     {tasks.slice(0, 3).map((task) => (
                       <div key={task.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid var(--border)" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          <div style={{ width: 40, height: 40, borderRadius: 10, background: "#4080ff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <div style={{ width: 40, height: 40, borderRadius: 10, background: "#4e63f0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                             <svg width="20" height="20" fill="none" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z" fill="#fff"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="#fff" strokeWidth="2" fill="none"/></svg>
                           </div>
                           <div>
@@ -3036,7 +3062,7 @@ export function AdminDashboard() {
                             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{task.type === "scenario_training" ? "情景对练" : task.type} · {task.status === "published" ? "进行中" : "待开始"}</span>
                           </div>
                         </div>
-                        <button className="btn" type="button" style={{ background: "#4080ff", color: "#fff", border: "none", borderRadius: 4, padding: "6px 16px", cursor: "pointer" }} onClick={() => viewTaskDetail(task.id)}>查看任务</button>
+                        <button className="btn" type="button" style={{ background: "#4e63f0", color: "#fff", border: "none", borderRadius: 4, padding: "6px 16px", cursor: "pointer" }} onClick={() => viewTaskDetail(task.id)}>查看任务</button>
                       </div>
                     ))}
                     {tasks.length === 0 && (
@@ -3084,7 +3110,7 @@ export function AdminDashboard() {
                           const isToday = dayNum === today;
                           const isGreen = studyDays.has(dayNum);
                           return (
-                            <div key={i} style={{ padding: 6, borderRadius: 6, background: isToday ? "#4080ff" : isGreen ? "#e8f5e9" : "transparent", color: isToday ? "#fff" : "#333" }}>
+                            <div key={i} style={{ padding: 6, borderRadius: 6, background: isToday ? "#4e63f0" : isGreen ? "#e8f5e9" : "transparent", color: isToday ? "#fff" : "#333" }}>
                               {dayNum}
                             </div>
                           );
@@ -3174,13 +3200,13 @@ export function AdminDashboard() {
                     const runtimeStatus = getTaskRuntimeStatus(task);
                     const isOverdue = runtimeStatus === "overdue";
                     const isCompleted = runtimeStatus === "completed";
-                    const categoryColors = ["#e6a23c", "#4080ff", "#8b62e8", "#52c41a"];
+                    const categoryColors = ["#e6a23c", "#4e63f0", "#8b62e8", "#52c41a"];
                     const categoryLabels = ["安全培训", "客户沟通", "业务对练", "入职课程"];
                     const catColor = categoryColors[idx % categoryColors.length];
                     const catLabel = categoryLabels[idx % categoryLabels.length];
                     const statusLabel = isCompleted ? "已完成" : isOverdue ? "已逾期" : "进行中";
                     const statusBg = isCompleted ? "#f6ffed" : isOverdue ? "#fff7e6" : "#e6f4ff";
-                    const statusColor = isCompleted ? "#52c41a" : isOverdue ? "#e6a23c" : "#4080ff";
+                    const statusColor = isCompleted ? "#52c41a" : isOverdue ? "#e6a23c" : "#4e63f0";
                     const actionLabel = isCompleted ? "查看记录" : idx === 0 ? "继续学习" : "开始学习";
                     return (
                       <div key={task.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 20px", borderBottom: idx < tasks.length - 1 ? "1px solid var(--border)" : "none" }}>
@@ -3202,7 +3228,7 @@ export function AdminDashboard() {
                         {/* 右侧状态+操作 */}
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
                           <span style={{ padding: "2px 10px", borderRadius: 4, background: statusBg, color: statusColor, fontSize: 12, fontWeight: 600 }}>{statusLabel}</span>
-                          <button className="link-btn" type="button" style={{ color: "#4080ff", fontSize: 13, fontWeight: 600 }} onClick={() => { navigateTo('/tasks/' + task.id); }}>
+                          <button className="link-btn" type="button" style={{ color: "#4e63f0", fontSize: 13, fontWeight: 600 }} onClick={() => { navigateTo('/tasks/' + task.id); }}>
                             {actionLabel} &gt;
                           </button>
                         </div>
@@ -3267,7 +3293,7 @@ export function AdminDashboard() {
                     <p className="page-desc">任务编号: {task.code || task.id}</p>
                   </div>
                   <div className="toolbar">
-                    <button className="btn" type="button" onClick={() => setActiveSection("my-tasks")}>返回我的任务</button>
+                    <button className="btn" type="button" onClick={() => handleNavClick("my-tasks")}>返回我的任务</button>
                   </div>
                 </div>
 
@@ -3293,7 +3319,7 @@ export function AdminDashboard() {
                         key={scene.id}
                         onClick={() => setSelectedTaskSceneId(scene.id)}
                         style={{
-                          border: active ? "1px solid #4080ff" : "1px solid var(--border)",
+                          border: active ? "1px solid #4e63f0" : "1px solid var(--border)",
                           borderRadius: 8,
                           padding: 16,
                           marginBottom: 12,
@@ -3304,7 +3330,7 @@ export function AdminDashboard() {
                           gap: 12,
                         }}
                       >
-                        <span style={{ width: 28, height: 28, borderRadius: 6, background: active ? "#4080ff" : "#c0c4cc", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>{i + 1}</span>
+                        <span style={{ width: 28, height: 28, borderRadius: 6, background: active ? "#4e63f0" : "#c0c4cc", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>{i + 1}</span>
                         <strong>{scene.sceneName || "场景名称"}</strong>
                         <span className="badge info" style={{ marginLeft: "auto" }}>进行中</span>
                       </div>
@@ -3355,7 +3381,7 @@ export function AdminDashboard() {
                           <span style={{ color: "#8b98aa", fontSize: 13 }}>{currentScene.sceneName || "场景名称"}</span>
                         </div>
                         <div style={{ display: "flex", gap: 16, borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
-                          <button className="link-btn" type="button" style={{ color: "#4080ff", fontWeight: 600, borderBottom: "2px solid #4080ff", paddingBottom: 8 }}>对练记录</button>
+                          <button className="link-btn" type="button" style={{ color: "#4e63f0", fontWeight: 600, borderBottom: "2px solid #4e63f0", paddingBottom: 8 }}>对练记录</button>
                           <button className="link-btn" type="button">考试记录</button>
                         </div>
                         <div className="empty" style={{ padding: 24 }}>完成AI对练后显示对练记录</div>
@@ -3539,7 +3565,7 @@ export function AdminDashboard() {
             completedRecordCount={completedRecordCount}
             pendingAppealCount={pendingAppealCount}
             recordsCount={records.length}
-            onSwitchTab={(section) => setActiveSection(section)}
+            onSwitchTab={(section) => handleNavClick(section)}
             onRefresh={loadData}
           />
         )}

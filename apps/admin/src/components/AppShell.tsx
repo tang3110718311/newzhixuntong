@@ -6,7 +6,7 @@ import type { NavItem, ActiveSection } from "./dashboard-shared";
 import {
   BarChart3, Users, ClipboardList, FileText, Bot, Database,
   AlertCircle, Settings, ShieldCheck, KeyRound, Menu, Building2,
-  Briefcase, Landmark,
+  Briefcase, Landmark, MessageSquare, ScrollText,
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
@@ -18,6 +18,8 @@ const defaultNavItems: NavItem[] = [
   { id: "home", key: "overview", label: "首页", icon: <BarChart3 size={18} /> },
   { id: "student-home", key: "student-home", label: "学员首页", icon: <Users size={18} /> },
   { id: "my-tasks", key: "my-tasks", label: "我的任务", icon: <ClipboardList size={18} /> },
+  { id: "practice", key: "practice", label: "对练中心", icon: <MessageSquare size={18} /> },
+  { id: "records", key: "records", label: "训练记录", icon: <ScrollText size={18} /> },
   { id: "my-exams", key: "my-exams", label: "我的考试", icon: <FileText size={18} /> },
   { id: "scenes", key: "scenes", label: "场景管理", icon: <Bot size={18} /> },
   { id: "knowledge", key: "knowledge", label: "企业知识库", icon: <Database size={18} /> },

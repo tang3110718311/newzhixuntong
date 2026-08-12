@@ -255,7 +255,7 @@ export default function SceneEditPage() {
               padding: "20px 28px", borderBottom: "1px solid rgba(115,131,154,0.1)",
             }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 20, color: "#0f3168" }}>完善场景配置</h2>
+                <h2 style={{ margin: 0, fontSize: 20, color: "#3949c9" }}>完善场景配置</h2>
                 <p style={{ margin: "4px 0 0", color: "#73839a", fontSize: 14 }}>自动生成配置内容，可按实际训练要求修改</p>
               </div>
               <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -271,7 +271,7 @@ export default function SceneEditPage() {
 
             {/* 01 人员角色配置 */}
             <div style={{ padding: "24px 28px 8px" }}>
-              <h3 style={{ margin: "0 0 4px", fontSize: 16, color: "#0f3168", fontWeight: 700 }}>01 人员角色配置</h3>
+              <h3 style={{ margin: "0 0 4px", fontSize: 16, color: "#3949c9", fontWeight: 700 }}>01 人员角色配置</h3>
               <p style={{ margin: "0 0 16px", color: "#73839a", fontSize: 13 }}>配置 AI 与学员的角色信息，增强训练沉浸感</p>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px 48px" }}>
                 {/* 左列 */}
@@ -356,7 +356,7 @@ export default function SceneEditPage() {
 
             {/* 02 对话设置 */}
             <div style={{ padding: "24px 28px 8px" }}>
-              <h3 style={{ margin: "0 0 4px", fontSize: 16, color: "#0f3168", fontWeight: 700 }}>02 对话设置</h3>
+              <h3 style={{ margin: "0 0 4px", fontSize: 16, color: "#3949c9", fontWeight: 700 }}>02 对话设置</h3>
               <p style={{ margin: "0 0 16px", color: "#73839a", fontSize: 13 }}>配置对话目标、流程和结束要求</p>
               <div style={{ display: "grid", gap: 14 }}>
                 <div className="field">
@@ -393,7 +393,7 @@ export default function SceneEditPage() {
             {/* 03 设置评分规则 */}
             <div style={{ padding: "24px 28px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                <h3 style={{ margin: 0, fontSize: 16, color: "#0f3168", fontWeight: 700 }}>03 设置评分规则</h3>
+                <h3 style={{ margin: 0, fontSize: 16, color: "#3949c9", fontWeight: 700 }}>03 设置评分规则</h3>
                 <span style={{ color: "#73839a", fontSize: 13 }}>
                   总分满为 <strong className={scoringRuleForms.reduce((s, r) => s + Number(r.score || 0), 0) === 100 ? "text-green" : "text-red"}>
                     {scoringRuleForms.reduce((s, r) => s + Number(r.score || 0), 0)}

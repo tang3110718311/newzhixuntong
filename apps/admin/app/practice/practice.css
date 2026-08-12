@@ -250,7 +250,7 @@
   font-weight: 600;
 }
 .pc-opening-step.active i {
-  background: #6366f1;
+  background: #4e63f0;
   color: #fff;
 }
 .pc-opening-hint {
@@ -263,8 +263,8 @@
   min-width: 140px;
   padding: 9px 18px;
   font-size: 13px;
-  color: #6366f1;
-  border-color: #c7d2fe;
+  color: #4e63f0;
+  border-color: #d0d6fb;
 }
 
 /* 对话视图 */
@@ -412,7 +412,7 @@
 .pc-brief-rule-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #6366f1, #818cf8);
+  background: linear-gradient(90deg, #4e63f0, #6b7ff5);
   transition: width 0.5s ease;
 }
 .pc-brief-rule-score {
@@ -454,7 +454,7 @@
 .pc-brief-preview-refresh {
   border: none;
   background: transparent;
-  color: #6366f1;
+  color: #4e63f0;
   font-size: 11px;
   cursor: pointer;
   padding: 2px 4px;
@@ -625,7 +625,7 @@
   width: 28px;
   height: 28px;
   border: 3px solid #e0e7ff;
-  border-top-color: #6366f1;
+  border-top-color: #4e63f0;
   border-radius: 50%;
   animation: pc-spin 0.8s linear infinite;
 }
@@ -646,8 +646,8 @@
   align-items: flex-start;
   gap: 10px;
   background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
-  border: 1px solid #c7d2fe;
-  border-left: 4px solid #6366f1;
+  border: 1px solid #d0d6fb;
+  border-left: 4px solid #4e63f0;
   border-radius: 12px;
   padding: 12px 16px;
   margin: 8px 16px 0;
@@ -676,13 +676,13 @@
   gap: 8px;
   font-size: 12px;
   font-weight: 700;
-  color: #4338ca;
+  color: #3949c9;
   letter-spacing: 0.5px;
 }
 .pc-coachtip-copy {
   border: none;
   background: rgba(99, 102, 241, 0.12);
-  color: #4338ca;
+  color: #3949c9;
   font-size: 11px;
   font-weight: 600;
   padding: 3px 8px;
@@ -722,7 +722,7 @@
 }
 .pc-inputbar-text:focus-within {
   background: #fff;
-  border-color: #c7d2fe;
+  border-color: #d0d6fb;
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.12);
 }
 .pc-inputbar-text.recording {
@@ -752,7 +752,7 @@
   flex-shrink: 0;
   border: none;
   background: #f0f4f9;
-  color: #6366f1;
+  color: #4e63f0;
   border-radius: 50%;
   font-size: 16px;
   cursor: pointer;
@@ -795,12 +795,12 @@
   transition: background 0.15s, color 0.15s;
 }
 .pc-inputbar-send.active {
-  background: #6366f1;
+  background: #4e63f0;
   color: #fff;
   cursor: pointer;
 }
 .pc-inputbar-send.active:hover:not(:disabled) {
-  background: #4f46e5;
+  background: #3a51d6;
 }
 .pc-inputbar-send:disabled {
   cursor: not-allowed;
@@ -883,8 +883,8 @@
 }
 .pc-skip-end {
   font-size: 12px;
-  color: #6366f1;
-  border-color: #c7d2fe;
+  color: #4e63f0;
+  border-color: #d0d6fb;
 }
 .pc-score-view {
   min-height: 60vh;
@@ -913,7 +913,7 @@
   width: 30px;
   height: 30px;
   border: 3px solid #e5e7eb;
-  border-top-color: #6366f1;
+  border-top-color: #4e63f0;
   border-radius: 50%;
   animation: pc-spin 0.8s linear infinite;
 }
@@ -993,12 +993,12 @@
   flex-shrink: 0;
 }
 .pc-level-badge.excellent { background: rgba(21, 128, 61, 0.12); color: #15803d; }
-.pc-level-badge.pass { background: rgba(37, 99, 235, 0.12); color: #2563eb; }
+.pc-level-badge.pass { background: rgba(78, 99, 240, 0.12); color: #4e63f0; }
 .pc-level-badge.developing { background: rgba(217, 119, 6, 0.14); color: #b45309; }
 /* P0:能力综述卡片 */
 .pc-score-profile {
   margin-top: 14px;
-  border: 1px solid #c7d2fe;
+  border: 1px solid #d0d6fb;
   background: linear-gradient(135deg, #eef2ff, #f5f7ff);
   border-radius: 12px;
   padding: 12px 16px;
@@ -1006,7 +1006,7 @@
 .pc-score-profile h4 {
   margin: 0 0 6px;
   font-size: 15px;
-  color: #4338ca;
+  color: #3949c9;
 }
 .pc-score-profile p {
   margin: 0;
@@ -1074,7 +1074,7 @@
   align-items: center;
   font-size: 13px;
   font-weight: 700;
-  color: #4338ca;
+  color: #3949c9;
 }
 .pc-script-total {
   color: #15803d;
@@ -1131,7 +1131,7 @@
 }
 .pc-msg.learner .pc-msg-content {
   background: #eef2ff;
-  border-color: #c7d2fe;
+  border-color: #d0d6fb;
   color: #312e81;
 }
 .pc-script-result {
@@ -1153,7 +1153,7 @@
 .pc-script-big {
   font-size: 46px;
   font-weight: 800;
-  color: #6366f1;
+  color: #4e63f0;
 }
 .pc-script-max {
   font-size: 15px;
@@ -1189,7 +1189,7 @@
   line-height: 1.6;
 }
 .pc-script-inputbar textarea:focus {
-  border-color: #6366f1;
+  border-color: #4e63f0;
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.12);
 }
 .pc-script-inputbar .pc-inputbar-send {

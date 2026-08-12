@@ -4,6 +4,7 @@
  * 用法:
  *   node scripts/git-commit-utf8.mjs "提交标题"
  *   node scripts/git-commit-utf8.mjs "提交标题" -m "正文第一行" -m "正文第二行"
+ *   node scripts/git-commit-utf8.mjs --no-add "提交标题" ...   # 跳过 git add -A，仅提交已暂存内容
  *
  * 解决 Windows PowerShell 中文 commit message 双重编码乱码问题。
  */
@@ -12,8 +13,10 @@ import { writeFileSync, unlinkSync } from "fs";
 import { resolve } from "path";
 
 const args = process.argv.slice(2);
+const noAdd = args[0] === "--no-add";
+if (noAdd) args.shift();
 if (args.length === 0) {
-  console.error("用法: node scripts/git-commit-utf8.mjs <标题> [-m <正文>]...");
+  console.error("用法: node scripts/git-commit-utf8.mjs [--no-add] <标题> [-m <正文>]...");
   process.exit(1);
 }
 
@@ -28,8 +31,8 @@ const msgFile = resolve(".temp/commit-msg.txt");
 writeFileSync(msgFile, fullMsg, "utf8");
 
 try {
-  // 1) git add -A
-  execFileSync("git", ["add", "-A"], { stdio: "inherit" });
+  // 1) git add -A（默认全部；--no-add 时跳过）
+  if (!noAdd) execFileSync("git", ["add", "-A"], { stdio: "inherit" });
   // 2) git commit -F <file> with UTF-8 env
   execFileSync("git", ["commit", "-F", msgFile], {
     stdio: "inherit",

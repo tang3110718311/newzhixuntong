@@ -15,7 +15,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/
 
 // 主题色（与原型一致）
 const C = {
-  brand: "#4080FF",
+  brand: "#4E63F0",
   teal: "#36CFC9",
   green: "#00B42A",
   darkGreen: "#009E5F",

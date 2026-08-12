@@ -16,9 +16,21 @@
 ```powershell
 npm.cmd install
 npm.cmd run setup
-npm.cmd run dev:api
-npm.cmd run dev:admin
+node scripts/build.mjs all
+node scripts/start-local.mjs
 ```
+
+> 注意：构建必须走根目录统一脚本 `node scripts/build.mjs`（或 `npm run build`），
+> 不要直接用 `npm.cmd run dev:api` / `npm.cmd run dev:admin` 或旧式 `npm --workspaces run build`——
+> 前者在 CodeBuddy/WorkBuddy 沙箱下可能因 safe-delete 拦截 `.next` 清理而失败，后者缺少保护开关。
+>
+> 构建脚本用法：
+> ```powershell
+> node scripts/build.mjs        # 构建 api + admin
+> node scripts/build.mjs api    # 只构建 api
+> node scripts/build.mjs admin  # 只构建 admin
+> npm run build                 # 等价 build.mjs all
+> ```
 
 默认端口：
 

@@ -178,9 +178,9 @@ export default function SceneDetailPage() {
             }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <h2 style={{ margin: 0, fontSize: 20, color: "#0f3168" }}>{scene.name}</h2>
+                  <h2 style={{ margin: 0, fontSize: 20, color: "#3949c9" }}>{scene.name}</h2>
                   {statusBadge(scene.status)}
-                  <span style={{ color: "#367ff0", fontSize: 12, background: "#eef4ff", padding: "2px 10px", borderRadius: 999 }}>{createModeLabel(scene.createMode)}</span>
+                  <span style={{ color: "#4e63f0", fontSize: 12, background: "#eef1fc", padding: "2px 10px", borderRadius: 999 }}>{createModeLabel(scene.createMode)}</span>
                 </div>
                 <p style={{ margin: "6px 0 0", color: "#73839a", fontSize: 13 }}>
                   场景编号 {scene.code} · 创建部门 {scene.creatorOrgName || "—"} · 创建人 {scene.creatorName || "—"} · 更新时间 {formatDate(scene.updatedAt || scene.createdAt)}
@@ -242,11 +242,11 @@ export default function SceneDetailPage() {
                           padding: "10px 14px", borderRadius: 8,
                           border: "1px solid rgba(115,131,154,0.12)", background: "#fafbfe",
                         }}>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: "#367ff0", width: 18, flexShrink: 0 }}>{i + 1}</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#4e63f0", width: 18, flexShrink: 0 }}>{i + 1}</span>
                           <div style={{ flex: 1 }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                               <strong style={{ fontSize: 13, color: "#172b4d" }}>{r.name}</strong>
-                              <span style={{ fontSize: 13, fontWeight: 700, color: "#0f3168" }}>{r.score} 分</span>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: "#3949c9" }}>{r.score} 分</span>
                             </div>
                             {r.criteria && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#73839a", lineHeight: 1.6 }}>{r.criteria}</p>}
                           </div>
@@ -316,10 +316,10 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
       padding: "14px 16px", borderRadius: 10,
       border: "1px solid rgba(115,131,154,0.12)", background: "#fff",
     }}>
-      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, borderRadius: 8, background: "#eef4ff", color: "#367ff0" }}>{icon}</span>
+      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, borderRadius: 8, background: "#eef1fc", color: "#4e63f0" }}>{icon}</span>
       <div>
         <div style={{ fontSize: 12, color: "#8b98aa" }}>{label}</div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: "#0f3168", marginTop: 2 }}>{value}</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#3949c9", marginTop: 2 }}>{value}</div>
       </div>
     </div>
   );
@@ -329,9 +329,9 @@ function SectionBlock({ index, title, desc, icon, children }: { index: string; t
   return (
     <div style={{ marginBottom: 28 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: "#367ff0" }}>{index}</span>
-        <span style={{ color: "#367ff0", display: "flex" }}>{icon}</span>
-        <h3 style={{ margin: 0, fontSize: 16, color: "#0f3168", fontWeight: 700 }}>{title}</h3>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#4e63f0" }}>{index}</span>
+        <span style={{ color: "#4e63f0", display: "flex" }}>{icon}</span>
+        <h3 style={{ margin: 0, fontSize: 16, color: "#3949c9", fontWeight: 700 }}>{title}</h3>
       </div>
       <p style={{ margin: "0 0 12px", color: "#73839a", fontSize: 13 }}>{desc}</p>
       {children}
@@ -351,7 +351,7 @@ function Row({ label, value }: { label: string; value: string }) {
 function SideBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 20, padding: "14px 16px", borderRadius: 10, border: "1px solid rgba(115,131,154,0.12)", background: "#fff" }}>
-      <h4 style={{ margin: "0 0 10px", fontSize: 13, color: "#0f3168", fontWeight: 700 }}>{title}</h4>
+      <h4 style={{ margin: "0 0 10px", fontSize: 13, color: "#3949c9", fontWeight: 700 }}>{title}</h4>
       {children}
     </div>
   );
