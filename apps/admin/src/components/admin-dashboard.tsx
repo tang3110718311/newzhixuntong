@@ -15,7 +15,6 @@ import {
   KeyRound,
   Landmark,
   Loader2,
-  LockKeyhole,
   LogOut,
   Menu,
   Paperclip,
@@ -641,6 +640,7 @@ export function AdminDashboard() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [showSceneWizard, setShowSceneWizard] = useState(false);
   const [showSceneModePicker, setShowSceneModePicker] = useState(false);
   const [sceneWizardStep, setSceneWizardStep] = useState(1);
@@ -1434,36 +1434,62 @@ export function AdminDashboard() {
 
   if (!auth) {
     return (
-      <div className="login-shell">
-        <form className="login-card" onSubmit={handleLogin}>
-          <div className="login-brand">
-            <div className="brand-mark">智</div>
-            <div>
-              <p className="brand-title">AI 智训通</p>
-              <p className="brand-subtitle">管理端登录</p>
+      <div className="login-redesign" id="loginPage">
+        <div className="login-glow"></div>
+        <div className="login-wash wash-one"></div>
+        <div className="login-wash wash-two"></div>
+        <div className="login-layout">
+          <section className="login-intro">
+            <div className="login-brand"><i className="mark"></i><strong>智训通</strong><span>企业培训管理平台</span></div>
+            <div className="login-kicker">SMART TRAINING · SMART GROWTH</div>
+            <h1>让学习创造<br /><span>更大价值</span></h1>
+            <p className="login-subtitle">智能场景训练 · 数据驱动成长</p>
+            <div className="login-hero-art" aria-hidden="true">
+              <div className="hero-orbit orbit-a"></div>
+              <div className="hero-orbit orbit-b"></div>
+              <div className="hero-orbit orbit-c"></div>
+              <div className="hero-glow"></div>
+              <div className="hero-platform"><div className="hero-platform-top"></div><div className="hero-platform-side"></div></div>
+              <div className="hero-panel"><div className="hero-panel-head"><span className="panel-dot"></span><b>智训通工作台</b><small>LIVE</small></div><div className="hero-panel-body"><div className="hero-bars"><i></i><i></i><i></i><i></i><i></i></div><div className="hero-line"></div><div className="hero-avatar"></div></div></div>
+              <div className="hero-cube"><b>智</b><small>TRAIN</small></div>
+              <div className="hero-card float-card-one"><i>✓</i><span>训练完成度<br /><b>86%</b></span></div>
+              <div className="hero-card float-card-two"><i>↗</i><span>本周成长值<br /><b>+24.8</b></span></div>
+              <div className="hero-spark spark-one">✦</div>
+              <div className="hero-spark spark-two">✦</div>
+              <div className="hero-spark spark-three">·</div>
             </div>
-          </div>
-          <div className="login-title">
-            <LockKeyhole size={22} />
-            <div>
-              <h1>进入训练管理台</h1>
-              <p>使用手机号、密码和验证码登录，登录后选择企业租户。</p>
+            <div className="login-features">
+              <div className="login-feature"><i>▣</i><span><b>弹性学习</b><small>随时随地提升能力</small></span></div>
+              <div className="login-feature"><i>✓</i><span><b>安全合规</b><small>企业级数据保障</small></span></div>
+              <div className="login-feature"><i>↗</i><span><b>智能调度</b><small>精准连接每一次成长</small></span></div>
             </div>
-          </div>
-          {error ? <div className="notice"><AlertCircle size={16} /> {error}</div> : null}
-              <Field label="手机号"><input value={loginForm.mobile} onChange={(e) => setLoginForm({ ...loginForm, mobile: e.target.value })} placeholder="请输入手机号" required /></Field>
-              <Field label="密码"><input value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} type="password" placeholder="请输入密码" required /></Field>
-              <Field label="验证码">
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input value={loginForm.code} onChange={(e) => setLoginForm({ ...loginForm, code: e.target.value })} placeholder="请输入验证码" style={{ flex: 1 }} required />
-                  <button className="btn" type="button" disabled={!!codeCountdown || submitting} onClick={handleSendCode} style={{ whiteSpace: "nowrap", minWidth: 110 }}>
-                    {codeCountdown > 0 ? `${codeCountdown}s 后重发` : "获取验证码"}
-                  </button>
-                </div>
-              </Field>
-              <button className="btn primary full" disabled={submitting} type="submit"><LockKeyhole size={16} /> 登录</button>
-            <p className="login-hint">本地验证默认账号：13800000000 / Zxt@2026，验证码 666666</p>
-        </form>
+          </section>
+          <section className="login-card">
+            <div className="login-card-head">
+              <div className="login-card-badge">智训通</div>
+              <h2>欢迎登录</h2>
+              <p>登录后进入智训通管理工作台</p>
+            </div>
+            <form id="loginForm" onSubmit={handleLogin}>
+              <label className="login-field"><i className="field-icon">♙</i>
+                <input value={loginForm.mobile} onChange={(e) => setLoginForm({ ...loginForm, mobile: e.target.value })} type="text" maxLength={32} placeholder="请输入账号 / 手机号" autoComplete="username" required />
+              </label>
+              <label className="login-field login-password"><i className="field-icon">▣</i>
+                <input value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} type={showPassword ? "text" : "password"} maxLength={32} placeholder="请输入密码" autoComplete="current-password" required />
+                <button type="button" className="password-toggle" onClick={() => setShowPassword(!showPassword)} aria-label="显示密码">◉</button>
+              </label>
+              <label className="login-field login-code"><i className="field-icon">✉</i>
+                <input value={loginForm.code} onChange={(e) => setLoginForm({ ...loginForm, code: e.target.value })} type="text" maxLength={8} placeholder="请输入验证码" required />
+                <button type="button" disabled={!!codeCountdown || submitting} onClick={handleSendCode}>{codeCountdown > 0 ? `${codeCountdown}s 后重发` : "获取验证码"}</button>
+              </label>
+              {error ? <div className="login-tip" role="alert">{error}</div> : null}
+              <div className="login-links"><a onClick={(e) => e.preventDefault()}>忘记密码?</a></div>
+              <button className="login-submit" type="submit" disabled={submitting}>{submitting ? "登录中..." : "登录"}</button>
+              <label className="login-agreement"><input type="checkbox" defaultChecked /><span>阅读并接受 <a>《服务条款》</a> 和 <a>《隐私政策》</a></span></label>
+            </form>
+          </section>
+        </div>
+        <div className="login-foot">© 2026 智训通 · 企业培训与人才发展平台</div>
       </div>
     );
   }
@@ -2692,7 +2718,7 @@ export function AdminDashboard() {
             <div className="home-grid">
               <div className="home-main">
                 {/* 学习空间横幅 */}
-                <section className="hero-card card" style={{ marginBottom: 24 }}>
+                <section className="home-hero-card card" style={{ marginBottom: 24 }}>
                   <div style={{ position: "relative", zIndex: 1, flex: 1 }}>
                     <p>我的学习空间</p>
                     <h1>早上好，{auth.user.name}</h1>

@@ -19,6 +19,15 @@ const securityHeaders = [
 const nextConfig = {
   transpilePackages: ["@zxt/shared"],
   basePath,
+  // 本地开发: 将 /api/* 代理到独立的 api 服务, 避免 localhost 跨端口触发 CSP connect-src
+  // 生产环境走 nginx 反代, 不会命中这些 rewrite
+  async rewrites() {
+    const apiTarget = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/api$/, "")
+      || "http://localhost:4000";
+    return [
+      { source: "/api/:path*", destination: `${apiTarget}/api/:path*` },
+    ];
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

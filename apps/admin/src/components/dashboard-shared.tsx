@@ -116,13 +116,42 @@ export function DataTable({ headers, children }: { headers: string[]; children: 
   );
 }
 
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
+export function Field({ label, children, required, count, max, hint }: { label: string; children: React.ReactNode; required?: boolean; count?: number; max?: number; hint?: string }) {
   return (
-    <label className="field">
-      <span className="field-label">{label}</span>
+    <label className="zfield">
+      <span className="zfield-label">{label}{required ? <span className="zreq">*</span> : null}</span>
       {children}
+      {hint ? <span className="zfield-hint">{hint}</span> : null}
+      {typeof count === "number" ? <span className="zfield-count">{count}{typeof max === "number" ? `/${max}` : ""}</span> : null}
     </label>
   );
+}
+
+// 标签: 模式/状态（对齐原型）
+export function Tag({ tone, children }: { tone: "blue" | "cyan" | "green" | "amber" | "red" | "gray"; children: React.ReactNode }) {
+  return <span className={`ztag ztag-${tone}`}>{children}</span>;
+}
+
+// 模式标签（语音/文本）
+export function modeTag(mode: string) {
+  if (mode === "text") return <Tag tone="cyan">文本模式</Tag>;
+  return <Tag tone="blue">语音模式</Tag>;
+}
+
+// 状态标签（启用/停用等）
+export function statusTag(status: string) {
+  const map: Record<string, { tone: "green" | "red" | "amber" | "gray"; label: string }> = {
+    enabled: { tone: "green", label: "启用" },
+    disabled: { tone: "red", label: "停用" },
+    published: { tone: "green", label: "已发布" },
+    draft: { tone: "amber", label: "草稿" },
+    completed: { tone: "green", label: "已完成" },
+    in_progress: { tone: "amber", label: "进行中" },
+    pending: { tone: "amber", label: "待处理" },
+    active: { tone: "green", label: "有效" },
+  };
+  const item = map[status];
+  return item ? <Tag tone={item.tone}>{item.label}</Tag> : <Tag tone="gray">{status || "-"}</Tag>;
 }
 
 // 供区块组件统一读取用户信息
