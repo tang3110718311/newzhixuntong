@@ -33,6 +33,8 @@ export type GeneratedSceneDraft = {
   endCondition: string;
   interruptCondition: string;
   scoringRules?: ScoringRuleDraft[];
+  /** 主动追问：描述信息不足时返回需补充的问题（最多3个），此时不生成场景 */
+  followUpQuestions?: string[];
 };
 
 export type GenerateScoringInput = {
@@ -198,7 +200,11 @@ export function createOpenAiCompatibleLlmProvider(config: OpenAiCompatibleConfig
     async generateScene(input) {
       const prompt = [
         "你是 AI 智训通的行业场景设计专家。",
-        "请基于输入生成一个可直接落库的角色训练场景，只返回 JSON，不要 Markdown。",
+        "你的任务分两步：先评估信息是否足够，足够才生成场景；不足则主动追问。",
+        "第一步【信息完整性评估】：判断场景说明是否完整覆盖以下 5 个要素——人物（AI 扮演对象身份）、场景（具体情境）、痛点（客户/对象的诉求或不满）、目标（训练学员达成什么）、沟通要求（关键话术或边界）。",
+        "若 5 要素缺 2 个及以上，或关键信息严重缺失（如没有痛点、没有明确目标），则只返回 JSON：{\"followUpQuestions\": [\"不超过30字的追问问题1\", ...]}，最多 3 个问题，直接命中缺失要素，不要生成场景字段。",
+        "若 5 要素基本齐全（缺 1 个或全齐），则正常生成场景。",
+        "第二步【生成场景】：请基于输入生成一个可直接落库的角色训练场景，只返回 JSON，不要 Markdown。",
         "JSON 字段必须包含：name, sceneType, description, aiRole, learnerRole, endCondition, interruptCondition, scoringRules。",
         "aiRole 字段包含 identity, background, personality, emotion, goal。",
         "learnerRole 字段包含 identity, goal。",
@@ -238,7 +244,22 @@ export function createOpenAiCompatibleLlmProvider(config: OpenAiCompatibleConfig
         throw new Error("模型接口未返回有效内容。");
       }
 
-      return normalizeGeneratedScene(extractJsonObject(content), input);
+      const raw = extractJsonObject(content) as GeneratedSceneDraft & { followUpQuestions?: string[] };
+      // 主动追问模式：信息不足时模型只返回追问问题，不生成场景
+      const followUps = (raw.followUpQuestions ?? []).filter((q) => typeof q === "string" && q.trim()).slice(0, 3);
+      if (followUps.length) {
+        return {
+          name: "",
+          sceneType: "",
+          description: "",
+          aiRole: { identity: "", background: "", personality: "", emotion: "calm", goal: "" },
+          learnerRole: { identity: "", goal: "" },
+          endCondition: "",
+          interruptCondition: "",
+          followUpQuestions: followUps,
+        };
+      }
+      return normalizeGeneratedScene(raw, input);
     },
     async generateScoringRules(input) {
       const scene = await this.generateScene({

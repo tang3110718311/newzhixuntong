@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   let tenantIdForLog: string | null = null;
 
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId, user: ctxUser } = await getTenantContext(request);
     tenantIdForLog = tenantId;
     const body = generateSceneSchema.parse(await request.json());
     const config = getDefaultAiProvider(tenantId);
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     }
 
     const industry = getIndustryPackage(tenantId, body.industryPackageId);
-    const knowledgeSummaries = listKnowledgeSummaries(tenantId, 20);
+    const knowledgeSummaries = listKnowledgeSummaries(tenantId, 20, body.attachmentFileIds?.length ? body.attachmentFileIds : undefined);
     const provider = createOpenAiCompatibleLlmProvider({
       baseUrl: config.baseUrl,
       apiKey: config.apiKeyEncrypted,
@@ -51,10 +51,25 @@ export async function POST(request: Request) {
           knowledgeSummaries.map((k) => `【${k.folderName}】${k.name}\n${k.summary}`).join("\n\n"),
       ],
     });
+    // 主动追问模式：描述信息不足时仅返回追问问题，不落库场景
+    if (draft.followUpQuestions?.length) {
+      logAiCall({
+        tenantId,
+        providerType: "llm",
+        modelName: config.modelName,
+        bizType: "scene_generation",
+        durationMs: Date.now() - started,
+        success: true,
+        traceId,
+      });
+      return ok({ scene: null, draft }, traceId, 200);
+    }
     const scene = createGeneratedScene(tenantId, {
       industryPackageId: body.industryPackageId,
       name: draft.name,
       mode: body.mode,
+      createMode: body.createMode,
+      createdBy: ctxUser?.id ?? null,
       sceneType: draft.sceneType,
       description: draft.description,
       sourceType: "ai",

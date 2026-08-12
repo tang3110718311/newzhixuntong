@@ -37,6 +37,7 @@ import { SysMenusSection } from "./SysMenusSection";
 import { SysPostsSection } from "./SysPostsSection";
 import { SysRolesSection } from "./SysRolesSection";
 import { navigateTo } from "@/lib/navigation";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 type NavChild = { id: string; key: ActiveSection; label: string; icon: React.ReactNode };
 type NavItem = {
@@ -66,12 +67,20 @@ type Scene = {
   name: string;
   code: string;
   industryPackageId?: string | null;
+  industryPackageName?: string | null;
   sceneType: string;
   mode: string;
+  createMode?: string;
   status: string;
   isTemplate: number | boolean;
   sourceType: string;
   description?: string;
+  passScore?: number;
+  taskCount?: number;
+  creatorName?: string | null;
+  creatorOrgName?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 
@@ -460,6 +469,7 @@ const initialAiGenerateForm = {
   industryPackageId: "",
   targetRole: "客服坐席",
   mode: "voice",
+  createMode: "ai_practice",
   sceneDescription: "客户投诉网络故障反复未解决，要求客服明确处理时限并给出闭环反馈。",
 };
 
@@ -548,6 +558,18 @@ function statusBadge(status: string) {
 
 function modeLabel(mode: string) {
   return mode === "voice" ? "语音模式" : "文本模式";
+}
+
+const CREATE_MODE_LABELS: Record<string, string> = {
+  ai_practice: "AI对练模式",
+  ai_exam: "AI对练+考试模式",
+  fixed_practice: "固定对练模式",
+  fixed_exam: "固定对练+考试模式",
+};
+
+function createModeLabel(createMode?: string) {
+  if (!createMode) return "";
+  return CREATE_MODE_LABELS[createMode] || createMode;
 }
 
 function sourceLabel(sourceType: string, isTemplate: number | boolean) {
@@ -644,14 +666,23 @@ export function AdminDashboard() {
   const [showSceneModePicker, setShowSceneModePicker] = useState(false);
   const [sceneWizardStep, setSceneWizardStep] = useState(1);
   const sceneAttachmentInputRef = useRef<HTMLInputElement>(null);
-  const [sceneAttachments, setSceneAttachments] = useState<Array<{ name: string; status: "uploading" | "done" | "failed"; error?: string }>>([]);
+  const [sceneAttachments, setSceneAttachments] = useState<Array<{ name: string; fileId?: string; status: "uploading" | "done" | "failed"; error?: string }>>([]);
   const [sceneAttachmentsUploading, setSceneAttachmentsUploading] = useState(false);
-  const [sceneFilter, setSceneFilter] = useState({ status: "all", mode: "all", org: "all", keyword: "" });
+  const [showSceneKbPicker, setShowSceneKbPicker] = useState(false);
+  const [sceneKbFolders, setSceneKbFolders] = useState<Array<{ id: string; name: string }>>([]);
+  const [sceneKbFiles, setSceneKbFiles] = useState<Array<{ id: string; name: string; parseStatus: string }>>([]);
+  const [sceneKbFolderId, setSceneKbFolderId] = useState("");
+  const [selectedKbFileIds, setSelectedKbFileIds] = useState<string[]>([]);
+  const [sceneFilter, setSceneFilter] = useState({ status: "all", mode: "all", createMode: "all", org: "all", keyword: "" });
+  const [selectedSceneIds, setSelectedSceneIds] = useState<string[]>([]);
+  const [sceneToDelete, setSceneToDelete] = useState<Scene | null>(null);
+  const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
   const [wizardRoleForm, setWizardRoleForm] = useState({
     aiIdentity: "",
     aiBackground: "",
     aiPersonality: "",
     aiEmotion: "",
+    aiStyle: "",
     learnerIdentity: "",
     dialogueGoal: "",
     initiator: "ai",
@@ -661,6 +692,11 @@ export function AdminDashboard() {
     sceneDescription: "",
   });
   const [aiGenerateDraft, setAiGenerateDraft] = useState<{ name: string; sceneType: string; description: string; aiRole: { identity: string; background: string; personality: string; emotion: string; goal: string }; learnerRole: { identity: string; goal: string }; endCondition: string; interruptCondition: string; scoringRules: ScoringRuleDraft[] } | null>(null);
+  // P2 主动追问：AI 返回的追问问题及学员补充答案
+  const [aiFollowUpQuestions, setAiFollowUpQuestions] = useState<string[] | null>(null);
+  const [aiFollowUpAnswers, setAiFollowUpAnswers] = useState<Record<number, string>>({});
+  // P2 改前改后对照：AI 生成前的原始描述
+  const [aiGeneratedOriginal, setAiGeneratedOriginal] = useState<typeof aiGenerateForm | null>(null);
   const [wizardScoringRules, setWizardScoringRules] = useState<ScoringRule[]>([
     { name: "需求识别", score: 25, criteria: "准确识别客户核心诉求", deductionRule: "", evidenceRequired: "" },
     { name: "合规表达", score: 25, criteria: "按业务规范说明边界", deductionRule: "", evidenceRequired: "" },
@@ -1079,22 +1115,79 @@ export function AdminDashboard() {
     setSceneAttachments((prev) => prev.filter((item) => item.name !== name));
   }
 
+  async function openSceneKbPicker() {
+    setError("");
+    setSelectedKbFileIds([]);
+    setSceneKbFolderId("");
+    setSceneKbFiles([]);
+    setShowSceneKbPicker(true);
+    try {
+      const data = await apiFetch<{ items: Array<{ id: string; name: string }> }>("/knowledge?pageSize=100");
+      setSceneKbFolders(data.items || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载知识库失败");
+    }
+  }
+
+  async function loadSceneKbFiles(folderId: string) {
+    setSceneKbFolderId(folderId);
+    setSceneKbFiles([]);
+    try {
+      const data = await apiFetch<Array<{ id: string; name: string; parseStatus: string }>>(`/knowledge/files?folderId=${encodeURIComponent(folderId)}`);
+      setSceneKbFiles(data || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载知识库文件失败");
+    }
+  }
+
+  function toggleKbFileSelection(fileId: string) {
+    setSelectedKbFileIds((prev) => prev.includes(fileId) ? prev.filter((id) => id !== fileId) : [...prev, fileId]);
+  }
+
+  function confirmAddKbFiles() {
+    if (!sceneKbFiles.length) return;
+    const selected = sceneKbFiles.filter((f) => selectedKbFileIds.includes(f.id));
+    setSceneAttachments((prev) => {
+      const existing = new Set(prev.map((item) => item.name));
+      const additions = selected
+        .filter((f) => !existing.has(f.name))
+        .map((f) => ({ name: f.name, fileId: f.id, status: "done" as const }));
+      return [...prev, ...additions];
+    });
+    setShowSceneKbPicker(false);
+  }
+
   async function handleAiGenerateAndNext() {
     setSubmitting(true);
     setError("");
     try {
-      const result = await apiFetch<{ scene: Scene; draft: { name: string; sceneType: string; description: string; aiRole: { identity: string; background: string; personality: string; emotion: string; goal: string }; learnerRole: { identity: string; goal: string }; endCondition: string; interruptCondition: string; scoringRules: ScoringRuleDraft[] } }> ("/ai/scenes/generate", {
+      const result = await apiFetch<{ scene: Scene | null; draft: { name: string; sceneType: string; description: string; aiRole: { identity: string; background: string; personality: string; emotion: string; goal: string }; learnerRole: { identity: string; goal: string }; endCondition: string; interruptCondition: string; scoringRules: ScoringRuleDraft[]; followUpQuestions?: string[] } }> ("/ai/scenes/generate", {
         method: "POST",
-        body: JSON.stringify(aiGenerateForm),
+        body: JSON.stringify({
+          ...aiGenerateForm,
+          attachmentFileIds: sceneAttachments.filter((a) => a.fileId && a.status === "done").map((a) => a.fileId) || [],
+        }),
       });
       const draft = result.draft;
       setAiGenerateDraft(draft);
+      // 主动追问模式：描述信息不足，AI 返回追问问题，停留在第1步等待补充
+      if (draft.followUpQuestions?.length) {
+        setAiFollowUpQuestions(draft.followUpQuestions);
+        setAiFollowUpAnswers({});
+        setSceneWizardStep(1);
+        setMessage("");
+        return;
+      }
+      // 正常生成：记录原始描述（改前改后对照），进入第2步
+      setAiFollowUpQuestions(null);
+      setAiGeneratedOriginal({ ...aiGenerateForm });
       // Fill wizard role form from AI draft
       setWizardRoleForm({
         aiIdentity: draft.aiRole?.identity || "",
         aiBackground: draft.aiRole?.background || "",
         aiPersonality: draft.aiRole?.personality || "",
         aiEmotion: draft.aiRole?.emotion || "calm",
+        aiStyle: "",
         learnerIdentity: draft.learnerRole?.identity || "",
         dialogueGoal: draft.learnerRole?.goal || "",
         initiator: "ai",
@@ -1120,6 +1213,18 @@ export function AdminDashboard() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  // 补充追问答案后重新生成
+  async function handleAiRegenerateWithAnswers() {
+    const answers = Object.values(aiFollowUpAnswers).filter((a) => (a || "").trim()).join("；");
+    if (!answers) {
+      setError("请至少回答一个问题后再试。");
+      return;
+    }
+    const supplemented = `${aiGenerateForm.sceneDescription}\n【补充信息】${answers}`;
+    setAiGenerateForm((prev) => ({ ...prev, sceneDescription: supplemented }));
+    await handleAiGenerateAndNext();
   }
 
   async function handleGenerateScene(event: FormEvent<HTMLFormElement>) {
@@ -1235,6 +1340,30 @@ export function AdminDashboard() {
     });
   }
 
+  async function confirmDeleteScene() {
+    if (!sceneToDelete) return;
+    const target = sceneToDelete;
+    setSceneToDelete(null);
+    await submitAction("场景已删除。", async () => {
+      await apiFetch(`/scenes/${target.id}`, { method: "DELETE", body: JSON.stringify({}) });
+      setSelectedSceneIds((prev) => prev.filter((id) => id !== target.id));
+    });
+  }
+
+  async function confirmBatchDeleteScenes() {
+    const ids = selectedSceneIds;
+    setShowBatchDeleteConfirm(false);
+    if (!ids.length) return;
+    await submitAction(`已删除 ${ids.length} 个场景。`, async () => {
+      await apiFetch<{ deleted: number }>("/scenes/batch", { method: "DELETE", body: JSON.stringify({ ids }) });
+      setSelectedSceneIds([]);
+    });
+  }
+
+  function toggleSceneSelection(sceneId: string) {
+    setSelectedSceneIds((prev) => prev.includes(sceneId) ? prev.filter((id) => id !== sceneId) : [...prev, sceneId]);
+  }
+
   async function publishTask(taskId: string) {
     await submitAction("任务已发布。", async () => {
       await apiFetch(`/tasks/${taskId}/publish`, { method: "POST", body: JSON.stringify({}) });
@@ -1334,6 +1463,7 @@ export function AdminDashboard() {
             name: aiGenerateForm.sceneDescription.slice(0, 30) || "新场景",
             code: makeCode("CJ"),
             mode: aiGenerateForm.mode,
+            createMode: aiGenerateForm.createMode || "fixed_practice",
             sceneType: wizardRoleForm.aiIdentity ? "对话" : "常规对话",
             description: aiGenerateForm.sceneDescription,
             aiRole: {
@@ -1341,6 +1471,7 @@ export function AdminDashboard() {
               background: wizardRoleForm.aiBackground,
               personality: wizardRoleForm.aiPersonality,
               emotion: wizardRoleForm.aiEmotion,
+              languageStyle: wizardRoleForm.aiStyle,
               goal: wizardRoleForm.dialogueGoal,
             },
             learnerRole: {
@@ -1365,7 +1496,7 @@ export function AdminDashboard() {
       setShowSceneWizard(false);
       setSceneWizardStep(1);
       setAiGenerateDraft(null);
-      setWizardRoleForm({ aiIdentity: "", aiBackground: "", aiPersonality: "", aiEmotion: "", learnerIdentity: "", dialogueGoal: "", initiator: "ai", endCondition: "", interruptCondition: "", dialogueExample: "", sceneDescription: "" });
+      setWizardRoleForm({ aiIdentity: "", aiBackground: "", aiPersonality: "", aiEmotion: "", aiStyle: "", learnerIdentity: "", dialogueGoal: "", initiator: "ai", endCondition: "", interruptCondition: "", dialogueExample: "", sceneDescription: "" });
       setWizardScoringRules([
         { name: "需求识别", score: 25, criteria: "准确识别客户核心诉求", deductionRule: "", evidenceRequired: "" },
         { name: "合规表达", score: 25, criteria: "按业务规范说明边界", deductionRule: "", evidenceRequired: "" },
@@ -1705,7 +1836,7 @@ export function AdminDashboard() {
                     <p className="page-desc">管理智能对练场景，快速创建并关联培训任务。</p>
                   </div>
                   <div className="toolbar">
-                    <button className="btn" type="button" disabled={scenes.length === 0}>批量删除</button>
+                    <button className="btn" type="button" disabled={selectedSceneIds.length === 0} onClick={() => setShowBatchDeleteConfirm(true)}>批量删除{selectedSceneIds.length > 0 ? `(${selectedSceneIds.length})` : ""}</button>
                     <button className="btn primary" type="button" onClick={() => setShowSceneModePicker(true)}><Plus size={16} /> 添加场景</button>
                   </div>
                 </div>
@@ -1719,6 +1850,16 @@ export function AdminDashboard() {
                         <option value="all">全部</option>
                         <option value="enabled">启用</option>
                         <option value="disabled">停用</option>
+                      </select>
+                    </div>
+                    <div className="filter-item">
+                      <span className="filter-label">创建模式：</span>
+                      <select className="filter-select" value={sceneFilter.createMode} onChange={(e) => setSceneFilter({ ...sceneFilter, createMode: e.target.value })}>
+                        <option value="all">全部</option>
+                        <option value="ai_practice">AI对练模式</option>
+                        <option value="ai_exam">AI对练+考试模式</option>
+                        <option value="fixed_practice">固定对练模式</option>
+                        <option value="fixed_exam">固定对练+考试模式</option>
                       </select>
                     </div>
                     <div className="filter-item">
@@ -1741,22 +1882,30 @@ export function AdminDashboard() {
                 </div>
 
                 <div className="card section">
-                  <DataTable headers={["序号", "场景编号", "场景名称", "状态", "关联任务数", "创建部门", "创建人", "创建时间", "操作"]}>
+                  <DataTable headers={["", "序号", "场景编号", "场景名称", "状态", "关联任务数", "创建部门", "创建人", "创建时间", "操作"]}>
                     {scenes.filter((scene) => {
                       if (sceneFilter.status !== "all" && scene.status !== sceneFilter.status) return false;
                       if (sceneFilter.mode !== "all" && scene.mode !== sceneFilter.mode) return false;
+                      if (sceneFilter.createMode !== "all" && (scene.createMode || "ai_practice") !== sceneFilter.createMode) return false;
                       if (sceneFilter.keyword && !`${scene.name} ${scene.code}`.toLowerCase().includes(sceneFilter.keyword.toLowerCase())) return false;
                       return true;
                     }).map((scene, idx) => (
                       <tr key={scene.id}>
+                        <td>
+                          <input type="checkbox" checked={selectedSceneIds.includes(scene.id)} onChange={() => toggleSceneSelection(scene.id)} />
+                        </td>
                         <td>{idx + 1}</td>
                         <td className="muted-text">{scene.code}</td>
-                        <td><strong>{scene.name}</strong><span style={{ color: "#8b98aa", fontSize: 12, marginLeft: 6 }}>({modeLabel(scene.mode)})</span></td>
+                        <td>
+                          <strong>{scene.name}</strong>
+                          <span style={{ color: "#8b98aa", fontSize: 12, marginLeft: 6 }}>({modeLabel(scene.mode)})</span>
+                          {scene.createMode && <span style={{ color: "#367ff0", fontSize: 12, marginLeft: 6 }}>[{createModeLabel(scene.createMode)}]</span>}
+                        </td>
                         <td>{statusBadge(scene.status)}</td>
-                        <td>—</td>
-                        <td className="muted-text">—</td>
-                        <td className="muted-text">—</td>
-                        <td className="muted-text">—</td>
+                        <td>{scene.taskCount ?? 0}</td>
+                        <td className="muted-text">{scene.creatorOrgName || "—"}</td>
+                        <td className="muted-text">{scene.creatorName || "—"}</td>
+                        <td className="muted-text">{scene.createdAt ? formatDate(scene.createdAt) : "—"}</td>
                         <td>
                           <div className="action-row">
                             <button className="link-btn" type="button" onClick={() => { navigateTo('/scenes/' + scene.id); }}>预览</button>
@@ -1768,6 +1917,7 @@ export function AdminDashboard() {
                             )}
                             <button className="link-btn" type="button">复制</button>
                             <button className="link-btn" type="button" onClick={() => { navigateTo(`/practice?sceneId=${scene.id}`); }}>创建任务</button>
+                            <button className="link-btn" type="button" style={{ color: "#d64545" }} onClick={() => setSceneToDelete(scene)}>删除</button>
                           </div>
                         </td>
                       </tr>
@@ -1784,7 +1934,7 @@ export function AdminDashboard() {
 
             {showSceneModePicker && (
               <div className="modal-overlay" onClick={() => setShowSceneModePicker(false)}>
-                <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 560 }}>
+                <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 680 }}>
                   <div className="modal-head">
                     <h2>选择场景创建模式</h2>
                     <button className="link-btn" type="button" onClick={() => setShowSceneModePicker(false)}>×</button>
@@ -1794,27 +1944,62 @@ export function AdminDashboard() {
                     <button
                       className="mode-choice"
                       type="button"
-                      onClick={() => { setShowSceneModePicker(false); setSceneWizardStep(1); setShowSceneWizard(true); }}
+                      onClick={() => { setShowSceneModePicker(false); setAiGenerateForm((prev) => ({ ...prev, createMode: "ai_practice" })); setSceneWizardStep(1); setShowSceneWizard(true); }}
                       style={{ minHeight: 160, padding: 18, border: "1px solid var(--line)", borderRadius: 14, background: "#f2f7ff", textAlign: "left", cursor: "pointer" }}
                     >
-                      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12, color: "#367ff0" }}>AI</div>
-                      <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>AI生成对话模式</h3>
+                      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12, color: "#367ff0" }}>✦ AI</div>
+                      <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>AI对练模式</h3>
                       <p style={{ margin: 0, color: "#7b8da4", fontSize: 12, lineHeight: 1.7 }}>输入场景描述，由 AI 辅助生成角色、对话目标和评分规则，适合开放式沟通训练。</p>
                     </button>
                     <button
                       className="mode-choice"
                       type="button"
-                      onClick={() => { setShowSceneModePicker(false); setSceneWizardStep(2); setShowSceneWizard(true); }}
+                      onClick={() => { setShowSceneModePicker(false); setAiGenerateForm((prev) => ({ ...prev, createMode: "ai_exam" })); setSceneWizardStep(1); setShowSceneWizard(true); }}
+                      style={{ minHeight: 160, padding: 18, border: "1px solid var(--line)", borderRadius: 14, background: "#f2f7ff", textAlign: "left", cursor: "pointer" }}
+                    >
+                      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12, color: "#367ff0" }}>✦ AI</div>
+                      <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>AI对练+考试模式</h3>
+                      <p style={{ margin: 0, color: "#7b8da4", fontSize: 12, lineHeight: 1.7 }}>AI 对练结束后进入考试评分环节，综合训练与考核于一体。</p>
+                    </button>
+                    <button
+                      className="mode-choice"
+                      type="button"
+                      onClick={() => { setShowSceneModePicker(false); setAiGenerateForm((prev) => ({ ...prev, createMode: "fixed_practice" })); setSceneWizardStep(2); setShowSceneWizard(true); }}
                       style={{ minHeight: 160, padding: 18, border: "1px solid var(--line)", borderRadius: 14, background: "#f2fbff", textAlign: "left", cursor: "pointer" }}
                     >
-                      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12, color: "#32a5bd" }}>固</div>
-                      <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>固定对话模式</h3>
+                      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12, color: "#32a5bd" }}>▤ 固</div>
+                      <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>固定对练模式</h3>
                       <p style={{ margin: 0, color: "#7b8da4", fontSize: 12, lineHeight: 1.7 }}>配置预设对话流程和话术节点，适合标准化、流程化的对话训练。</p>
                     </button>
+                    <button
+                      className="mode-choice"
+                      type="button"
+                      onClick={() => { setShowSceneModePicker(false); setAiGenerateForm((prev) => ({ ...prev, createMode: "fixed_exam" })); setSceneWizardStep(2); setShowSceneWizard(true); }}
+                      style={{ minHeight: 160, padding: 18, border: "1px solid var(--line)", borderRadius: 14, background: "#f2fbff", textAlign: "left", cursor: "pointer" }}
+                    >
+                      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12, color: "#32a5bd" }}>▤ 固</div>
+                      <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>固定对练+考试模式</h3>
+                      <p style={{ margin: 0, color: "#7b8da4", fontSize: 12, lineHeight: 1.7 }}>固定流程训练后进入考试评分，适合标准化岗位的考核场景。</p>
+                    </button>
                   </div>
+                  <p className="section-note" style={{ marginTop: 16, marginBottom: 0, color: "#8b98aa" }}>创建后仍可在场景配置页继续修改角色、目标和评分规则。</p>
                 </div>
               </div>
             )}
+
+            <ConfirmDialog
+              open={!!sceneToDelete}
+              message={`确定删除场景「${sceneToDelete?.name || ""}」吗？删除后不可恢复，请谨慎操作。`}
+              onCancel={() => setSceneToDelete(null)}
+              onConfirm={confirmDeleteScene}
+            />
+
+            <ConfirmDialog
+              open={showBatchDeleteConfirm}
+              message={`确定删除选中的 ${selectedSceneIds.length} 个场景吗？删除后不可恢复，请谨慎操作。`}
+              onCancel={() => setShowBatchDeleteConfirm(false)}
+              onConfirm={confirmBatchDeleteScenes}
+            />
 
             {showSceneWizard && (
               <div className="modal-overlay" onClick={() => setShowSceneWizard(false)}>
@@ -1847,21 +2032,35 @@ export function AdminDashboard() {
                         style={{ display: "none" }}
                         onChange={handleSceneAttachmentsSelected}
                       />
-                      <div
-                        className="upload-area"
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => sceneAttachmentInputRef.current?.click()}
-                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") sceneAttachmentInputRef.current?.click(); }}
-                        style={{ cursor: "pointer" }}
-                      >
-                        {sceneAttachmentsUploading ? (
-                          <Loader2 size={24} style={{ animation: "spin 1s linear infinite" }} />
-                        ) : (
-                          <Plus size={24} />
-                        )}
-                        <span>{sceneAttachmentsUploading ? "附件上传解析中…" : "选择附件"}</span>
-                        <small>支持同时选择多个附件，单个文件不超过 20MB；上传后自动存入企业知识库并作为生成依据</small>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        <div
+                          className="upload-area"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => sceneAttachmentInputRef.current?.click()}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") sceneAttachmentInputRef.current?.click(); }}
+                          style={{ cursor: "pointer", minHeight: 110 }}
+                        >
+                          {sceneAttachmentsUploading ? (
+                            <Loader2 size={24} style={{ animation: "spin 1s linear infinite" }} />
+                          ) : (
+                            <Plus size={24} />
+                          )}
+                          <span>{sceneAttachmentsUploading ? "附件上传解析中…" : "＋ 本地文件"}</span>
+                          <small>选择本地文件上传，单个不超过 20MB；上传后自动存入企业知识库并作为生成依据</small>
+                        </div>
+                        <div
+                          className="upload-area"
+                          role="button"
+                          tabIndex={0}
+                          onClick={openSceneKbPicker}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openSceneKbPicker(); }}
+                          style={{ cursor: "pointer", minHeight: 110, background: "#f6f9ff", borderColor: "#c9d9f5" }}
+                        >
+                          <FileText size={24} />
+                          <span>▣ 企业知识库</span>
+                          <small>从企业知识库中挑选已入库文件作为生成依据</small>
+                        </div>
                       </div>
                       {sceneAttachments.length > 0 && (
                         <div style={{ margin: "10px 0 0", display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1870,7 +2069,8 @@ export function AdminDashboard() {
                               <Paperclip size={14} style={{ color: "#8b98aa", flexShrink: 0 }} />
                               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
                               {item.status === "uploading" && <span style={{ color: "#b08a00" }}>上传解析中…</span>}
-                              {item.status === "done" && <span style={{ color: "#22c55e" }}>已入库</span>}
+                              {item.status === "done" && item.fileId && <span style={{ color: "#22c55e" }}>知识库</span>}
+                              {item.status === "done" && !item.fileId && <span style={{ color: "#22c55e" }}>已入库</span>}
                               {item.status === "failed" && <span style={{ color: "#ed2633" }} title={item.error}>解析失败</span>}
                               <button
                                 className="link-btn"
@@ -1893,7 +2093,33 @@ export function AdminDashboard() {
                           required
                           style={{ minHeight: 120 }}
                         />
+                        <span className="char-count">{aiGenerateForm.sceneDescription.length}/500</span>
                       </Field>
+                      {/* P2 主动追问：AI 认为描述信息不足时在此补问 */}
+                      {aiFollowUpQuestions && aiFollowUpQuestions.length > 0 && (
+                        <div className="ai-followup-card">
+                          <div className="ai-followup-title">
+                            <Sparkles size={15} />
+                            <span>AI 需要补充几个关键信息才能生成更好的场景</span>
+                          </div>
+                          {aiFollowUpQuestions.map((q, i) => (
+                            <div key={i} className="ai-followup-item">
+                              <span className="ai-followup-q">{i + 1}. {q}</span>
+                              <input
+                                value={aiFollowUpAnswers[i] || ""}
+                                onChange={(e) => setAiFollowUpAnswers((prev) => ({ ...prev, [i]: e.target.value }))}
+                                placeholder="在此补充…"
+                              />
+                            </div>
+                          ))}
+                          <div className="ai-followup-actions">
+                            <button className="btn" type="button" onClick={() => setAiFollowUpQuestions(null)}>跳过，直接生成</button>
+                            <button className="btn primary" type="button" disabled={submitting} onClick={handleAiRegenerateWithAnswers}>
+                              {submitting ? "生成中…" : "补充后重新生成"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       <p className="field-hint">◈ 建议　包含人物、场景、痛点、目标和关键沟通要求。</p>
                       <p className="field-hint">▣ 示例　一位客户咨询套餐资费，认为线下价格偏高且担心售后。训练学员识别诉求、解释方案并促成办理。</p>
                     </div>
@@ -1903,12 +2129,31 @@ export function AdminDashboard() {
                     <div className="wizard-body">
                       <h2>完善场景配置</h2>
                       <p className="section-note">请继续填写 AI 对练的角色和目标</p>
+                      {/* P2 改前改后对照：AI 生成的场景 vs 用户原始描述 */}
+                      {aiGeneratedOriginal && (
+                        <details className="ai-compare-card" open={false}>
+                          <summary>
+                            <span>◈ 改前改后对照（AI 生成结果 vs 你的原始描述）</span>
+                          </summary>
+                          <div className="ai-compare-grid">
+                            <div className="ai-compare-col">
+                              <h4>你的原始描述</h4>
+                              <p>{aiGeneratedOriginal.sceneDescription}</p>
+                            </div>
+                            <div className="ai-compare-col">
+                              <h4>AI 生成的场景</h4>
+                              <p>{wizardRoleForm.sceneDescription || aiGenerateForm.sceneDescription}</p>
+                            </div>
+                          </div>
+                        </details>
+                      )}
                       <div className="wizard-two-col">
                         <div className="wizard-col">
                           <h3>人员角色配置</h3>
-                          <Field label="* AI扮演角色"><input value={wizardRoleForm.aiIdentity} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiIdentity: e.target.value })} placeholder="如：投诉客户" required /></Field>
-                          <Field label="背景简介"><textarea value={wizardRoleForm.aiBackground} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiBackground: e.target.value })} placeholder="如：长期客户，对服务有较高期待，投诉过两次宽带故障" style={{ minHeight: 60 }} /></Field>
-                          <Field label="AI角色性格"><input value={wizardRoleForm.aiPersonality} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiPersonality: e.target.value })} placeholder="如：急躁但理性" /></Field>
+                          <Field label="* AI扮演角色"><input value={wizardRoleForm.aiIdentity} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiIdentity: e.target.value })} placeholder="如：投诉客户" required /><span className="char-count">{wizardRoleForm.aiIdentity.length}/200</span></Field>
+                          <Field label="背景简介"><textarea value={wizardRoleForm.aiBackground} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiBackground: e.target.value })} placeholder="如：长期客户，对服务有较高期待，投诉过两次宽带故障" style={{ minHeight: 60 }} /><span className="char-count">{wizardRoleForm.aiBackground.length}/300</span></Field>
+                          <Field label="AI角色性格"><input value={wizardRoleForm.aiPersonality} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiPersonality: e.target.value })} placeholder="如：急躁但理性" /><span className="char-count">{wizardRoleForm.aiPersonality.length}/200</span></Field>
+                          <Field label="AI语言风格"><input value={wizardRoleForm.aiStyle} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiStyle: e.target.value })} placeholder="如：礼貌、简洁，适当使用方言或行业术语" /><span className="char-count">{wizardRoleForm.aiStyle.length}/200</span></Field>
                           <Field label="* AI情绪设置">
                             <select value={wizardRoleForm.aiEmotion} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiEmotion: e.target.value })}>
                               <option value="">请选择 AI 情绪</option>
@@ -1924,8 +2169,8 @@ export function AdminDashboard() {
                         </div>
                         <div className="wizard-col">
                           <h3>对话设置</h3>
-                          <Field label="* 学员角色扮演"><input value={wizardRoleForm.learnerIdentity} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, learnerIdentity: e.target.value })} placeholder="如：客服坐席" required /></Field>
-                          <Field label="* 对话目标"><textarea value={wizardRoleForm.dialogueGoal} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, dialogueGoal: e.target.value })} placeholder="如：识别诉求、安抚情绪、给出解决方案" required /></Field>
+                          <Field label="* 学员角色扮演"><input value={wizardRoleForm.learnerIdentity} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, learnerIdentity: e.target.value })} placeholder="如：客服坐席" required /><span className="char-count">{wizardRoleForm.learnerIdentity.length}/200</span></Field>
+                          <Field label="* 对话目标"><textarea value={wizardRoleForm.dialogueGoal} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, dialogueGoal: e.target.value })} placeholder="如：识别诉求、安抚情绪、给出解决方案" required /><span className="char-count">{wizardRoleForm.dialogueGoal.length}/500</span></Field>
                           <Field label="场景说明"><textarea value={wizardRoleForm.sceneDescription} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, sceneDescription: e.target.value })} placeholder="补充场景背景、关键流程或注意事项（选填）" style={{ minHeight: 60 }} /></Field>
                           <Field label="对话发起人">
                             <select value={wizardRoleForm.initiator} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, initiator: e.target.value })}>
@@ -1980,6 +2225,40 @@ export function AdminDashboard() {
                     ) : (
                       <button className="btn primary" type="button" onClick={handleWizardSubmit} disabled={submitting}>提交并创建</button>
                     )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showSceneKbPicker && (
+              <div className="modal-overlay" onClick={() => setShowSceneKbPicker(false)}>
+                <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 620 }}>
+                  <div className="modal-head">
+                    <h2>从企业知识库选择</h2>
+                    <button className="link-btn" type="button" onClick={() => setShowSceneKbPicker(false)}>×</button>
+                  </div>
+                  <p className="section-note" style={{ marginBottom: 12 }}>选择已入库文件作为场景生成依据，可多选。</p>
+                  <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+                    <select className="filter-select" value={sceneKbFolderId} onChange={(e) => loadSceneKbFiles(e.target.value)} style={{ flex: 1 }}>
+                      <option value="">请选择知识库文件夹</option>
+                      {sceneKbFolders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ maxHeight: 320, overflow: "auto", border: "1px solid var(--line)", borderRadius: 8 }}>
+                    {!sceneKbFolderId && <div className="empty" style={{ padding: 24 }}>请先选择知识库文件夹。</div>}
+                    {sceneKbFolderId && sceneKbFiles.length === 0 && <div className="empty" style={{ padding: 24 }}>该文件夹暂无已入库文件。</div>}
+                    {sceneKbFiles.map((file) => (
+                      <label key={file.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid #f0f2f7", cursor: "pointer", fontSize: 13 }}>
+                        <input type="checkbox" checked={selectedKbFileIds.includes(file.id)} onChange={() => toggleKbFileSelection(file.id)} />
+                        <Paperclip size={14} style={{ color: "#8b98aa" }} />
+                        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</span>
+                        {file.parseStatus === "done" ? <span style={{ color: "#22c55e", fontSize: 12 }}>已解析</span> : <span style={{ color: "#b08a00", fontSize: 12 }}>解析中</span>}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="modal-actions">
+                    <button className="btn" type="button" onClick={() => setShowSceneKbPicker(false)}>取消</button>
+                    <button className="btn primary" type="button" disabled={selectedKbFileIds.length === 0} onClick={confirmAddKbFiles}>添加所选（{selectedKbFileIds.length}）</button>
                   </div>
                 </div>
               </div>

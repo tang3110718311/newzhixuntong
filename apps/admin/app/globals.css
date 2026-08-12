@@ -2723,6 +2723,103 @@ body {
   line-height: 1.7;
 }
 
+/* P2 主动追问卡片 */
+.ai-followup-card {
+  border: 1px solid #c7d2fe;
+  background: linear-gradient(135deg, #eef2ff, #f8faff);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ai-followup-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #4338ca;
+}
+.ai-followup-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ai-followup-q {
+  font-size: 13px;
+  color: #312e81;
+  line-height: 1.6;
+}
+.ai-followup-item input {
+  border: 1px solid #d0d7ea;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: #fff;
+}
+.ai-followup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+/* P2 改前改后对照卡片 */
+.ai-compare-card {
+  border: 1px solid #e0e7f0;
+  border-radius: 12px;
+  background: #fafbfe;
+  overflow: hidden;
+}
+.ai-compare-card summary {
+  cursor: pointer;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4338ca;
+  user-select: none;
+}
+.ai-compare-card summary:hover {
+  background: #f1f5ff;
+}
+.ai-compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  padding: 0 14px 14px;
+}
+.ai-compare-col {
+  background: #fff;
+  border: 1px solid #e6eaf2;
+  border-radius: 10px;
+  padding: 12px;
+}
+.ai-compare-col h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: #8b98aa;
+  font-weight: 600;
+}
+.ai-compare-col p {
+  margin: 0;
+  font-size: 13px;
+  color: #172b4d;
+  line-height: 1.7;
+  max-height: 160px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.char-count {
+  display: block;
+  margin-top: 4px;
+  text-align: right;
+  color: #aab4c2;
+  font-size: 12px;
+  line-height: 1;
+}
+
 .wizard-two-col {
   display: grid;
   grid-template-columns: 1fr 1fr;

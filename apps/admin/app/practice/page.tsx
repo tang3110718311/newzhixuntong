@@ -39,6 +39,13 @@ type ScoreDetail = {
   score: number;
   deductionReason: string;
   evidenceText: string;
+  level?: string | null;
+};
+
+const LEVEL_META: Record<string, { label: string; cls: string }> = {
+  excellent: { label: "精通", cls: "excellent" },
+  pass: { label: "达标", cls: "pass" },
+  developing: { label: "待提升", cls: "developing" },
 };
 
 type TrainingRecordResult = {
@@ -57,6 +64,7 @@ type TrainingRecordResult = {
   suggestions: string[];
   highlights?: string[];
   weaknesses?: string[];
+  capabilityProfile?: string;
 };
 
 type HistoryItem = {
@@ -117,6 +125,9 @@ function modeLabel(mode: string) {
   return mode === "voice" ? "语音模式" : "文本模式";
 }
 
+// AI 开场等待时的分步文案（循环提示，缓解等待焦虑）
+const AI_OPENING_STEPS = ["正在唤醒 AI 教练", "正在分析场景上下文", "正在生成首问话术"];
+
 export default function PracticePage() {
   const [auth, setAuth] = useState<AuthSession | null>(null);
   // 有 URL sceneId 时，初始直接进 chat 视图（避免闪现场景选择页）
@@ -158,6 +169,11 @@ export default function PracticePage() {
   const [chatRound, setChatRound] = useState(0);
   // 当前场景的评分维度（满分）与场景合格线
   const [sceneRules, setSceneRules] = useState<Array<{ id: string; name: string; score: number }>>([]);
+  // AI 开场等待态：分步文案轮播的当前步骤索引
+  const [openingStep, setOpeningStep] = useState(0);
+  // 场景开场白预览（引导页展示 AI 会如何开场）
+  const [openingPreview, setOpeningPreview] = useState<string | null>(null);
+  const [openingPreviewLoading, setOpeningPreviewLoading] = useState(false);
 
   // 历史记录视图
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
@@ -422,6 +438,27 @@ export default function PracticePage() {
     }
   }, [apiGet]);
 
+  // 加载 AI 开场白预览（引导页展示）：调 /ai/chat 空消息，不创建训练记录
+  const loadOpeningPreview = useCallback(
+    async (scene: Scene) => {
+      setOpeningPreviewLoading(true);
+      setOpeningPreview(null);
+      try {
+        const data = await apiPost<{ aiReply: string }>(`/ai/chat`, {
+          sceneId: scene.id,
+          messages: [],
+          preview: true,
+        });
+        setOpeningPreview(data.aiReply || null);
+      } catch {
+        setOpeningPreview(null);
+      } finally {
+        setOpeningPreviewLoading(false);
+      }
+    },
+    [apiPost],
+  );
+
   // ===== 进入对话 =====
   const enterChat = useCallback(
     async (scene: Scene) => {
@@ -462,12 +499,13 @@ export default function PracticePage() {
           passScore: detail.scene?.passScore ?? 80,
           endCondition: detail.rule?.endCondition || undefined,
         });
-        // 引导页展示后,由"开始训练"触发 AI 首问
+        // 引导页展示后,预取 AI 开场白（仅预览，不创建训练记录）
+        void loadOpeningPreview(scene);
       } catch (err) {
         setError(err instanceof Error ? err.message : "进入对话失败");
       }
     },
-    [apiGet, pickSceneVoice, stopAudio],
+    [apiGet, pickSceneVoice, stopAudio, loadOpeningPreview],
   );
 
   const triggerAiFirst = useCallback(
@@ -503,10 +541,23 @@ export default function PracticePage() {
   // 引导页"开始训练":关闭引导并触发 AI 首问
   const startTraining = useCallback(async () => {
     setShowBrief(false);
+    setOpeningStep(0);
     if (selectedScene) {
       await triggerAiFirst(selectedScene, sceneRules);
     }
   }, [selectedScene, sceneRules, triggerAiFirst]);
+
+  // AI 开场等待态：无消息且请求中时，分步文案每 1.8s 轮播一次
+  useEffect(() => {
+    if (chatMessages.length > 0 || !chatSending) {
+      setOpeningStep(0);
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setOpeningStep((s) => (s + 1) % AI_OPENING_STEPS.length);
+    }, 1800);
+    return () => window.clearInterval(timer);
+  }, [chatMessages.length, chatSending]);
 
   // ===== 发送消息 =====
   const sendChatMessage = useCallback(
@@ -942,6 +993,7 @@ export default function PracticePage() {
       {view !== "chat" && (
         <nav className="practice-tabs">
           <button className="active">历史记录</button>
+          <button type="button" onClick={() => navigateTo("/practice/script")}>话术检核</button>
         </nav>
       )}
 
@@ -955,11 +1007,15 @@ export default function PracticePage() {
         {view === "chat" && selectedScene && (
           <section className="pc-chat">
             <div className="pc-chat-head">
+              {/* 左：标题+轮次 */}
               <div className="pc-chat-title">
                 <strong>{selectedScene.name || "对练中"}</strong>
                 {chatRound > 0 && !chatFinished && (
                   <span className="pc-round">第 {chatRound}/10 轮</span>
                 )}
+              </div>
+              {/* 中：对练配置（模式/语音发送） */}
+              <div className="pc-chat-config">
                 <span className="pc-mode">
                   <button className={voiceMode ? "active" : ""} type="button" onClick={() => setVoiceMode(true)}>语音模式</button>
                   <button className={!voiceMode ? "active" : ""} type="button" onClick={() => setVoiceMode(false)}>文本模式</button>
@@ -975,7 +1031,8 @@ export default function PracticePage() {
                   </button>
                 )}
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {/* 右：操作 */}
+              <div className="pc-chat-actions">
                 {!chatFinished && !chatEnding && (
                   <button
                     className="pc-btn-ghost"
@@ -993,39 +1050,89 @@ export default function PracticePage() {
 
             {showBrief && sceneBrief && (
               <div className="pc-brief">
-                <h3>{selectedScene.name || "训练说明"}</h3>
-                {sceneBrief.description ? <p className="pc-brief-desc">{sceneBrief.description}</p> : null}
-                <div className="pc-brief-grid">
-                  {sceneBrief.learnerRole?.identity ? (
-                    <div className="pc-brief-item">
-                      <span className="pc-brief-label">你的角色</span>
-                      <span className="pc-brief-value">{sceneBrief.learnerRole.identity}</span>
+                {/* 左：训练信息区 */}
+                <div className="pc-brief-info">
+                  <h3>{selectedScene.name || "训练说明"}</h3>
+                  {sceneBrief.description ? <p className="pc-brief-desc">{sceneBrief.description}</p> : null}
+                  <div className="pc-brief-grid">
+                    {sceneBrief.learnerRole?.identity ? (
+                      <div className="pc-brief-item">
+                        <span className="pc-brief-label">你的角色</span>
+                        <span className="pc-brief-value">{sceneBrief.learnerRole.identity}</span>
+                      </div>
+                    ) : null}
+                    {sceneBrief.aiRole?.identity ? (
+                      <div className="pc-brief-item">
+                        <span className="pc-brief-label">AI 扮演</span>
+                        <span className="pc-brief-value">{sceneBrief.aiRole.identity}</span>
+                      </div>
+                    ) : null}
+                    {sceneBrief.endCondition ? (
+                      <div className="pc-brief-item">
+                        <span className="pc-brief-label">训练目标</span>
+                        <span className="pc-brief-value">{sceneBrief.endCondition}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                  {sceneBrief.scoringRules.length > 0 && (
+                    <div className="pc-brief-rules">
+                      <span className="pc-brief-label">评分标准(及格 {sceneBrief.passScore} 分)</span>
+                      <div className="pc-brief-rules-bars">
+                        {sceneBrief.scoringRules.map((r) => {
+                          const total = sceneBrief.scoringRules.reduce((sum, x) => sum + (x.score || 0), 0);
+                          const pct = total > 0 ? Math.round(((r.score || 0) / total) * 100) : 0;
+                          return (
+                            <div className="pc-brief-rule-bar" key={r.name}>
+                              <span className="pc-brief-rule-name">{r.name}</span>
+                              <div className="pc-brief-rule-track">
+                                <div className="pc-brief-rule-fill" style={{ width: `${pct}%` }} />
+                              </div>
+                              <span className="pc-brief-rule-score">{r.score}分</span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  ) : null}
-                  {sceneBrief.aiRole?.identity ? (
-                    <div className="pc-brief-item">
-                      <span className="pc-brief-label">AI 扮演</span>
-                      <span className="pc-brief-value">{sceneBrief.aiRole.identity}</span>
-                    </div>
-                  ) : null}
-                  {sceneBrief.endCondition ? (
-                    <div className="pc-brief-item">
-                      <span className="pc-brief-label">训练目标</span>
-                      <span className="pc-brief-value">{sceneBrief.endCondition}</span>
-                    </div>
-                  ) : null}
+                  )}
                 </div>
-                {sceneBrief.scoringRules.length > 0 && (
-                  <div className="pc-brief-rules">
-                    <span className="pc-brief-label">评分标准(及格 {sceneBrief.passScore} 分)</span>
-                    <div className="pc-brief-rules-list">
-                      {sceneBrief.scoringRules.map((r) => (
-                        <span className="pc-brief-rule" key={r.name}>{r.name} {r.score}分</span>
-                      ))}
+                {/* 右：行动区 */}
+                <div className="pc-brief-action">
+                  {/* A:AI 开场白预览（消除未知感，让学员知道 AI 会怎么开场） */}
+                  <div className="pc-brief-preview">
+                    <div className="pc-brief-preview-head">
+                      <span>👀 AI 开场预览</span>
+                      {openingPreview && (
+                        <button type="button" className="pc-brief-preview-refresh" onClick={() => void loadOpeningPreview(selectedScene)}>
+                          换一段
+                        </button>
+                      )}
+                    </div>
+                    <div className="pc-brief-preview-body">
+                      {openingPreviewLoading ? (
+                        <span className="pc-brief-preview-loading">
+                          <i className="pc-spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                          AI 正在构思开场…
+                        </span>
+                      ) : openingPreview ? (
+                        <p className="pc-brief-preview-text">“{openingPreview}”</p>
+                      ) : (
+                        <p className="pc-brief-preview-text muted">开场白生成失败，点“开始训练”仍可正常对练。</p>
+                      )}
                     </div>
                   </div>
-                )}
-                <button className="pc-btn-primary" type="button" onClick={() => void startTraining()}>开始训练</button>
+                  <div className="pc-brief-duration">
+                    <span className="pc-brief-duration-ico">⏱</span>
+                    <span>预计时长 3-5 分钟，AI 实时对练，结束后自动评分</span>
+                  </div>
+                  <button className="pc-btn-primary pc-brief-start" type="button" onClick={() => void startTraining()}>
+                    开始训练
+                  </button>
+                  {chatRound > 0 && !chatFinished && (
+                    <button className="pc-btn-ghost pc-brief-restart" type="button" onClick={() => void restartChat()}>
+                      重新训练
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1054,8 +1161,27 @@ export default function PracticePage() {
             ) : (
               <>
                 <div className="pc-messages">
-                  {chatMessages.length === 0 && (
-                    <div className="pc-empty">正在等待 AI 教练开场…</div>
+                  {chatMessages.length === 0 && chatSending && (
+                    <div className="pc-opening">
+                      <div className="pc-spinner" />
+                      <p className="pc-opening-title">AI 教练正在准备开场…</p>
+                      <div className="pc-opening-steps">
+                        {AI_OPENING_STEPS.map((step, i) => (
+                          <span key={step} className={`pc-opening-step${i <= openingStep ? " active" : ""}`}>
+                            <i>{i < openingStep ? "✓" : i === openingStep ? "●" : "○"}</i>
+                            {step}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="pc-opening-hint">通常需要 3-8 秒，请稍候</p>
+                      <button
+                        className="pc-btn-ghost pc-opening-cancel"
+                        type="button"
+                        onClick={() => { stopAudio(); backToHistory(); }}
+                      >
+                        取消并返回
+                      </button>
+                    </div>
                   )}
                   {chatMessages.map((m, idx) => (
                     <div className={`pc-bubble ${m.role}`} key={`${m.role}-${idx}`}>
@@ -1082,8 +1208,21 @@ export default function PracticePage() {
 
                 {coachTip && (
                   <div className="pc-coachtip-float">
-                    <span className="pc-coachtip-icon">💡</span>
-                    <span className="pc-coachtip-text">{coachTip}</span>
+                    <span className="pc-coachtip-icon">🎯</span>
+                    <div className="pc-coachtip-body">
+                      <div className="pc-coachtip-label">
+                        <span>教练提示</span>
+                        <button
+                          type="button"
+                          className="pc-coachtip-copy"
+                          onClick={() => void navigator.clipboard?.writeText(coachTip)}
+                          title="复制参考话术"
+                        >
+                          📋 复制话术
+                        </button>
+                      </div>
+                      <p className="pc-coachtip-text">{coachTip}</p>
+                    </div>
                   </div>
                 )}
 
@@ -1095,36 +1234,48 @@ export default function PracticePage() {
                   </div>
                 ) : (
                   <div className="pc-inputbar">
-                    <div className="pc-inputrow">
-                      <input
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void sendChatMessage(chatInput); }}
-                        placeholder={isRecording ? "正在录音…" : "输入你的回复，或点麦克风说话"}
-                        disabled={chatSending}
-                      />
+                    <div className="pc-inputbar-tip">
+                      {voiceMode ? (
+                        isRecording ? (
+                          <span className="pc-inputbar-tip-rec">
+                            <span className="pc-inputbar-tip-dot" />
+                            录音中{liveTranscript ? `：${liveTranscript}` : "，请说话…"}
+                          </span>
+                        ) : (
+                          <span>语音模式：支持文字回复，或点击麦克风语音输入</span>
+                        )
+                      ) : (
+                        <span>文本模式：AI 以文字回复，请直接输入文字</span>
+                      )}
+                    </div>
+                    <div className="pc-inputbar-row">
+                      <div className={`pc-inputbar-text${isRecording ? " recording" : ""}`}>
+                        <input
+                          value={chatInput}
+                          onChange={(e) => setChatInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void sendChatMessage(chatInput); }}
+                          placeholder={isRecording ? "" : "输入消息…"}
+                          disabled={chatSending || isRecording}
+                        />
+                      </div>
                       <button
-                        className="pc-mic"
+                        className={`pc-inputbar-mic${isRecording ? " recording" : ""}`}
                         type="button"
                         onClick={toggleRecording}
-                        disabled={chatSending}
-                        title={isRecording ? "停止录音并识别" : "按住说话"}
+                        disabled={chatSending || !voiceMode}
+                        hidden={!voiceMode}
+                        title={!voiceMode ? "当前为文本模式，仅支持文字输入" : isRecording ? "停止录音并识别" : "按住说话"}
                       >
                         {isRecording ? "⏹" : "🎤"}
                       </button>
                       <button
-                        className="pc-btn-primary"
+                        className={`pc-inputbar-send${chatInput.trim() ? " active" : ""}`}
                         type="button"
                         onClick={() => void sendChatMessage(chatInput)}
                         disabled={chatSending || !chatInput.trim()}
                       >
                         发送
                       </button>
-                    </div>
-                    <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
-                      {isRecording
-                        ? (liveTranscript ? `识别中：${liveTranscript}` : "录音中…请说话")
-                        : "支持语音输入（自动识别转文字）或直接打字"}
                     </div>
                   </div>
                 )}
@@ -1237,23 +1388,32 @@ function ScoreCard({
         </div>
       </div>
 
+      {result.capabilityProfile ? (
+        <div className="pc-score-profile">
+          <h4>能力综述</h4>
+          <p>{result.capabilityProfile}</p>
+        </div>
+      ) : null}
+
       <div className="pc-score-dims">
-        <h4>各维度评分</h4>
+        <h4>胜任力维度评分</h4>
         {result.scores?.length ? (
           <>
             <ScoreRadar scores={result.scores} sceneRules={sceneRules} />
             {result.scores.map((s, i) => {
               const max = ruleMaxMap.get((s as { scoringRuleId?: string }).scoringRuleId || "") ?? (sceneRules[i]?.score ?? 100);
               const ratio = max > 0 ? s.score / max : 0;
-              const dimPass = ratio * 100 >= passScore;
+              const lvlKey = s.level && LEVEL_META[s.level] ? s.level : (ratio >= 0.9 ? "excellent" : ratio >= 0.6 ? "pass" : "developing");
+              const lvl = LEVEL_META[lvlKey] || LEVEL_META.developing;
               return (
                 <div className="pc-dim" key={s.id || i}>
                   <div className="pc-dim-top">
                     <span className="pc-dim-name">{s.ruleName || `维度${i + 1}`}</span>
-                    <span className={`pc-dim-badge ${dimPass ? "pass" : "fail"}`}>{dimPass ? "达标" : "未达标"}</span>
+                    <span className={`pc-level-badge ${lvl.cls}`}>{lvl.label}</span>
                   </div>
                   <div className="pc-dim-score">{s.score} <small>/ {max}</small></div>
                   {s.deductionReason ? <p className="pc-dim-reason">{s.deductionReason}</p> : null}
+                  {s.evidenceText ? <p className="pc-dim-evidence">依据：{s.evidenceText}</p> : null}
                 </div>
               );
             })}

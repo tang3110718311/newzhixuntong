@@ -87,6 +87,9 @@ function buildSystemPrompt(sceneDetail: ReturnType<typeof getSceneDetail>): stri
   parts.push(`- 回复要像真人说话一样有停顿和节奏：用短句、多断句（逗号/句号），避免一长串不停顿的"念稿式"长句。适当使用语气词（如"啊""呢""嘛""哎""算了""可不是嘛"）和情绪化感叹词，让语音播报自然、有呼吸感。`);
   parts.push(`- 每句回复结束时若情绪激烈，用感叹号/问号；情绪低落时可用省略号或"唉""……"体现迟疑；让文字自带停顿，便于语音按标点自然断句。`);
   parts.push(`- 如果学员表达专业、规范，你可以适当松动态度。`);
+  parts.push(`- 【客户追问习惯】当学员给出具体安排后，你不要立刻接受或立刻满意，而应像真实客户一样追问细节、确认可靠性：如"具体谁来联系我？""大概几点能到？""如果到点没人来怎么办？""家里得一直有人等着吗？"。只有当学员把方案说清楚、你确认可执行后，才逐步缓和并认可。至少经过一次追问确认后，才允许表达满意。`);
+  parts.push(`- 对话节奏保护：对话（你+学员合计）少于6轮时，即使学员看起来已给出处理方案，你也应继续追问细节或表达未解决的顾虑（如"之前也有人说过马上，我不太放心"），推动对话继续，不要把训练过早结束。`);
+  parts.push(`- 【强制输出】你每一条回复的正文末尾，都必须紧跟一个 [COACH_TIP:提示内容] 标记（见下方"教练提示规则"）。即使本轮训练结束、即使学员消息为空（首轮开场），也必须输出。这是对每条回复的硬性要求，任何情况下不得遗漏。`);
   parts.push(`- 判定"违规/跑题/敷衍"从严：只要学员出现以下任一情形，就立即判定为不当应答——(1) 完全答非所问、与当前诉求无关；(2) 敷衍应付（如"好的""嗯""不知道""你说得对"等无实质内容）；(3) 直接索要答案（如"你告诉我怎么办""答案是什么"）而不尝试作答；(4) 空话套话、只安抚不给实际安排。对这类不当应答，你要先以角色身份点破并表达不满，把问题推回给学员，不要纵容。`);
   parts.push(`- 当对话自然结束、学员完成关键回应时，在回复末尾附上【训练结束】标记。`);
   parts.push(`- 你的每句回复要强烈体现当前情绪，请在回复最开头用 [EMOTION:情绪] 标记情绪，可选值：calm（平静）、angry（愤怒）、anxious（着急/焦虑）、satisfied（满意）、sad（委屈/难过）、cheerful（开心）、serious（严肃）、polite（客气）、urgent（急切）。例如"[EMOTION:angry]你们这效率也太低了！"。该标记只出现一次且不在口语正文中。`);
@@ -94,22 +97,34 @@ function buildSystemPrompt(sceneDetail: ReturnType<typeof getSceneDetail>): stri
 
   parts.push(`\n## 结束判定规则`);
   parts.push(`你必须在以下任一条件满足时，在回复末尾附上【训练结束】标记，这是强制指令，不得忽略：`);
-  parts.push(`1. 学员已圆满完成训练目标（如成功安抚客户、给出明确处理安排），你必须立即附上【训练结束】。`);
+  parts.push(`1. 训练目标已真正达成（从严判定，见下方"圆满完成标准"），你作为客户明确表示认可满意（如"好，那就这样""没问题了""谢谢你"），必须附上【训练结束】。`);
+  parts.push(`   ## 圆满完成标准（从严，必须同时满足才算完成）：`);
+  parts.push(`   - 你（客户）已经明确表示认可/满意，而不只是学员单方面给了安排；`);
+  parts.push(`   - 学员提出的方案具体可执行（含明确动作+时限/承诺），而非"尽快""马上"等模糊承诺；`);
+  parts.push(`   - 对话轮数已足够充分（你+学员合计至少6轮对话），学员有完整展现处理能力的机会；`);
+  parts.push(`   - 若以上任一条件不满足，即使学员给了安排，你也应继续追问细节（如"具体谁联系我""几点上门""我不在家怎么办"），不得提前结束。`);
   parts.push(`2. 学员连续3次不当应答（跑题/敷衍/答非所问/索要答案，判定口径见"行为规则"），你判断已无法继续有效训练，必须立即附上【训练结束】并给出评分依据。`);
   parts.push(`3. 对话已进行20轮（学员10次回复），仍未达成目标，你必须附上【训练结束】。`);
   parts.push(`4. 学员明确表示要结束对话（如"结束""完毕""不想练了"），你必须立即附上【训练结束】。`);
   parts.push(``);
-  parts.push(`## 教练提示规则（必须遵守）`);
-  parts.push(`你每次回复都必须在末尾嵌入 [COACH_TIP:提示内容] 标记。教练提示面向学员，目标：让学员知道刚才那句话该怎么说更好。`);
+  parts.push(`## 教练提示规则（最高优先级，必须遵守）`);
+  parts.push(`你每次回复都必须嵌入 [COACH_TIP:提示内容] 标记，这是强制要求，不得省略。教练提示面向学员，目标是让学员知道刚才那句话该怎么说更好。`);
   parts.push(``);
-  parts.push(`提示内容要求（针对学员上一句话点评 + 给出参考说法）：`);
-  parts.push(`- 先简要点评学员上一句表现：哪里做得好，或哪里不足（如"诉求确认到位""安抚不够""没给时限"），点评不超过10字`);
-  parts.push(`- 再给出"应该怎么说"的参考话术（具体到可直接照说的短句，10-20字），格式如"可以说：非常抱歉，我先帮您核实，稍后回复您"`);
-  parts.push(`- 如果学员上一句表现优秀，参考话术可以给更高阶示范（如挖掘需求、主动增值）`);
-  parts.push(`- 如果学员跑题、敷衍、违规或索要答案，参考话术要示范正确做法并点明错误`);
-  parts.push(`- 总长度控制在30字内，点评+示范都要有，不要只给方向不给话术`);
+  parts.push(`输出顺序要求（严格遵守）：`);
+  parts.push(`1. 先输出回复正文（你的角色台词，带 [EMOTION:xxx] 标记）；`);
+  parts.push(`2. 需要结束训练时在正文末尾附上【训练结束】；`);
+  parts.push(`3. 最后另起一行或紧跟正文末尾输出 [COACH_TIP:提示内容]，如 [COACH_TIP:安抚到位，可以说：我马上帮您加急处理，2小时内回复您]。`);
+  parts.push(`注意：[COACH_TIP:...] 必须与回复正文放在同一条回复里输出，绝不可省略。`);
   parts.push(``);
-  parts.push(`格式要求：每条回复末尾必须附 [COACH_TIP:提示内容]，如 [COACH_TIP:安抚到位，可以说：我马上帮您加急处理，2小时内回复您]`);
+  parts.push(`提示内容要求（严格按以下三点）：`);
+  parts.push(`【1. 对齐训练目标】教练建议必须围绕训练目标展开：${rule?.endCondition || "达成场景中的任务目标"}。判断学员当前应对是否在推动目标，若偏离则引导回目标路径。`);
+  parts.push(`【2. 针对 AI 最新反驳】先看你对学员上一句的回应（即你刚才在正文中表达的不满/追问/质疑），教练提示必须针对你刚才那句中暴露的诉求缺口来给建议，而不是泛泛安抚。`);
+  parts.push(`【3. 两段式输出】教练提示分两段，用"｜"分隔：`);
+  parts.push(`  - 第一段"点评"（不超过12字）：客观点评学员上一句（如"安抚到位""缺时限承诺""没确认诉求"）；`);
+  parts.push(`  - 第二段"建议"（20-35字）：给出能解决你刚才反驳点的具体可照说话术，必须含具体动作+时限/补偿（如"可以说：已联系片区张主管，正优先处理您的工单，预计30分钟内主动回电告知进度"）；`);
+  parts.push(`- 如果学员上一句表现优秀，建议可以给更高阶示范（如挖掘需求、主动增值）；`);
+  parts.push(`- 如果学员跑题、敷衍、违规或索要答案，建议要示范正确做法并点明错误；`);
+  parts.push(`- 若学员消息为空或为对话首条回复，建议可给出开场应对（如"可以说：先生您好，您的问题我马上帮您核实"）。`);
 
   return parts.join("\n");
 }
@@ -210,7 +225,7 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         model: config.modelName,
         temperature: 0.5,
-        max_tokens: 300,
+        max_tokens: 900,
         messages: apiMessages,
       }),
     });
@@ -233,6 +248,12 @@ export async function POST(request: Request) {
     if (coachMatch) {
       coachTip = coachMatch[1].trim();
       aiReply = aiReply.replace(coachMatch[0], "").trim();
+    }
+    // 兜底：模型偶尔漏输出 [COACH_TIP]，此时用轻量 LLM 单独生成教练提示，保证每次回复都有反馈
+    if (!coachTip) {
+      try {
+        coachTip = await generateCoachTipFallback(body.messages, sceneDetail, config);
+      } catch { /* 兜底失败不阻塞主流程 */ }
     }
 
     // 解析情绪标记
@@ -378,6 +399,51 @@ async function judgeLastOffTopic(
   }
 }
 
+/** 兜底生成教练提示：主回复漏带 [COACH_TIP] 时，针对学员上一条消息轻量生成点评+参考话术 */
+async function generateCoachTipFallback(
+  messages: ChatMessage[],
+  sceneDetail: NonNullable<ReturnType<typeof getSceneDetail>>,
+  config: { baseUrl: string; apiKeyEncrypted: string; modelName: string },
+): Promise<string | null> {
+  const lastLearner = [...messages].reverse().find((m) => m.role === "learner");
+  const lastAi = [...messages].reverse().find((m) => m.role === "ai");
+  const targetRole = sceneDetail.roles.find((r) => r.roleType === "learner")?.identity || "学员";
+  const sceneName = sceneDetail.scene.name;
+  const endCondition = sceneDetail.rule?.endCondition || "达成场景中的任务目标";
+  const prompt = [
+    `你是培训教练。学员正在进行"${sceneName}"场景训练（扮演${targetRole}）。`,
+    `训练目标：${endCondition}。教练建议必须围绕该目标展开。`,
+    lastAi
+      ? `AI（客户/对手方）刚才的回应与诉求："${lastAi.content.slice(0, 200)}"`
+      : "AI（客户/对手方）尚未开口（即将开始训练）。",
+    lastLearner
+      ? `学员刚才的回复："${lastLearner.content.slice(0, 200)}"`
+      : "学员尚未回复。",
+    "请给出教练提示，分两段用｜分隔：",
+    "第一段点评（不超过12字）：客观点评学员上一句（如：安抚到位/缺时限承诺/没确认诉求）。",
+    "第二段建议（20-35字）：必须针对 AI 刚才那句中暴露的诉求缺口，给出含具体动作+时限/补偿的可照说话术（如：可以说：已联系片区张主管，正优先处理您的工单，预计30分钟内主动回电告知进度）。",
+    "只输出提示内容本身，不要引号、不要【点评/建议】这类前缀。",
+  ].join("\n");
+
+  const endpoint = normalizeUrl(config.baseUrl);
+  const resp = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKeyEncrypted}` },
+    body: JSON.stringify({
+      model: config.modelName,
+      temperature: 0.3,
+      max_tokens: 120,
+      messages: [{ role: "system", content: "你是对练培训教练，输出简洁点评和参考话术。" }, { role: "user", content: prompt }],
+    }),
+  });
+  if (!resp.ok) return null;
+  const payload = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const content = (payload.choices?.[0]?.message?.content || "").trim();
+  if (!content) return null;
+  // 去掉可能残留的引号/前缀
+  return content.replace(/^["'“”：:\s]+/, "").replace(/["'”]\s*$/, "").slice(0, 100) || null;
+}
+
 async function scoreAndSaveRecord(
   tenantId: string,
   userId: string | null,
@@ -412,16 +478,18 @@ async function scoreAndSaveRecord(
       messages: [
         {
           role: "system",
-          content: "你是 AI 智训通的训练评分专家，必须以对话中的真实内容为依据评分，不得臆造。只输出 JSON，格式："
-            + "{\"totalScore\": 数字, \"details\": [{\"name\": \"维度名(必须与评分维度完全一致)\", \"score\": 数字, \"reason\": \"评分理由\", \"evidence\": \"从对话原文引用学员原话或关键表现\"}], \"suggestions\": [\"改进建议1\"], \"highlights\": [\"学员做得好的1-3点\"], \"weaknesses\": [\"学员的短板1-3点\"]}",
+          content: "你是 AI 智训通的胜任力评估专家。评分必须基于对话中的真实行为表现（行为锚点），不得臆造。只输出 JSON，格式："
+            + "{\"totalScore\": 数字, \"details\": [{\"name\": \"维度名(必须与评分维度完全一致)\", \"score\": 数字, \"level\": \"excellent|pass|developing\", \"reason\": \"评分理由(紧扣行为锚点)\", \"evidence\": \"从对话原文引用学员原话或关键行为作为锚点依据\"}], \"suggestions\": [\"改进建议1\"], \"highlights\": [\"学员做得好的1-3点\"], \"weaknesses\": [\"学员的短板1-3点\"], \"capabilityProfile\": \"一段不超过80字的能力综述，概括学员在本场训练中的整体胜任力表现与成长方向\"}",
         },
         {
           role: "user",
-          content: `请依据以下评分维度，对训练对话逐项评分。\n\n要求：\n`
+          content: `请依据以下评分维度（胜任力维度），对训练对话逐项评分。\n\n要求：\n`
             + `1. 每个维度的得分不能超过其满分；\n`
             + `2. details 中的 name 必须与评分维度名完全一致（逐字匹配）；\n`
-            + `3. 每个维度必须在 evidence 里引用学员在对话中的具体原话或关键行为作为评分依据，不得空泛；\n`
-            + `4. totalScore 必须等于所有 details 得分之和。\n\n`
+            + `3. 每个维度必须按"行为锚点"法评估：在 evidence 里引用学员在对话中的具体原话或关键行为作为锚点依据，不得空泛；\n`
+            + `4. 每个维度给能力评级：得分≥满分90% 为 excellent（精通），≥60% 为 pass（达标），否则 developing（待提升）；\n`
+            + `5. totalScore 必须等于所有 details 得分之和；\n`
+            + `6. capabilityProfile 为一段不超过80字的整体能力综述。\n\n`
             + `${scoringPrompt}\n对话内容：\n${transcript}`,
         },
       ],
@@ -429,10 +497,11 @@ async function scoreAndSaveRecord(
   });
 
   let totalScore = 70;
-  let scoreDetails: Array<{ scoringRuleId: string | null; score: number; deductionReason: string; evidenceText: string }> = [];
+  let scoreDetails: Array<{ scoringRuleId: string | null; score: number; deductionReason: string; evidenceText: string; level?: string | null }> = [];
   let suggestions: string[] = [];
   let highlights: string[] = [];
   let weaknesses: string[] = [];
+  let capabilityProfile = "";
 
   if (scoreResponse.ok) {
     try {
@@ -443,21 +512,27 @@ async function scoreAndSaveRecord(
         if (Array.isArray(parsed.details)) {
           // 按维度名精确匹配（而非索引），避免 LLM 返回顺序/数量不一致导致错位
           const byName = new Map(scoringRules.map((r) => [r.name, r]));
-          scoreDetails = parsed.details.map((d: { name?: string; score?: number; reason?: string; evidence?: string }) => {
+          scoreDetails = parsed.details.map((d: { name?: string; score?: number; level?: string; reason?: string; evidence?: string }) => {
             const rule = d.name ? byName.get(d.name) : undefined;
             const maxScore = rule?.score ?? 100;
             const s = Math.min(maxScore, Math.max(0, Math.round(d.score ?? 0)));
+            // 能力评级兜底：未返回时按得分比例推断
+            let lvl = d.level?.toLowerCase() ?? "";
+            if (!["excellent", "pass", "developing"].includes(lvl)) {
+              lvl = maxScore > 0 ? (s / maxScore >= 0.9 ? "excellent" : s / maxScore >= 0.6 ? "pass" : "developing") : "developing";
+            }
             return {
               scoringRuleId: rule?.id ?? null,
               score: s,
               deductionReason: d.reason ?? "",
               evidenceText: d.evidence ?? "",
+              level: lvl,
             };
           });
           // 若缺失某评分维度，补齐该维度（默认0分并提示）
           for (const r of scoringRules) {
             if (!scoreDetails.some((sd) => sd.scoringRuleId === r.id)) {
-              scoreDetails.push({ scoringRuleId: r.id, score: 0, deductionReason: "该维度未给出有效评分，按0分计。", evidenceText: "" });
+              scoreDetails.push({ scoringRuleId: r.id, score: 0, deductionReason: "该维度未给出有效评分，按0分计。", evidenceText: "", level: "developing" });
             }
           }
           // 总分 = 各维度之和（保证一致性），并钳制在 0-100
@@ -472,6 +547,9 @@ async function scoreAndSaveRecord(
         }
         if (Array.isArray(parsed.weaknesses)) {
           weaknesses = parsed.weaknesses.filter((s: unknown): s is string => typeof s === "string");
+        }
+        if (typeof parsed.capabilityProfile === "string") {
+          capabilityProfile = parsed.capabilityProfile.slice(0, 120);
         }
       }
     } catch { /* fallback to default score */ }
@@ -519,6 +597,7 @@ async function scoreAndSaveRecord(
     suggestions,
     highlights,
     weaknesses,
+    capabilityProfile,
     startedAt: new Date(Date.now() - body.messages.length * 15000).toISOString(),
     finishedAt: new Date().toISOString(),
     turns,
