@@ -299,6 +299,7 @@ create table if not exists training_turns (
   text text not null,
   started_at text,
   duration_ms integer not null default 0,
+  emotion text not null default '',
   created_at text not null default current_timestamp,
   updated_at text not null default current_timestamp,
   deleted_at text
