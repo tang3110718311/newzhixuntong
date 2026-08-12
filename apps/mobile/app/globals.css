@@ -787,7 +787,8 @@ input, select, textarea { font-family: inherit; }
 .pv-chat{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:13px;padding:12px 14px 16px;overflow-y:auto;overscroll-behavior:contain;background:linear-gradient(180deg,#f0f6ff 0%,#f6f9ff 100%)}
 .pv-msg{display:flex;align-items:flex-start;gap:8px;max-width:82%}
 .pv-msg.user{align-self:flex-end;flex-direction:row-reverse}
-.pv-msg.feedback{align-self:stretch;max-width:100%}
+/* 反馈卡对齐：左对齐 AI 气泡左缘（14 padding + 32 头像 + 8 gap = 54px → margin-left 40px），右对齐学员气泡右缘（内容区右缘 - 头像 32 - gap 8 = 40px） */
+.pv-msg.feedback{align-self:stretch;max-width:100%;margin-left:40px;margin-right:40px}
 .pv-avatar{width:32px;height:32px;border-radius:10px;flex:none;display:grid;place-items:center}
 .pv-avatar.ai{background:linear-gradient(135deg,#3b82f6,#60a5fa);box-shadow:0 2px 6px rgba(59,130,246,.3)}
 .pv-avatar.user{position:relative;background:linear-gradient(145deg,#e7f0ff,#d7e4fb);border:1px solid #cfe0fb;overflow:hidden}
@@ -809,6 +810,9 @@ input, select, textarea { font-family: inherit; }
 .pv-feedback-sec{margin-top:7px}
 .pv-feedback-sec span{display:block;color:#8a6d3b;font-size:11px;font-weight:700}
 .pv-feedback-sec p{margin:2px 0 0;color:#6e5b3d;font-size:12px;line-height:1.55;word-break:break-word}
+/* 改进建议：绿色显示（需求） */
+.pv-feedback-sec.green span{color:#059669}
+.pv-feedback-sec.green p{color:#047857}
 .pv-feedback-divider{height:1px;margin:8px 0 0;background:#f0e2c0}
 /* 底部输入区 */
 .pv-composer{flex:none;background:#fff;border-top:1px solid #e5ecf4;padding:10px 14px calc(12px + env(safe-area-inset-bottom));box-shadow:0 -6px 18px rgba(56,113,177,.06)}
@@ -838,3 +842,122 @@ input, select, textarea { font-family: inherit; }
 .pv-text-input:focus{border-color:#9dbaf2;background:#fff}
 .pv-text-send{flex:none;height:44px;padding:0 18px;border:0;border-radius:10px;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 10px rgba(79,104,238,.24)}
 .pv-text-send:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+
+/* ===== AI 对练报告页（pr-*：中转页 + 报告 + 对话记录，参考图还原） ===== */
+.app:has(.pr-shell)>.tabbar{display:none}
+.pr-shell{position:fixed;inset:0;z-index:30;width:100%;max-width:430px;height:100dvh;min-height:100dvh;margin:0 auto;display:flex;flex-direction:column;overflow:hidden;background:#f6f9ff}
+/* 中转页 */
+.pr-pending{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:0 40px;text-align:center}
+.pr-spinner{width:44px;height:44px;border-radius:50%;border:4px solid #dbeafe;border-top-color:#2563eb;animation:prSpin .8s linear infinite}
+@keyframes prSpin{to{transform:rotate(360deg)}}
+.pr-pending h2{margin:0;color:#1e293b;font-size:18px;font-weight:700}
+.pr-pending p{margin:0;color:#94a3b8;font-size:13px;line-height:1.6}
+.pr-pending-icon{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:#fef2f2;color:#ef4444;font-size:26px;font-weight:800}
+/* 头部 */
+.pr-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:max(14px,env(safe-area-inset-top)) 16px 12px;background:#fff;border-bottom:1px solid #eef2f7}
+.pr-head-text{min-width:0}
+.pr-head-text h1{margin:0;color:#1e2a44;font-size:20px;font-weight:800}
+.pr-head-text p{margin:4px 0 0;color:#9aa5b5;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr-close{flex:none;width:34px;height:34px;border-radius:50%;border:0;background:#f1f4f9;color:#7a8699;display:grid;place-items:center;cursor:pointer}
+/* 得分概览条 */
+.pr-score-brief{flex:none;display:flex;align-items:center;gap:14px;margin:12px 16px 0;padding:14px 16px;border-radius:12px;background:linear-gradient(135deg,#e8f4fb,#eef7ff);box-shadow:0 3px 10px rgba(56,113,177,.06)}
+.pr-score-num{display:flex;align-items:baseline;gap:3px}
+.pr-score-num b{color:#1d4ed8;font-size:30px;font-weight:800;line-height:1}
+.pr-score-num span{color:#2563eb;font-size:13px;font-weight:600}
+.pr-score-meta{display:flex;flex-direction:column;gap:3px;min-width:0}
+.pr-score-meta span{color:#1e3a8a;font-size:13px;font-weight:600}
+.pr-score-meta em{color:#7da2d8;font-size:11px;font-style:normal}
+/* Tab */
+.pr-tabs{flex:none;display:grid;grid-template-columns:1fr 1fr;margin:12px 16px 0;background:#eef2f8;border-radius:10px;padding:3px}
+.pr-tab{border:0;border-radius:8px;background:transparent;color:#8b95a7;font-size:14px;font-weight:600;padding:9px 0;cursor:pointer}
+.pr-tab.active{background:#fff;color:#2563eb;box-shadow:0 2px 6px rgba(56,113,177,.14)}
+/* 报告正文滚动区 */
+.pr-report-body,.pr-transcript{flex:1 1 auto;min-height:0;overflow-y:auto;padding:14px 16px 20px}
+.pr-section-head{display:flex;align-items:center;justify-content:space-between;margin-top:4px}
+.pr-section-head h3{margin:0;color:#1e2a44;font-size:16px;font-weight:800}
+.pr-pass-tag{flex:none;display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.3}
+.pr-pass-tag.ok{background:#ecfdf5;color:#059669}
+.pr-pass-tag.no{background:#fef2f2;color:#ef4444}
+.pr-formula{margin:7px 0 12px;color:#9aa5b5;font-size:11px}
+/* 总得分卡 */
+.pr-total-card{display:flex;align-items:center;gap:14px;padding:15px 14px;background:#fff;border-radius:12px;box-shadow:0 3px 12px rgba(56,113,177,.07)}
+.pr-ring-wrap{flex:none;display:grid;place-items:center}
+.pr-ring{position:relative;width:70px;height:70px}
+.pr-ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px}
+.pr-ring-center b{color:#065f46;font-size:20px;font-weight:800;line-height:1}
+.pr-ring-center span{color:#6b7280;font-size:9px}
+.pr-total-text{flex:1;min-width:0}
+.pr-total-text>b{display:block;color:#374151;font-size:14px;font-weight:700;line-height:1.5}
+.pr-total-text p{margin:6px 0 0;color:#94a3b8;font-size:12px;line-height:1.6}
+.pr-total-stats{display:flex;gap:16px;margin-top:9px}
+.pr-total-stats span{color:#9aa5b5;font-size:11px}
+.pr-total-stats b{color:#1d4ed8;font-size:13px;font-weight:800}
+/* 区块标题 */
+.pr-sec-title{display:flex;align-items:center;gap:7px;margin:20px 0 10px}
+.pr-sec-title i{width:4px;height:14px;border-radius:2px;background:#2563eb;flex:none}
+.pr-sec-title{color:#1e2a44;font-size:15px;font-weight:800}
+/* 能力维度分析 */
+.pr-dims{display:flex;flex-direction:column;gap:9px}
+.pr-dim-card{padding:12px 13px;background:#f6f8fb;border-radius:12px}
+.pr-dim-top{display:flex;align-items:center;gap:7px;min-width:0}
+.pr-dim-dot{flex:none;width:8px;height:8px;border-radius:50%}
+.pr-dim-top b{flex:none;color:#334155;font-size:13px;font-weight:700}
+.pr-dim-weight{flex:1;min-width:0;color:#a3aec0;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr-dim-score{flex:none;color:#2563eb;font-size:15px;font-weight:800}
+.pr-dim-bar{height:6px;margin-top:9px;border-radius:3px;background:#e5e9f0;overflow:hidden}
+.pr-dim-bar i{display:block;height:100%;border-radius:3px}
+.pr-dim-bar i.good{background:linear-gradient(90deg,#10b981,#34d399)}
+.pr-dim-bar i.warn{background:linear-gradient(90deg,#f59e0b,#fb923c)}
+.pr-dim-desc{margin:8px 0 0;color:#64748b;font-size:12px;line-height:1.6}
+.pr-dim-level{margin-top:7px}
+.pr-diamond{display:inline-flex;align-items:center;gap:4px;font-size:11px}
+.pr-diamond.good{color:#059669}
+.pr-diamond.mid{color:#2563eb}
+.pr-diamond.warn{color:#ea580c}
+/* 综合评价 */
+.pr-summary-card{padding:12px 14px;background:#fff;border-radius:12px;box-shadow:0 3px 12px rgba(56,113,177,.07);color:#475569;font-size:13px;line-height:1.75}
+/* 能力画像 */
+.pr-radar-card{display:flex;align-items:center;gap:14px;padding:12px 14px;background:#fff;border-radius:12px;box-shadow:0 3px 12px rgba(56,113,177,.07)}
+.pr-radar-list{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.pr-radar-item{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pr-radar-item span{flex:1;min-width:0;color:#64748b;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr-radar-item b{color:#2563eb;font-size:13px;font-weight:800}
+/* 表现反馈 */
+.pr-feedback-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.pr-fb-card{padding:11px 12px;border-radius:12px}
+.pr-fb-card.good{background:#f0fdf6;border:1px solid #d3f2e1}
+.pr-fb-card.warn{background:#f0f7ff;border:1px solid #d8e9ff}
+.pr-fb-card h4{margin:0 0 7px;color:#334155;font-size:12px;font-weight:800}
+.pr-fb-card ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px}
+.pr-fb-card li{color:#64748b;font-size:11px;line-height:1.55;position:relative;padding-left:9px}
+.pr-fb-card li:before{content:"";position:absolute;left:0;top:6px;width:4px;height:4px;border-radius:50%;background:#94a3b8}
+/* 本次整体成绩 */
+.pr-final-score{display:flex;align-items:center;justify-content:center;gap:10px;margin:20px 0 12px;padding:14px;background:#fff;border-radius:12px;box-shadow:0 3px 12px rgba(56,113,177,.07)}
+.pr-final-score b{color:#1e2a44;font-size:24px;font-weight:800}
+.pr-final-score span{color:#94a3b8;font-size:13px}
+/* 关闭按钮 */
+.pr-close-report{width:100%;height:48px;min-height:48px;border:0;border-radius:8px;background:linear-gradient(135deg,#2b6df3,#1d4ed8);color:#fff;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(37,99,235,.3);margin-top:4px}
+.pr-close-report:active{opacity:.92}
+/* 对话记录 */
+.pr-empty{padding:48px 0;color:#9aa5b5;font-size:13px;text-align:center}
+.pr-trn{display:flex;align-items:flex-start;gap:8px;margin-bottom:6px}
+.pr-trn.user{flex-direction:row-reverse}
+.pr-trn-avatar{width:30px;height:30px;border-radius:9px;flex:none;display:grid;place-items:center}
+.pr-trn-avatar.ai{background:linear-gradient(135deg,#3b82f6,#60a5fa)}
+.pr-trn-avatar.user{background:linear-gradient(145deg,#f0e6ff,#e3d4fb);border:1px solid #dcc8f7}
+.pr-trn-main{max-width:78%;min-width:0}
+.pr-trn-time{display:block;margin:0 3px 4px;color:#b0b8c6;font-size:10px}
+.pr-trn.user .pr-trn-time{text-align:right}
+.pr-trn-bubble{padding:9px 11px;border-radius:12px 12px 12px 3px;background:#fff;color:#374151;font-size:13px;line-height:1.6;box-shadow:0 2px 8px rgba(56,113,177,.07);word-break:break-word;white-space:pre-wrap}
+.pr-trn-bubble.user{border-radius:12px 3px 12px 12px;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;box-shadow:0 4px 10px rgba(79,104,238,.25)}
+.pr-trn-wave{display:inline-flex;align-items:flex-end;gap:2px;margin-right:5px;vertical-align:-1px}
+.pr-trn-wave i{display:block;width:3px;border-radius:2px;background:#fff}
+.pr-trn-wave i:nth-child(1){height:8px}.pr-trn-wave i:nth-child(2){height:14px}.pr-trn-wave i:nth-child(3){height:10px}
+.pr-trn-wrap{margin-bottom:14px}
+.pr-trn-feedback{margin:7px 0 0 30px;padding:9px 12px;background:#fdf8ec;border:1px solid #f1e2bd;border-radius:10px}
+.pr-trn-feedback .pr-feedback-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pr-trn-feedback .pr-feedback-head b{color:#b45309;font-size:12px;font-weight:800}
+.pr-trn-feedback .pr-feedback-head span{color:#b45309;font-size:12px;font-weight:900}
+.pr-feedback-sec{margin-top:6px}
+.pr-feedback-sec span{display:block;color:#8a6d3b;font-size:10px;font-weight:700}
+.pr-feedback-sec p{margin:2px 0 0;color:#6e5b3d;font-size:11px;line-height:1.55;word-break:break-word}

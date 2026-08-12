@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { taskApi, sceneApi, recordApi, aiApi } from "@/lib/api";
 import { taskStatusText, taskTypeText, taskFormText } from "@/lib/types";
 import { isMaterialDone, markMaterialDone, getExamCount, addExamCount } from "@/lib/sceneProgress";
+import PracticeReport from "./PracticeReport";
 
 interface TaskDetailPageProps {
   taskId: string | null;
@@ -11,7 +12,7 @@ interface TaskDetailPageProps {
   showToast: (msg: string) => void;
 }
 
-type View = "detail" | "workspace" | "practice" | "exam" | "material";
+type View = "detail" | "workspace" | "practice" | "exam" | "material" | "report";
 
 export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetailPageProps) {
   const [detail, setDetail] = useState<any>(null);
@@ -19,6 +20,8 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
   const [sceneIndex, setSceneIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [sceneDetail, setSceneDetail] = useState<any>(null);
+  // 对练报告会话（练习结束后进入报告流程）
+  const [reportSessionId, setReportSessionId] = useState<string | null>(null);
   // 本地考试次数（用于触发重渲染，实际数据存 localStorage）
   const [examCounts, setExamCounts] = useState<Record<string, number>>({});
 
@@ -144,9 +147,21 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
         onBack={() => setView("workspace")}
         showToast={showToast}
         onReport={(sessionId) => {
-          showToast("对练完成，正在生成报告…");
-          setView("workspace");
+          setReportSessionId(sessionId);
+          setView("report");
         }}
+      />
+    );
+  }
+
+  if (view === "report") {
+    return (
+      <PracticeReport
+        sessionId={reportSessionId || ""}
+        scene={sceneDetail}
+        task={task}
+        onClose={() => setView("workspace")}
+        showToast={showToast}
       />
     );
   }

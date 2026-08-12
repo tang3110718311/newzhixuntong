@@ -312,6 +312,7 @@ create table if not exists score_details (
   tenant_id text not null,
   record_id text not null,
   scoring_rule_id text,
+  round_no integer not null default 0,
   score integer not null,
   deduction_reason text not null default '',
   evidence_text text not null default '',

@@ -63,6 +63,8 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const [liveText, setLiveText] = useState("");
   const [hintVisible, setHintVisible] = useState(false);
   const [score, setScore] = useState<number | null>(null);
+  // 进入本对练页面的次数（需求：对练次数=进入次数，而非对话轮数）
+  const [practiceTimes, setPracticeTimes] = useState(0);
   const chatRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -109,6 +111,19 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sceneId]);
 
+  // 对练次数 = 进入本页面的次数（StrictMode 双执行防护）
+  const enteredCountRef = useRef(false);
+  useEffect(() => {
+    if (!sceneId || enteredCountRef.current) return;
+    enteredCountRef.current = true;
+    try {
+      const key = `zxt-practice-enter-${sceneId}`;
+      const n = (parseInt(localStorage.getItem(key) || "0", 10) || 0) + 1;
+      localStorage.setItem(key, String(n));
+      setPracticeTimes(n);
+    } catch { /* localStorage 不可用时忽略 */ }
+  }, [sceneId]);
+
   useEffect(() => {
     chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
@@ -135,15 +150,24 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     setInput("");
     setSending(true);
     try {
+      // 完整对话历史（与 PC 端契约一致：后端依赖客户端每次发送全部消息，用于轮次计数与训练结束评分）
+      const history = messages
+        .filter((m) => m.who === "user" || m.who === "ai")
+        .map((m) => ({ role: m.who === "user" ? "learner" : "ai", content: m.text }));
       const res = await aiApi.chat({
         sceneId,
-        messages: [{ role: "learner", content: text.trim() }],
+        messages: [...history, { role: "learner", content: text.trim() }],
         sessionId: sessionId || undefined,
       });
       // 参考图顺序：用户消息 → 反馈卡 → AI 回复
       if (res.coachTip) {
         const { issues, advice } = parseCoachTip(res.coachTip);
-        pushMsg({ who: "feedback", text: res.coachTip, issues, advice });
+        // 反馈卡右上角分数 = 本轮各维度得分之和（后端单轮评分 perTurnScores）
+        const turnTotal =
+          Array.isArray(res.perTurnScores) && res.perTurnScores.length
+            ? res.perTurnScores.reduce((acc: number, s: any) => acc + (Number(s.score) || 0), 0)
+            : null;
+        pushMsg({ who: "feedback", text: res.coachTip, issues, advice, score: turnTotal });
       }
       if (res.aiReply) pushAiMsgAndSpeak(res.aiReply);
       setRound(res.round || 0);
@@ -161,7 +185,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
               .catch(() => { /* 轮询失败不影响主流程 */ });
           }, 2500);
         }
-        showToast("训练结束，正在生成报告…");
+        showToast("对练完成，正在生成报告…");
         setTimeout(() => onReport(sessionId || ""), 700);
       }
     } catch (e: any) {
@@ -233,8 +257,10 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
 
   const pushAiMsgAndSpeak = useCallback(
     (text: string) => {
-      pushMsg({ who: "ai", text, time: now() });
-      speakText(text);
+      // 防御性剥离模型可能残留的 [COACH_TIP:...]/【COACH_TIP:...】标记（后端已剥离，此处兜底）
+      const cleaned = text.replace(/[\[【]\s*COACH_TIP\s*[:：][\s\S]*?[\]】]/g, "").trim();
+      pushMsg({ who: "ai", text: cleaned, time: now() });
+      speakText(cleaned);
     },
     [pushMsg, speakText]
   );
@@ -436,7 +462,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         </div>
         <div className="pv-scene-col">
           <span>对练次数</span>
-          <b className="orange">第 {round + 1} 轮</b>
+          <b className="orange">第 {practiceTimes > 0 ? practiceTimes : 1} 次</b>
         </div>
         <div className="pv-scene-col">
           <span>本轮得分</span>
@@ -452,7 +478,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
               <div className="pv-msg feedback" key={m.id}>
                 <div className="pv-feedback-card">
                   <div className="pv-feedback-head">
-                    <b>本次回答反馈</b>
+                    <b>实时点评</b>
                     <span>{m.score != null ? `${m.score}分` : "—"}</span>
                   </div>
                   {m.issues && m.issues.length > 0 && (
@@ -464,7 +490,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
                   {m.advice && m.advice.length > 0 && (
                     <>
                       <div className="pv-feedback-divider"></div>
-                      <div className="pv-feedback-sec">
+                      <div className="pv-feedback-sec green">
                         <span>改进建议</span>
                         <p>{m.advice.join("；")}</p>
                       </div>
