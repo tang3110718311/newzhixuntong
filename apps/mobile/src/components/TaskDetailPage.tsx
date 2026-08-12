@@ -14,6 +14,8 @@ type View = "detail" | "workspace" | "practice" | "exam" | "material";
 
 /** 资料学习完成标记（本地存储，key 含用户 + 场景，防止跨用户串数据） */
 const MATERIAL_DONE_KEY = "zxt-material-done";
+/** 场景考试完成次数（本地存储，key 含用户 + 场景） */
+const EXAM_COUNT_KEY = "zxt-exam-count";
 
 function currentUserId(): string {
   try {
@@ -44,12 +46,41 @@ function markMaterialDone(sceneId: string) {
   }
 }
 
+function getExamCount(sceneId: string): number {
+  try {
+    return Number(localStorage.getItem(`${EXAM_COUNT_KEY}-${currentUserId()}-${sceneId}`) || 0) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function addExamCount(sceneId: string): number {
+  const next = getExamCount(sceneId) + 1;
+  try {
+    localStorage.setItem(`${EXAM_COUNT_KEY}-${currentUserId()}-${sceneId}`, String(next));
+  } catch {
+    /* ignore */
+  }
+  return next;
+}
+
 export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetailPageProps) {
   const [detail, setDetail] = useState<any>(null);
   const [view, setView] = useState<View>("detail");
   const [sceneIndex, setSceneIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [sceneDetail, setSceneDetail] = useState<any>(null);
+  // 本地考试次数（用于触发重渲染，实际数据存 localStorage）
+  const [examCounts, setExamCounts] = useState<Record<string, number>>({});
+
+  /** 考试完成回调：本地记录次数并刷新 */
+  const handleExamFinished = useCallback(() => {
+    const ts = detail?.scenes?.[sceneIndex];
+    if (!ts) return;
+    const next = addExamCount(ts.sceneId);
+    setExamCounts((prev) => ({ ...prev, [ts.sceneId]: next }));
+    showToast("考试已完成，成绩已记录");
+  }, [detail, sceneIndex, showToast]);
 
   useEffect(() => {
     if (!taskId) return;
@@ -170,7 +201,15 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
   }
 
   if (view === "exam") {
-    return <ScenarioExam scene={sceneDetail} task={task} onBack={() => setView("workspace")} showToast={showToast} />;
+    return (
+      <ScenarioExam
+        scene={sceneDetail}
+        task={task}
+        onBack={() => setView("workspace")}
+        onFinished={handleExamFinished}
+        showToast={showToast}
+      />
+    );
   }
 
   if (view === "material") {
@@ -248,6 +287,7 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
             const practiceDone = (sc.completedTrainCount || 0) >= required;
             // 已做过对练的场景必然已学过资料，本地标记丢失（换设备/清缓存）时不应反向锁住
             const materialDone = isMaterialDone(sc.sceneId) || trainDone;
+            const examCount = examCounts[sc.sceneId] ?? getExamCount(sc.sceneId);
             return (
               <article
                 key={sc.id}
@@ -278,6 +318,11 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
                       <span style={{ width: `${practiceDone ? 100 : materialDone ? 55 : 20}%` }} />
                     </div>
                   </div>
+                  <div className="scenario-counts">
+                    <span>对练 {sc.completedTrainCount || 0} 次</span>
+                    <span className="counts-divider"></span>
+                    <span>考试 {examCount} 次</span>
+                  </div>
                   <div className="scenario-actions">
                     <button
                       type="button"
@@ -287,7 +332,7 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
                         enterSceneView(i, "material");
                       }}
                     >
-                      资料{materialDone ? " ✓" : ""}
+                      查看资料{materialDone ? " ✓" : ""}
                     </button>
                     <button
                       type="button"
@@ -301,7 +346,7 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
                         enterSceneView(i, "practice");
                       }}
                     >
-                      AI 对练
+                      {trainDone ? "再次对练" : "开始对练"}
                     </button>
                     <button
                       type="button"
@@ -315,7 +360,7 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
                         enterSceneView(i, "exam");
                       }}
                     >
-                      考试
+                      {examCount > 0 ? "再次考试" : "开始考试"}
                     </button>
                   </div>
                 </div>

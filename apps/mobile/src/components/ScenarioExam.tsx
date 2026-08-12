@@ -6,15 +6,17 @@ interface ScenarioExamProps {
   scene: any;
   task: any;
   onBack: () => void;
+  onFinished?: () => void;
   showToast: (msg: string) => void;
 }
 
-export default function ScenarioExam({ scene, task, onBack, showToast }: ScenarioExamProps) {
+export default function ScenarioExam({ scene, task, onBack, onFinished, showToast }: ScenarioExamProps) {
   const [round, setRound] = useState(1);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<{ score: number; comment: string } | null>(null);
   const [finished, setFinished] = useState(false);
   const [totalScore, setTotalScore] = useState(0);
+  const [recorded, setRecorded] = useState(false);
 
   const sceneName = scene?.scene?.name || "场景考试";
 
@@ -112,7 +114,17 @@ export default function ScenarioExam({ scene, task, onBack, showToast }: Scenari
             {totalScore / 3 >= 60 ? "恭喜通过场景考试！" : "未达到通过线，建议加强对练后重新考试。"}
           </p>
           <div className="task-detail-actions">
-            <button className="primary" type="button" onClick={onBack}>
+            <button
+              className="primary"
+              type="button"
+              onClick={() => {
+                if (!recorded) {
+                  setRecorded(true);
+                  onFinished?.();
+                }
+                onBack();
+              }}
+            >
               返回场景工作台
             </button>
           </div>

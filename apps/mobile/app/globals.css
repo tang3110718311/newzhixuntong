@@ -709,3 +709,16 @@ input, select, textarea { font-family: inherit; }
 .material-content h4{margin:0 0 8px;color:#334c70;font-size:13px}
 .material-content p{margin:0 0 9px}
 .material-content .preview-highlight{padding:10px 11px;border-left:3px solid #5d7bea;background:#fff;border-radius:8px;color:#415a7a}
+
+/* ===== UI 规范覆盖（任务详情-学习场景）=====
+   8px 栅格 / 16px 安全边距 / 卡片圆角12px / 按钮圆角8px / 热区≥44px / 正文13px / 小标题15px */
+.scenario-card.scene-layout{padding:16px 16px 16px 8px;border-radius:12px}
+.scenario-heading .scenario-main b{font-size:15px}
+.scenario-card.scene-layout .scenario-main p{font-size:13px}
+.scenario-state-row{margin-top:8px;gap:8px}
+.scenario-card.scene-layout .scenario-actions{gap:8px;margin-top:8px;padding-top:8px}
+.scenario-card.scene-layout .scenario-actions button{height:44px;min-height:44px;border-radius:8px;font-size:13px;padding:0 8px}
+.scenario-card.scene-layout .scenario-actions button.locked{background:#f0f3f7;color:#aab5c2;box-shadow:none}
+/* 对练/考试次数行 */
+.scenario-counts{display:flex;align-items:center;gap:8px;margin-top:8px;color:#8c9bb0;font-size:12px;line-height:1}
+.scenario-counts .counts-divider{width:1px;height:10px;background:#dde5ef}
