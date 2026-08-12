@@ -262,6 +262,9 @@ function applyMigrations() {
   ensureColumn("training_records", "session_id", "text");
   ensureColumn("training_records", "suggestions", "text not null default '[]'");
   ensureColumn("training_records", "summary_json", "text");
+  // 胜任力评分（与 init.mjs 保持一致，避免已有库缺失列导致评分落库失败）
+  ensureColumn("score_details", "level", "text not null default ''");
+  ensureColumn("training_records", "capability_profile", "text not null default '[]'");
   ensureColumn("training_turns", "emotion", "text not null default ''");
   // 核心表索引（已有库同样补齐，与 init.mjs 保持一致）
   db.run("create index if not exists idx_tr_tenant_user_status on training_records(tenant_id, user_id, status)");

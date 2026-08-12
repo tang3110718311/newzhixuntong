@@ -23,15 +23,30 @@ interface ChatMsg {
   advice?: string[];
 }
 
-/** 解析教练提示：点评 → 问题定位，可以说：xxx → 改进建议 */
+/**
+ * 解析教练提示（兼容两种格式）：
+ * 1. 新版两段式（后端 9b287e7 起）："点评｜可以说：建议"，用 ｜ 分隔，点评 ≤12字、建议 20-35字
+ * 2. 旧版："点评，可以说：建议"
+ * 映射：点评 → 问题定位，建议 → 改进建议
+ */
 function parseCoachTip(tip: string): { issues: string[]; advice: string[] } {
-  const idx = tip.indexOf("可以说");
+  const t = (tip || "").trim();
+  if (!t) return { issues: [], advice: [] };
+  // 新版两段式：按 ｜ 分隔
+  const pipeIdx = t.indexOf("｜");
+  if (pipeIdx > -1) {
+    const issues = [t.slice(0, pipeIdx).replace(/[，,。；;\s|｜]+$/, "").trim()].filter(Boolean);
+    const advicePart = t.slice(pipeIdx + 1).replace(/^可以说[:：]?\s*/, "可以说：").trim();
+    return { issues, advice: advicePart ? [advicePart] : [] };
+  }
+  // 旧版：按"可以说"拆分
+  const idx = t.indexOf("可以说");
   if (idx > -1) {
-    const issues = [tip.slice(0, idx).replace(/[，,。；;\s]+$/, "").trim()].filter(Boolean);
-    const advicePart = tip.slice(idx).replace(/^可以说[:：]?\s*/, "可以说：");
+    const issues = [t.slice(0, idx).replace(/[，,。；;\s]+$/, "").trim()].filter(Boolean);
+    const advicePart = t.slice(idx).replace(/^可以说[:：]?\s*/, "可以说：");
     return { issues, advice: [advicePart] };
   }
-  return { issues: [tip.trim()].filter(Boolean), advice: [] };
+  return { issues: [t].filter(Boolean), advice: [] };
 }
 
 export default function PracticeView({ scene, task, onBack, showToast, onReport }: PracticeViewProps) {
