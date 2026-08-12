@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { recordApi } from "@/lib/api";
-import { isMaterialDone, getExamCount } from "@/lib/sceneProgress";
+import { isMaterialDone, getExamCount, getExamRecords, type ExamRecord } from "@/lib/sceneProgress";
 import { taskFormText } from "@/lib/types";
+import PracticeReport from "./PracticeReport";
+import ExamReport from "./ExamReport";
 
 interface ScenarioWorkspaceProps {
   scene: any;
@@ -45,6 +47,8 @@ export default function ScenarioWorkspace({
   const [recordTab, setRecordTab] = useState<"practice" | "exam">("practice");
   const [records, setRecords] = useState<any[]>([]);
   const [recordLoading, setRecordLoading] = useState(false);
+  // 报告查看态：practice 用记录 ID 直查；exam 用本地考试记录
+  const [reportView, setReportView] = useState<{ type: "practice"; id: string } | { type: "exam"; record: ExamRecord } | null>(null);
 
   useEffect(() => {
     if (!sceneId) return;
@@ -57,6 +61,41 @@ export default function ScenarioWorkspace({
   }, [sceneId]);
 
   const latestScore = records.length > 0 ? records[0]?.score : null;
+
+  // 考试记录：本地存储真实记录；无数据时造示例数据供查看报告效果
+  const examRecords = useMemo<ExamRecord[]>(() => (sceneId ? getExamRecords(sceneId) : []), [sceneId]);
+  const examRecordsShown = useMemo<ExamRecord[]>(() => {
+    if (examRecords.length > 0) return examRecords;
+    // 示例数据（标注"示例"）：仅当本地无考试记录时展示
+    const now = Date.now();
+    const mk = (daysAgo: number, score: number, passed: boolean, rounds: ExamRecord["rounds"]) => ({
+      id: `mock-exam-${daysAgo}`,
+      sceneId: sceneId || "",
+      score,
+      passScore: 60,
+      passed,
+      mode: "语音形式",
+      rounds,
+      finishedAt: new Date(now - daysAgo * 86400000).toISOString(),
+    });
+    return [
+      mk(1, 86, true, [
+        { round: 1, question: "请进行开场沟通，说明来意并了解对方当前最关注的问题。", answer: "您好，我是客服专员，想了解您当前对套餐使用最关心的问题，方便为您针对性解答。", score: 88, comment: "表达清晰、重点突出，请继续保持。" },
+        { round: 2, question: "对方提出一个关键顾虑，请给出专业、清晰的回应并推动下一步。", answer: "您担心的合约期问题我已记录，稍后为您核对解约条款，预计10分钟内回电明确告知，您看可以吗？", score: 85, comment: "基本覆盖要点，建议补充更具体的信息和下一步行动。" },
+        { round: 3, question: "请总结本场景沟通结果，并确认后续行动安排。", answer: "今天确认了套餐办理意向，我会在10分钟内核对合约条款并回电，请您保持电话畅通。", score: 85, comment: "总结完整，行动安排明确。" },
+      ]),
+      mk(3, 64, true, [
+        { round: 1, question: "请进行开场沟通，说明来意并了解对方当前最关注的问题。", answer: "您好，想了解您的套餐使用情况。", score: 70, comment: "基本覆盖要点，建议补充更具体的信息和下一步行动。" },
+        { round: 2, question: "对方提出一个关键顾虑，请给出专业、清晰的回应并推动下一步。", answer: "合约期两年，中途解约有违约金。", score: 62, comment: "回答较简略，建议围绕对方关注点展开并给出明确方案。" },
+        { round: 3, question: "请总结本场景沟通结果，并确认后续行动安排。", answer: "已告知套餐内容，如需要可以再联系我。", score: 60, comment: "回答较简略，建议围绕对方关注点展开并给出明确方案。" },
+      ]),
+      mk(5, 52, false, [
+        { round: 1, question: "请进行开场沟通，说明来意并了解对方当前最关注的问题。", answer: "你好，请问办理什么业务？", score: 62, comment: "回答较简略，建议围绕对方关注点展开并给出明确方案。" },
+        { round: 2, question: "对方提出一个关键顾虑，请给出专业、清晰的回应并推动下一步。", answer: "这个套餐挺好的。", score: 45, comment: "回答较简略，建议围绕对方关注点展开并给出明确方案。" },
+        { round: 3, question: "请总结本场景沟通结果，并确认后续行动安排。", answer: "你可以考虑一下。", score: 48, comment: "回答较简略，建议围绕对方关注点展开并给出明确方案。" },
+      ]),
+    ];
+  }, [examRecords, sceneId]);
 
   const openPractice = () => {
     if (!materialDone) {
@@ -73,6 +112,27 @@ export default function ScenarioWorkspace({
     }
     onEnterExam();
   };
+
+  if (reportView?.type === "practice") {
+    return (
+      <PracticeReport
+        recordId={reportView.id}
+        scene={scene}
+        task={task}
+        onClose={() => setReportView(null)}
+        showToast={showToast}
+      />
+    );
+  }
+  if (reportView?.type === "exam") {
+    return (
+      <ExamReport
+        record={reportView.record}
+        sceneName={s?.name || sceneMeta?.sceneName || "场景考试"}
+        onClose={() => setReportView(null)}
+      />
+    );
+  }
 
   return (
     <>
@@ -192,11 +252,13 @@ export default function ScenarioWorkspace({
         </div>
         <div className="history-stat">
           <div className="history-stat-item">
-            <strong>{recordTab === "practice" ? records.length : examCount}</strong>
+            <strong>{recordTab === "practice" ? records.length : examRecordsShown.length}</strong>
             <span>最近完成次数</span>
           </div>
           <div className="history-stat-item">
-            <strong>{recordTab === "practice" ? (latestScore ?? "-") : examCount > 0 ? "已通过" : "-"}</strong>
+            <strong>
+              {recordTab === "practice" ? (latestScore ?? "-") : examRecordsShown[0] ? `${examRecordsShown[0].score} 分` : "-"}
+            </strong>
             <span>最近得分</span>
           </div>
         </div>
@@ -215,10 +277,7 @@ export default function ScenarioWorkspace({
                     <span>AI 对练 · 第 {records.length - i} 次</span>
                   </div>
                   <strong className="history-score">{r.score ?? "-"} 分</strong>
-                  <button
-                    type="button"
-                    onClick={() => showToast("对练报告：得分 " + (r.score ?? "-") + " 分")}
-                  >
+                  <button type="button" onClick={() => setReportView({ type: "practice", id: r.id })}>
                     查看报告
                   </button>
                 </div>
@@ -227,10 +286,24 @@ export default function ScenarioWorkspace({
           </div>
         ) : (
           <div className="history-list">
-            {examCount === 0 ? (
+            {examRecordsShown.length === 0 ? (
               <div className="history-empty">暂无考试记录</div>
             ) : (
-              <div className="history-empty">本机已完成 {examCount} 次场景考试</div>
+              examRecordsShown.map((er, i) => (
+                <div className="record-history-row" key={er.id}>
+                  <div className="history-date">
+                    <b>{(er.finishedAt || "").slice(0, 16).replace("T", " ")}</b>
+                    <span>
+                      场景考试 · 第 {examRecordsShown.length - i} 次
+                      {examRecords.length === 0 && <em className="history-mock-tag">示例</em>}
+                    </span>
+                  </div>
+                  <strong className="history-score">{er.score ?? "-"} 分</strong>
+                  <button type="button" onClick={() => setReportView({ type: "exam", record: er })}>
+                    查看报告
+                  </button>
+                </div>
+              ))
             )}
           </div>
         )}

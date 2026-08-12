@@ -266,12 +266,16 @@ export type ScoreDetailRow = {
   evidenceText: string;
   /** 能力评级：excellent（精通）/ pass（达标）/ developing（待提升）/ 空（无） */
   level?: string | null;
+  /** 评分所属轮次：0 表示整场评分，>0 表示第 N 轮的单轮评分 */
+  roundNo?: number;
 };
 
 export type TrainingRecordDetail = {
   record: TrainingRecordRow;
   turns: TrainingTurnRow[];
   scores: ScoreDetailRow[];
+  /** 每轮评分（round_no>0 的评分明细，按轮次聚合），供报告页对话记录展示 */
+  turnScores?: Array<{ roundNo: number; scores: ScoreDetailRow[] }>;
   suggestions: string[];
   highlights?: string[];
   weaknesses?: string[];
@@ -294,7 +298,7 @@ export type CreateTrainingRecordInput = {
   finishedAt?: string | null;
   capabilityProfile?: string | null;
   turns: Array<{ speaker: "ai" | "learner"; text: string; durationMs?: number; startedAt?: string | null; emotion?: string }>;
-  scores: Array<{ scoringRuleId?: string | null; score: number; deductionReason?: string; evidenceText?: string; level?: string | null }>;
+  scores: Array<{ scoringRuleId?: string | null; score: number; deductionReason?: string; evidenceText?: string; level?: string | null; roundNo?: number }>;
 };
 
 export type AppealRow = {
@@ -1366,9 +1370,9 @@ export function createTrainingRecord(tenantId: string, input: CreateTrainingReco
   });
   input.scores.forEach((score) => {
     run(
-      `insert into score_details (id, tenant_id, record_id, scoring_rule_id, score, deduction_reason, evidence_text, level, created_at, updated_at)
-       values (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      [createId("sd"), tenantId, id, score.scoringRuleId ?? null, score.score, score.deductionReason ?? "", score.evidenceText ?? "", score.level ?? ""],
+      `insert into score_details (id, tenant_id, record_id, scoring_rule_id, round_no, score, deduction_reason, evidence_text, level, created_at, updated_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [createId("sd"), tenantId, id, score.scoringRuleId ?? null, score.roundNo ?? 0, score.score, score.deductionReason ?? "", score.evidenceText ?? "", score.level ?? ""],
     );
   });
   if (input.taskId && input.userId && input.status === "completed") {
@@ -1400,7 +1404,7 @@ export function getTrainingRecordDetail(tenantId: string, recordId: string): Tra
     [tenantId, recordId],
   );
   const scores = all<ScoreDetailRow>(
-    `select sd.id, sr.name as ruleName, sd.score, sd.deduction_reason as deductionReason, sd.evidence_text as evidenceText, sd.level as level
+    `select sd.id, sr.name as ruleName, sd.score, sd.deduction_reason as deductionReason, sd.evidence_text as evidenceText, sd.level as level, sd.round_no as roundNo
      from score_details sd
      left join scoring_rules sr on sr.id = sd.scoring_rule_id and sr.tenant_id = sd.tenant_id
      where sd.tenant_id = ? and sd.record_id = ? and sd.deleted_at is null order by sd.created_at asc`,
@@ -1410,6 +1414,20 @@ export function getTrainingRecordDetail(tenantId: string, recordId: string): Tra
     "select suggestions from training_records where tenant_id = ? and id = ? and deleted_at is null limit 1",
     [tenantId, recordId],
   );
+  // 拆分：round_no=0/null 为整场评分（报告页维度分析）；round_no>0 为每轮评分（对话记录反馈卡）
+  const overallScores = scores.filter((s) => !s.roundNo || s.roundNo <= 0).map(({ roundNo, ...rest }) => rest);
+  const turnScoreMap = new Map<number, ScoreDetailRow[]>();
+  for (const s of scores) {
+    if (s.roundNo && s.roundNo > 0) {
+      const arr = turnScoreMap.get(s.roundNo) ?? [];
+      arr.push({ ...s });
+      turnScoreMap.set(s.roundNo, arr);
+    }
+  }
+  const turnScores = [...turnScoreMap.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([roundNo, list]) => ({ roundNo, scores: list }));
+
   let suggestions: string[] = [];
   if (suggestionsRow?.suggestions) {
     try {
@@ -1440,7 +1458,7 @@ export function getTrainingRecordDetail(tenantId: string, recordId: string): Tra
       }
     } catch { /* ignore invalid json */ }
   }
-  return { record, turns, scores, suggestions, highlights, weaknesses, capabilityProfile };
+  return { record, turns, scores: overallScores, turnScores, suggestions, highlights, weaknesses, capabilityProfile };
 }
 
 /** 按对练会话查询训练记录（评分异步完成后前端轮询用） */

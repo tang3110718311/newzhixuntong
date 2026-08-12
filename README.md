@@ -1,4 +1,15 @@
-﻿# AI 智训通 Next.js 重构版
+﻿---
+AIGC:
+  ContentProducer: '001191110102MAD55U9H0F10002'
+  ContentPropagator: '001191110102MAD55U9H0F10002'
+  Label: '1'
+  ProduceID: 'f8004a95-292a-4fb4-b8a8-6ec20adf9198'
+  PropagateID: 'f8004a95-292a-4fb4-b8a8-6ec20adf9198'
+  ReservedCode1: '8a5da6da-695d-412d-a40d-cdf40b264805'
+  ReservedCode2: '8a5da6da-695d-412d-a40d-cdf40b264805'
+---
+
+# AI 智训通 Next.js 重构版
 
 这是 AI 智训通重构版的第一阶段工程骨架，目标是先跑通“管理端 H5 + 独立 API 服务 + SQLite 持久化 + AI/STT/TTS 接口预留”的真实业务闭环。
 
@@ -122,3 +133,5 @@ npm.cmd --workspace @zxt/admin run typecheck
 - SQLite 初始化和 Prisma 种子脚本会给本地管理员写入密码哈希，支持真实账号登录。
 - 管理端新增登录页、会话本地保存、退出登录和当前用户展示。
 - 本地默认账号：租户 `zxt-demo`，手机号 `13800000000`，密码 `Zxt@2026`；可用 `ZXT_SEED_ADMIN_PASSWORD` 覆盖初始化密码。
+
+> AI生成

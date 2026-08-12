@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import type { ApiResponse, AuthSession } from "@zxt/shared";
-import { ArrowLeft, Edit, Bot, FileText, GraduationCap, MessageSquare, Target, ListChecks } from "lucide-react";
 import AppShell, { type RightRailData } from "@/components/AppShell";
 import { getPathId, navigateTo } from "@/lib/navigation";
 
@@ -67,13 +66,8 @@ function statusLabel(status: string) {
   return map[status] || status;
 }
 
-function statusBadge(status: string) {
-  const color = status === "published" || status === "enabled" ? "#22c55e" : status === "disabled" || status === "stopped" ? "#ef4444" : "#b45309";
-  return (
-    <span style={{ display: "inline-block", padding: "2px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, color, background: `${color}1a` }}>
-      {statusLabel(status)}
-    </span>
-  );
+function statusOn(status: string) {
+  return status === "published" || status === "enabled";
 }
 
 function modeLabel(mode: string) {
@@ -131,6 +125,17 @@ function getAuth(): AuthSession | null {
   try { return JSON.parse(raw); } catch { return null; }
 }
 
+// 解析对话实例文本为气泡列表
+function parseDialogue(text: string): Array<{ role: "ai" | "student"; text: string }> {
+  return text
+    .split(/\n+/)
+    .map((line) => {
+      const m = line.match(/^(AI|学员|用户|助手)\s*[：:]\s*(.*)$/);
+      return { role: m && /学员|用户/.test(m[1]) ? ("student" as const) : ("ai" as const), text: m ? m[2] : line };
+    })
+    .filter((item) => item.text.trim());
+}
+
 // ---------- 主组件 ----------
 
 export default function SceneDetailPage() {
@@ -152,10 +157,27 @@ export default function SceneDetailPage() {
     loadRightRailData().then(setRightRail);
   }, [sceneId]);
 
-  const aiRole = detail?.roles.find((r) => r.roleType === "ai");
-  const learnerRole = detail?.roles.find((r) => r.roleType !== "ai");
-  const rule = detail?.rule;
-  const scene = detail?.scene;
+  if (!detail || !detail.scene) {
+    return (
+      <AppShell
+        activeNavKey="scenes"
+        onNavClick={(key: string) => { navigateTo("/?section=" + key); }}
+        rightRail={rightRail}
+        breadcrumb={{ label: "场景管理", childLabel: "场景详情" }}
+      >
+        {error && <div className="notice">{error}</div>}
+        <div className="empty" style={{ padding: 40 }}>加载中...</div>
+      </AppShell>
+    );
+  }
+
+  const scene = detail.scene;
+  const aiRole = detail.roles.find((r) => r.roleType === "ai");
+  const learnerRole = detail.roles.find((r) => r.roleType !== "ai");
+  const rule = detail.rule;
+  const scoreTotal = detail.scoringRules.reduce((s, r) => s + Number(r.score || 0), 0) || 100;
+  const dialogues = parseDialogue(rule?.description || "");
+  const statusClass = statusOn(scene.status) ? "on" : "off";
 
   return (
     <AppShell
@@ -165,204 +187,251 @@ export default function SceneDetailPage() {
       breadcrumb={{ label: "场景管理", childLabel: "场景详情" }}
     >
       {error && <div className="notice">{error}</div>}
+      <div className="page-section sc-mod">
+        <div className="scene-preview-page">
+          {/* Hero */}
+          <div className="preview-hero card">
+            <div className="preview-hero-copy">
+              <div className="preview-kicker">智训通 · 场景配置预览</div>
+              <div className="preview-title-row">
+                <h1>{scene.name || "场景详情"}</h1>
+                <span className={`status ${statusClass}`}>{statusLabel(scene.status)}</span>
+                <span className="preview-mode">{createModeLabel(scene.createMode)}</span>
+              </div>
+              <p className="preview-hero-desc">{scene.description || "查看当前场景的角色设定、训练目标和对话规则。"}</p>
+              <div className="preview-meta">
+                <span>编号 <b>{scene.code || "—"}</b></span>
+                <span>创建部门 <b>{scene.creatorOrgName || "—"}</b></span>
+                <span>创建人 <b>{scene.creatorName || "—"}</b></span>
+                <span>更新时间 <b>{formatDate(scene.updatedAt || scene.createdAt)}</b></span>
+              </div>
+            </div>
+            <div className="scene-actions">
+              <button className="btn outline" type="button" onClick={() => navigateTo('/?section=scenes')}>返回列表</button>
+              <button className="btn" type="button" onClick={() => { navigateTo('/scenes/' + scene.id + '/edit'); }}>编辑</button>
+            </div>
+          </div>
 
-      {!detail || !scene ? (
-        <div className="empty" style={{ padding: 40 }}>加载中...</div>
-      ) : (
-        <div className="page-section">
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            {/* 顶部信息区 */}
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "20px 28px", borderBottom: "1px solid rgba(115,131,154,0.1)",
-            }}>
+          {/* 统计 */}
+          <div className="preview-stats">
+            <div className="preview-stat card">
+              <div className="preview-stat-icon blue-icon">▣</div>
               <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <h2 style={{ margin: 0, fontSize: 20, color: "#3949c9" }}>{scene.name}</h2>
-                  {statusBadge(scene.status)}
-                  <span style={{ color: "#4e63f0", fontSize: 12, background: "#eef1fc", padding: "2px 10px", borderRadius: 999 }}>{createModeLabel(scene.createMode)}</span>
-                </div>
-                <p style={{ margin: "6px 0 0", color: "#73839a", fontSize: 13 }}>
-                  场景编号 {scene.code} · 创建部门 {scene.creatorOrgName || "—"} · 创建人 {scene.creatorName || "—"} · 更新时间 {formatDate(scene.updatedAt || scene.createdAt)}
-                </p>
-              </div>
-              <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
-                <button className="btn" type="button" onClick={() => navigateTo('/?section=scenes')}>
-                  <ArrowLeft size={16} /> 返回列表
-                </button>
-                <button className="btn primary" type="button" onClick={() => { navigateTo('/scenes/' + scene.id + '/edit'); }}>
-                  <Edit size={16} /> 编辑
-                </button>
+                <label>关联培训任务</label>
+                <strong>{scene.taskCount ?? 0}</strong>
+                <small>个任务正在使用</small>
               </div>
             </div>
-
-            {/* 统计卡片 */}
-            <div style={{ padding: "20px 28px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, borderBottom: "1px solid rgba(115,131,154,0.08)" }}>
-              <StatCard icon={<ListChecks size={18} />} label="关联培训任务" value={`${scene.taskCount ?? 0} 个`} />
-              <StatCard icon={<MessageSquare size={18} />} label="对话训练模式" value={`${createModeLabel(scene.createMode)} · ${modeLabel(scene.mode)}`} />
-              <StatCard icon={<GraduationCap size={18} />} label="评分维度" value={`${detail.scoringRules.length} 项`} />
-            </div>
-
-            {/* 主内容：三段式 + 右侧栏 */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 0 }}>
-              <div style={{ padding: "24px 28px", borderRight: "1px solid rgba(115,131,154,0.08)" }}>
-                {/* 01 角色配置 */}
-                <SectionBlock index="01" title="角色配置" desc="AI 与学员的角色设定" icon={<Bot size={16} />}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 40px" }}>
-                    <Row label="AI扮演角色" value={aiRole?.identity || "未配置"} />
-                    <Row label="身份地位" value={aiRole?.personality || "未配置"} />
-                    <Row label="背景简介" value={aiRole?.background || "未配置"} />
-                    <Row label="AI角色性格" value={aiRole?.personality || "未配置"} />
-                    <Row label="AI情绪设置" value={emotionLabel(aiRole?.emotion || "")} />
-                    <Row label="AI语言风格" value={aiRole?.languageStyle || "未配置"} />
-                    <Row label="学员角色扮演" value={learnerRole?.identity || "未配置"} />
-                    <Row label="对话目标" value={learnerRole?.goal || "未配置"} />
-                  </div>
-                </SectionBlock>
-
-                {/* 02 训练内容 */}
-                <SectionBlock index="02" title="训练内容" desc="对话流程与训练要求" icon={<Target size={16} />}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 40px" }}>
-                    <Row label="对话发起人" value={initiatorLabel(rule?.initiator || "")} />
-                    <Row label="结束条件" value={rule?.endCondition || "未配置"} />
-                    <Row label="中断条件" value={rule?.interruptCondition || "未配置"} />
-                    <Row label="对话实例" value={rule?.description || "未配置"} />
-                  </div>
-                </SectionBlock>
-
-                {/* 03 训练规则 */}
-                <SectionBlock index="03" title="训练规则" desc="评分标准与考核要求" icon={<ListChecks size={16} />}>
-                  {detail.scoringRules.length === 0 ? (
-                    <div className="empty" style={{ padding: "12px 0" }}>未配置评分规则。</div>
-                  ) : (
-                    <div style={{ display: "grid", gap: 8 }}>
-                      {detail.scoringRules.map((r, i) => (
-                        <div key={r.id || i} style={{
-                          display: "flex", alignItems: "flex-start", gap: 12,
-                          padding: "10px 14px", borderRadius: 8,
-                          border: "1px solid rgba(115,131,154,0.12)", background: "#fafbfe",
-                        }}>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: "#4e63f0", width: 18, flexShrink: 0 }}>{i + 1}</span>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                              <strong style={{ fontSize: 13, color: "#172b4d" }}>{r.name}</strong>
-                              <span style={{ fontSize: 13, fontWeight: 700, color: "#3949c9" }}>{r.score} 分</span>
-                            </div>
-                            {r.criteria && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#73839a", lineHeight: 1.6 }}>{r.criteria}</p>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </SectionBlock>
+            <div className="preview-stat card">
+              <div className="preview-stat-icon purple-icon">✦</div>
+              <div>
+                <label>对话训练模式</label>
+                <strong>{modeLabel(scene.mode)}</strong>
+                <small>支持学员沉浸式对练</small>
               </div>
-
-              {/* 右侧栏 */}
-              <div style={{ padding: "24px 20px", background: "#fafbfe" }}>
-                <SideBlock title="场景信息">
-                  <SideRow label="场景编号" value={scene.code} />
-                  <SideRow label="场景类型" value={scene.sceneType || "—"} />
-                  <SideRow label="行业包" value={scene.industryPackageName || "—"} />
-                  <SideRow label="创建部门" value={scene.creatorOrgName || "—"} />
-                  <SideRow label="创建人" value={scene.creatorName || "—"} />
-                  <SideRow label="创建时间" value={formatDate(scene.createdAt)} />
-                  <SideRow label="更新时间" value={formatDate(scene.updatedAt)} />
-                </SideBlock>
-
-                <SideBlock title="评分规则">
-                  {detail.scoringRules.length === 0 ? (
-                    <p style={{ margin: 0, color: "#8b98aa", fontSize: 12 }}>未配置评分规则。</p>
-                  ) : (
-                    <div style={{ display: "grid", gap: 6 }}>
-                      {detail.scoringRules.map((r, i) => (
-                        <div key={r.id || i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#3d4d66" }}>
-                          <span>{r.name}</span>
-                          <strong>{r.score} 分</strong>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </SideBlock>
-
-                <SideBlock title="训练资料">
-                  {detail.materials.length === 0 ? (
-                    <p style={{ margin: 0, color: "#8b98aa", fontSize: 12 }}>暂无关联训练资料。</p>
-                  ) : (
-                    <div style={{ display: "grid", gap: 6 }}>
-                      {detail.materials.map((m) => (
-                        <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#3d4d66" }}>
-                          <FileText size={13} style={{ color: "#8b98aa" }} />
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </SideBlock>
+            </div>
+            <div className="preview-stat card">
+              <div className="preview-stat-icon green-icon">✓</div>
+              <div>
+                <label>评分维度</label>
+                <strong>{detail.scoringRules.length}</strong>
+                <small>总分 <b>{scoreTotal}</b> 分</small>
               </div>
             </div>
           </div>
+
+          <div className="preview-content-grid">
+            <div className="preview-main-column">
+              {/* 01 角色配置 */}
+              <section className="preview-section card">
+                <div className="preview-section-head">
+                  <div>
+                    <span className="preview-section-index">01</span>
+                    <div>
+                      <h2>角色配置</h2>
+                      <p>定义 AI 与学员在场景中的身份、背景和沟通状态</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="role-preview-grid">
+                  <article className="role-preview ai-role">
+                    <div className="role-preview-top">
+                      <span className="role-avatar">AI</span>
+                      <div>
+                        <span className="role-label">AI 扮演角色</span>
+                        <h3>{aiRole?.identity || "未配置"}</h3>
+                      </div>
+                    </div>
+                    <div className="role-fields">
+                      <div>
+                        <label>身份地位</label>
+                        <p>{aiRole?.goal || "未配置"}</p>
+                      </div>
+                      <div>
+                        <label>角色性格</label>
+                        <p>{aiRole?.personality || "未配置"}</p>
+                      </div>
+                      <div>
+                        <label>情绪设置</label>
+                        <p>{emotionLabel(aiRole?.emotion || "")}</p>
+                      </div>
+                      <div>
+                        <label>背景简介</label>
+                        <p>{aiRole?.background || "未配置"}</p>
+                      </div>
+                    </div>
+                  </article>
+                  <article className="role-preview student-role">
+                    <div className="role-preview-top">
+                      <span className="role-avatar">学</span>
+                      <div>
+                        <span className="role-label">学员扮演角色</span>
+                        <h3>{learnerRole?.identity || "未配置"}</h3>
+                      </div>
+                    </div>
+                    <div className="role-student-note">学员将以此角色进入训练，通过对话完成当前场景目标。</div>
+                  </article>
+                </div>
+              </section>
+
+              {/* 02 训练内容 */}
+              <section className="preview-section card">
+                <div className="preview-section-head">
+                  <div>
+                    <span className="preview-section-index">02</span>
+                    <div>
+                      <h2>训练内容</h2>
+                      <p>根据已填写的内容生成本场景的训练说明与对话流程</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="preview-goal">
+                  <div className="goal-mark">◎</div>
+                  <div>
+                    <label>对话目标</label>
+                    <p>{learnerRole?.goal || "未配置"}</p>
+                  </div>
+                </div>
+                <div className="preview-description">
+                  <label>场景说明</label>
+                  <p>{scene.description || "未填写"}</p>
+                </div>
+                <div className="dialogue-preview">
+                  <div className="dialogue-preview-head">
+                    <label>对话实例</label>
+                    <span>{dialogues.length} 轮</span>
+                  </div>
+                  <div className="dialogue-preview-body">
+                    {dialogues.length === 0 ? (
+                      <div className="preview-empty">暂未配置对话实例</div>
+                    ) : (
+                      dialogues.map((item, i) => (
+                        <div key={i} className={`dialogue-bubble${item.role === "student" ? " student" : ""}`}>
+                          <span className="bubble-role">{item.role === "student" ? "学" : "AI"}</span>
+                          <span className="bubble-text">{item.text}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              {/* 03 训练规则 */}
+              <section className="preview-section card">
+                <div className="preview-section-head">
+                  <div>
+                    <span className="preview-section-index">03</span>
+                    <div>
+                      <h2>训练规则</h2>
+                      <p>对练过程中的起始方式、完成条件和中断条件</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="rule-preview-grid">
+                  <div className="rule-preview-item">
+                    <label>对话发起人</label>
+                    <p>{initiatorLabel(rule?.initiator || "")}</p>
+                  </div>
+                  <div className="rule-preview-item">
+                    <label>结束条件</label>
+                    <p>{rule?.endCondition || "未配置"}</p>
+                  </div>
+                  <div className="rule-preview-item full">
+                    <label>中断条件</label>
+                    <p>{rule?.interruptCondition || "未配置"}</p>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            {/* 右侧栏 */}
+            <aside className="preview-side-column">
+              <section className="preview-side-card card">
+                <div className="row">
+                  <h3>场景信息</h3>
+                  <span className="muted">基础资料</span>
+                </div>
+                <div className="preview-info-list">
+                  <div>
+                    <span>创建时间</span>
+                    <b>{formatDate(scene.createdAt)}</b>
+                  </div>
+                  <div>
+                    <span>关联任务</span>
+                    <b>{scene.taskCount ?? 0} 个</b>
+                  </div>
+                  <div>
+                    <span>当前状态</span>
+                    <b>{statusLabel(scene.status)}</b>
+                  </div>
+                </div>
+              </section>
+              <section className="preview-side-card card">
+                <div className="row">
+                  <h3>评分规则</h3>
+                  <span className="muted">满分 100</span>
+                </div>
+                <div className="preview-scoring-list">
+                  {detail.scoringRules.length === 0 ? (
+                    <div className="preview-empty">暂未配置评分规则</div>
+                  ) : (
+                    detail.scoringRules.map((r, i) => (
+                      <div key={r.id || i} className="preview-score-item">
+                        <div className="preview-score-line">
+                          <span>{r.name}</span>
+                          <b>{r.score} 分</b>
+                        </div>
+                        <div className="preview-score-track">
+                          <i style={{ width: `${Math.min(100, (Number(r.score) || 0) / 100 * 100)}%` }} />
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+              <section className="preview-side-card card">
+                <div className="row">
+                  <h3>训练资料</h3>
+                  <span className="muted">已上传</span>
+                </div>
+                <div className="preview-attachment-list">
+                  {detail.materials.length === 0 ? (
+                    <div className="preview-empty">暂无附件</div>
+                  ) : (
+                    detail.materials.map((m) => (
+                      <div key={m.id} className="preview-attachment">
+                        <span className="preview-attachment-icon">📎</span>
+                        <span>{m.name}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+            </aside>
+          </div>
         </div>
-      )}
+      </div>
     </AppShell>
-  );
-}
-
-// ---------- 子组件 ----------
-
-function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 12,
-      padding: "14px 16px", borderRadius: 10,
-      border: "1px solid rgba(115,131,154,0.12)", background: "#fff",
-    }}>
-      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, borderRadius: 8, background: "#eef1fc", color: "#4e63f0" }}>{icon}</span>
-      <div>
-        <div style={{ fontSize: 12, color: "#8b98aa" }}>{label}</div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: "#3949c9", marginTop: 2 }}>{value}</div>
-      </div>
-    </div>
-  );
-}
-
-function SectionBlock({ index, title, desc, icon, children }: { index: string; title: string; desc: string; icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 28 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: "#4e63f0" }}>{index}</span>
-        <span style={{ color: "#4e63f0", display: "flex" }}>{icon}</span>
-        <h3 style={{ margin: 0, fontSize: 16, color: "#3949c9", fontWeight: 700 }}>{title}</h3>
-      </div>
-      <p style={{ margin: "0 0 12px", color: "#73839a", fontSize: 13 }}>{desc}</p>
-      {children}
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "7px 0", borderBottom: "1px solid rgba(115,131,154,0.06)" }}>
-      <span style={{ color: "#8b98aa", fontSize: 13, minWidth: 84, flexShrink: 0 }}>{label}</span>
-      <span style={{ color: "#172b4d", fontSize: 13, lineHeight: 1.6, wordBreak: "break-word" }}>{value}</span>
-    </div>
-  );
-}
-
-function SideBlock({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 20, padding: "14px 16px", borderRadius: 10, border: "1px solid rgba(115,131,154,0.12)", background: "#fff" }}>
-      <h4 style={{ margin: "0 0 10px", fontSize: 13, color: "#3949c9", fontWeight: 700 }}>{title}</h4>
-      {children}
-    </div>
-  );
-}
-
-function SideRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, padding: "5px 0", fontSize: 12 }}>
-      <span style={{ color: "#8b98aa", flexShrink: 0 }}>{label}</span>
-      <span style={{ color: "#3d4d66", textAlign: "right", wordBreak: "break-word" }}>{value}</span>
-    </div>
   );
 }
 

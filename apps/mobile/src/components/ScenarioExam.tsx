@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { addExamCount, addExamRecord, type ExamRoundRecord } from "@/lib/sceneProgress";
 
 interface ScenarioExamProps {
   scene: any;
@@ -17,8 +18,16 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
   const [finished, setFinished] = useState(false);
   const [totalScore, setTotalScore] = useState(0);
   const [recorded, setRecorded] = useState(false);
+  const [rounds, setRounds] = useState<ExamRoundRecord[]>([]);
 
   const sceneName = scene?.scene?.name || "场景考试";
+  const sceneId = scene?.scene?.id || scene?.sceneId || "";
+
+  const questions = [
+    "请进行开场沟通，说明来意并了解对方当前最关注的问题。",
+    "对方提出一个关键顾虑，请给出专业、清晰的回应并推动下一步。",
+    "请总结本场景沟通结果，并确认后续行动安排。",
+  ];
 
   const submitRound = () => {
     if (!answer.trim()) {
@@ -36,6 +45,7 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
         : "回答较简略，建议围绕对方关注点展开并给出明确方案。";
     setFeedback({ score, comment });
     setTotalScore((s) => s + score);
+    setRounds((prev) => [...prev, { round, question: questions[round - 1], answer: answer.trim(), score, comment }]);
     if (round >= 3) {
       setFinished(true);
     }
@@ -47,11 +57,27 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
     setFeedback(null);
   };
 
-  const questions = [
-    "请进行开场沟通，说明来意并了解对方当前最关注的问题。",
-    "对方提出一个关键顾虑，请给出专业、清晰的回应并推动下一步。",
-    "请总结本场景沟通结果，并确认后续行动安排。",
-  ];
+  /** 完成考试：记录本地考试次数与明细（供历史记录"查看报告"） */
+  const finishExam = () => {
+    if (!recorded) {
+      setRecorded(true);
+      if (sceneId) {
+        const finalScore = Math.round(totalScore / 3);
+        const passScore = scene?.scene?.passScore ?? 60;
+        addExamRecord(sceneId, {
+          score: finalScore,
+          passScore,
+          passed: finalScore >= passScore,
+          mode: "语音形式",
+          rounds,
+          finishedAt: new Date().toISOString(),
+        });
+      }
+      addExamCount(sceneId);
+      onFinished?.();
+    }
+    onBack();
+  };
 
   return (
     <>
@@ -114,17 +140,7 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
             {totalScore / 3 >= 60 ? "恭喜通过场景考试！" : "未达到通过线，建议加强对练后重新考试。"}
           </p>
           <div className="task-detail-actions">
-            <button
-              className="primary"
-              type="button"
-              onClick={() => {
-                if (!recorded) {
-                  setRecorded(true);
-                  onFinished?.();
-                }
-                onBack();
-              }}
-            >
+            <button className="primary" type="button" onClick={finishExam}>
               返回场景工作台
             </button>
           </div>

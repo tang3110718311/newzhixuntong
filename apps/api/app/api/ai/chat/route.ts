@@ -11,6 +11,10 @@ const toSimplified = Converter({ from: "t", to: "cn" });
 // 跑题连续计数（按会话 sessionId，进程内存；单实例部署有效，重启归零可接受）
 const offTopicCountBySession = new Map<string, number>();
 
+// 每轮评分暂存（按会话 sessionId，进程内存）：训练结束后随整场评分一起落库（score_details.round_no）
+type TurnScoreEntry = { roundNo: number; scores: Array<{ name: string; score: number; level: string; reason?: string }> };
+const turnScoresBySession = new Map<string, TurnScoreEntry[]>();
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -242,9 +246,9 @@ export async function POST(request: Request) {
     }
     const llmTokens = payload.usage?.total_tokens ?? (payload.usage?.prompt_tokens ?? 0) + (payload.usage?.completion_tokens ?? 0);
 
-    // 解析教练提示
+    // 解析教练提示（模型有时输出全角括号 [COACH_TIP:...】或【COACH_TIP:...】，需兼容）
     let coachTip: string | null = null;
-    const coachMatch = aiReply.match(/\[COACH_TIP:(.+?)\]/);
+    const coachMatch = aiReply.match(/[\[【]\s*COACH_TIP\s*[:：]\s*(.+?)[\]】]/);
     if (coachMatch) {
       coachTip = coachMatch[1].trim();
       aiReply = aiReply.replace(coachMatch[0], "").trim();
@@ -270,6 +274,27 @@ export async function POST(request: Request) {
     if (coachTip) coachTip = toSimplified(coachTip);
 
     const isFinished = aiReply.includes("【训练结束】") || body.finishTraining || forceFinished;
+
+    // 单轮评分：对学员最新一轮回答按维度打分，供反馈卡实时显示；同时按 sessionId 暂存，训练结束时随整场评分一起落库
+    let perTurnScores: Array<{ name: string; score: number; maxScore: number; level: string; reason?: string }> = [];
+    const lastLearnerMsg = [...body.messages].reverse().find((m) => m.role === "learner");
+    if (lastLearnerMsg) {
+      try {
+        perTurnScores = await scoreCurrentTurn(lastLearnerMsg.content, aiReply, sceneDetail, config);
+      } catch { /* 单轮评分失败不阻塞主流程 */ }
+    }
+    if (perTurnScores.length && body.sessionId) {
+      const roundNo = learnerMessageCount; // 学员第 N 次回答 = 第 N 轮
+      const arr = turnScoresBySession.get(body.sessionId) ?? [];
+      const entry: TurnScoreEntry = {
+        roundNo,
+        scores: perTurnScores.map((s) => ({ name: s.name, score: s.score, level: s.level, reason: s.reason ?? "" })),
+      };
+      const idx = arr.findIndex((t) => t.roundNo === roundNo);
+      if (idx >= 0) arr[idx] = entry;
+      else arr.push(entry);
+      turnScoresBySession.set(body.sessionId, arr);
+    }
 
     // 训练结束：评分改为后台异步执行（响应先返回，前端轮询 by-session 接口拿结果），
     // 同一 sessionId 幂等，避免模型连续输出结束标记或前端重试时生成重复记录。
@@ -302,7 +327,7 @@ export async function POST(request: Request) {
       traceId,
     });
 
-    return ok({ aiReply, isFinished, trainingRecord, recordPending, coachTip, emotion, round: learnerMessageCount, remindCount: offTopicCount }, traceId);
+    return ok({ aiReply, isFinished, trainingRecord, recordPending, coachTip, emotion, round: learnerMessageCount, remindCount: offTopicCount, perTurnScores }, traceId);
   } catch (error) {
     if (tenantIdForLog) {
       try {
@@ -444,6 +469,79 @@ async function generateCoachTipFallback(
   return content.replace(/^["'“”：:\s]+/, "").replace(/["'”]\s*$/, "").slice(0, 100) || null;
 }
 
+/**
+ * 单轮轻量评分：对学员最新一轮回答按评分维度逐项打分（供反馈卡实时显示 + 报告页对话记录）。
+ * 返回规范化的 [{ name, score, maxScore, level }]；调用失败/解析失败返回 []（不阻塞主流程）。
+ */
+async function scoreCurrentTurn(
+  learnerText: string,
+  aiReplyText: string,
+  sceneDetail: NonNullable<ReturnType<typeof getSceneDetail>>,
+  config: { baseUrl: string; apiKeyEncrypted: string; modelName: string },
+): Promise<Array<{ name: string; score: number; maxScore: number; level: string; reason?: string }>> {
+  const scoringRules = sceneDetail.scoringRules;
+  if (!scoringRules.length) return [];
+  const prompt = [
+    "你是一名胜任力评估专家，对学员在角色扮演训练中的最新一轮回答进行评分。",
+    "评分维度（每个维度满分）：",
+    ...scoringRules.map((r) => `- ${r.name}（满分${r.score}分）：${r.criteria}`),
+    "",
+    `学员（客服/服务方）这一轮的回答：\n"${(learnerText || "").slice(0, 500)}"`,
+    aiReplyText ? `AI（客户/对手方）刚才的回应：\n"${aiReplyText.slice(0, 300)}"` : "",
+    "",
+    "要求：",
+    "1. 每个维度的得分不能超过其满分；",
+    "2. details 中的 name 必须与评分维度名完全一致（逐字匹配）；",
+    "3. 每个维度给能力评级：得分≥满分90% 为 excellent（精通），≥60% 为 pass（达标），否则 developing（待提升）；",
+    "4. 评分理由一句话即可，要依据学员实际回答。",
+    '5. 只输出 JSON，格式：{"details":[{"name":"维度名","score":数字,"level":"excellent|pass|developing","reason":"一句话评分理由"}]}',
+  ].join("\n");
+
+  const endpoint = normalizeUrl(config.baseUrl);
+  const resp = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKeyEncrypted}` },
+    body: JSON.stringify({
+      model: config.modelName,
+      temperature: 0.2,
+      max_tokens: 400,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: "你是 AI 智训通的胜任力评估专家。只输出 JSON，格式：{\"details\":[{\"name\":\"维度名\",\"score\":数字,\"level\":\"excellent|pass|developing\",\"reason\":\"评分理由\"}]}",
+        },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+  if (!resp.ok) return [];
+  const payload = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const content = payload.choices?.[0]?.message?.content;
+  if (!content) return [];
+  let parsed: { details?: unknown };
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed.details)) return [];
+  const byName = new Map(scoringRules.map((r) => [r.name, r]));
+  const out: Array<{ name: string; score: number; maxScore: number; level: string; reason?: string }> = [];
+  for (const d of parsed.details as Array<{ name?: unknown; score?: unknown; level?: unknown; reason?: unknown }>) {
+    if (!d || typeof d.name !== "string") continue;
+    const rule = byName.get(d.name);
+    const maxScore = rule?.score ?? 100;
+    const s = Math.min(maxScore, Math.max(0, Math.round(Number(d.score) || 0)));
+    let lvl = typeof d.level === "string" ? d.level.toLowerCase() : "";
+    if (!["excellent", "pass", "developing"].includes(lvl)) {
+      lvl = maxScore > 0 ? (s / maxScore >= 0.9 ? "excellent" : s / maxScore >= 0.6 ? "pass" : "developing") : "developing";
+    }
+    out.push({ name: d.name, score: s, maxScore, level: lvl, reason: typeof d.reason === "string" ? d.reason : "" });
+  }
+  return out;
+}
+
 async function scoreAndSaveRecord(
   tenantId: string,
   userId: string | null,
@@ -463,47 +561,69 @@ async function scoreAndSaveRecord(
     ? `评分维度（每个维度满分）：\n${scoringRules.map((r) => `- ${r.name}（满分${r.score}分）：${r.criteria}`).join("\n")}\n`
     : "请根据对话质量给出 0-100 的总分和评价。";
 
-  // Call LLM for scoring
+  // Call LLM for scoring（带 40s 超时：评分请求挂起/超慢不得阻塞落库，超时/失败走默认分兜底）
   const endpoint = normalizeUrl(config.baseUrl);
-  const scoreResponse = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKeyEncrypted}`,
-    },
-    body: JSON.stringify({
-      model: config.modelName,
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: "你是 AI 智训通的胜任力评估专家。评分必须基于对话中的真实行为表现（行为锚点），不得臆造。只输出 JSON，格式："
-            + "{\"totalScore\": 数字, \"details\": [{\"name\": \"维度名(必须与评分维度完全一致)\", \"score\": 数字, \"level\": \"excellent|pass|developing\", \"reason\": \"评分理由(紧扣行为锚点)\", \"evidence\": \"从对话原文引用学员原话或关键行为作为锚点依据\"}], \"suggestions\": [\"改进建议1\"], \"highlights\": [\"学员做得好的1-3点\"], \"weaknesses\": [\"学员的短板1-3点\"], \"capabilityProfile\": \"一段不超过80字的能力综述，概括学员在本场训练中的整体胜任力表现与成长方向\"}",
-        },
-        {
-          role: "user",
-          content: `请依据以下评分维度（胜任力维度），对训练对话逐项评分。\n\n要求：\n`
-            + `1. 每个维度的得分不能超过其满分；\n`
-            + `2. details 中的 name 必须与评分维度名完全一致（逐字匹配）；\n`
-            + `3. 每个维度必须按"行为锚点"法评估：在 evidence 里引用学员在对话中的具体原话或关键行为作为锚点依据，不得空泛；\n`
-            + `4. 每个维度给能力评级：得分≥满分90% 为 excellent（精通），≥60% 为 pass（达标），否则 developing（待提升）；\n`
-            + `5. totalScore 必须等于所有 details 得分之和；\n`
-            + `6. capabilityProfile 为一段不超过80字的整体能力综述。\n\n`
-            + `${scoringPrompt}\n对话内容：\n${transcript}`,
-        },
-      ],
-    }),
-  });
+  const controller = new AbortController();
+  const scoreTimer = setTimeout(() => controller.abort(), 40_000);
+  let scoreResponse: Response | null = null;
+  try {
+    scoreResponse = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKeyEncrypted}`,
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: config.modelName,
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: "你是 AI 智训通的胜任力评估专家。评分必须基于对话中的真实行为表现（行为锚点），不得臆造。只输出 JSON，格式："
+              + "{\"totalScore\": 数字, \"details\": [{\"name\": \"维度名(必须与评分维度完全一致)\", \"score\": 数字, \"level\": \"excellent|pass|developing\", \"reason\": \"评分理由(紧扣行为锚点)\", \"evidence\": \"从对话原文引用学员原话或关键行为作为锚点依据\"}], \"suggestions\": [\"改进建议1\"], \"highlights\": [\"学员做得好的1-3点\"], \"weaknesses\": [\"学员的短板1-3点\"], \"capabilityProfile\": \"一段不超过80字的能力综述，概括学员在本场训练中的整体胜任力表现与成长方向\"}",
+          },
+          {
+            role: "user",
+            content: `请依据以下评分维度（胜任力维度），对训练对话逐项评分。\n\n要求：\n`
+              + `1. 每个维度的得分不能超过其满分；\n`
+              + `2. details 中的 name 必须与评分维度名完全一致（逐字匹配）；\n`
+              + `3. 每个维度必须按"行为锚点"法评估：在 evidence 里引用学员在对话中的具体原话或关键行为作为锚点依据，不得空泛；\n`
+              + `4. 每个维度给能力评级：得分≥满分90% 为 excellent（精通），≥60% 为 pass（达标），否则 developing（待提升）；\n`
+              + `5. totalScore 必须等于所有 details 得分之和；\n`
+              + `6. capabilityProfile 为一段不超过80字的整体能力综述。\n\n`
+              + `${scoringPrompt}\n对话内容：\n${transcript}`,
+          },
+        ],
+      }),
+    });
+  } catch (error) {
+    // 超时或网络异常：不中断，走默认分落库
+    try {
+      logAiCall({
+        tenantId,
+        providerType: "llm",
+        modelName: config.modelName,
+        bizType: "chat_score",
+        durationMs: 40_000,
+        success: false,
+        errorMessage: error instanceof Error ? `评分请求超时或失败：${error.message}` : "评分请求超时或失败",
+        traceId,
+      });
+    } catch { /* ignore */ }
+  } finally {
+    clearTimeout(scoreTimer);
+  }
 
   let totalScore = 70;
-  let scoreDetails: Array<{ scoringRuleId: string | null; score: number; deductionReason: string; evidenceText: string; level?: string | null }> = [];
+  let scoreDetails: Array<{ scoringRuleId: string | null; score: number; deductionReason: string; evidenceText: string; level?: string | null; roundNo?: number }> = [];
   let suggestions: string[] = [];
   let highlights: string[] = [];
   let weaknesses: string[] = [];
   let capabilityProfile = "";
 
-  if (scoreResponse.ok) {
+  if (scoreResponse?.ok) {
     try {
       const scorePayload = await scoreResponse.json() as { choices?: Array<{ message?: { content?: string } }> };
       const scoreContent = scorePayload.choices?.[0]?.message?.content;
@@ -584,6 +704,29 @@ async function scoreAndSaveRecord(
       deductionReason: "",
       evidenceText: "",
     }));
+  }
+
+  // 每轮评分落库（round_no>0）：从进程内存取该会话各轮评分，按维度名匹配规则，随整场评分一并保存
+  if (body.sessionId) {
+    const storedTurns = turnScoresBySession.get(body.sessionId);
+    if (storedTurns?.length) {
+      const ruleByName = new Map(scoringRules.map((r) => [r.name, r]));
+      for (const t of storedTurns) {
+        for (const s of t.scores) {
+          const rule = s.name ? ruleByName.get(s.name) : undefined;
+          scoreDetails.push({
+            scoringRuleId: rule?.id ?? null,
+            roundNo: t.roundNo,
+            score: s.score,
+            deductionReason: s.reason ?? "",
+            evidenceText: "",
+            level: s.level,
+          });
+        }
+      }
+    }
+    // 清理内存暂存，避免会话残留
+    turnScoresBySession.delete(body.sessionId);
   }
 
   const record = createTrainingRecord(tenantId, {

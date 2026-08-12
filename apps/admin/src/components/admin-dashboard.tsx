@@ -682,6 +682,8 @@ export function AdminDashboard() {
   const [sceneKbFolderId, setSceneKbFolderId] = useState("");
   const [selectedKbFileIds, setSelectedKbFileIds] = useState<string[]>([]);
   const [sceneFilter, setSceneFilter] = useState({ status: "all", mode: "all", createMode: "all", org: "all", keyword: "" });
+  const [scenePage, setScenePage] = useState(1);
+  const [batchMode, setBatchMode] = useState(false);
   const [selectedSceneIds, setSelectedSceneIds] = useState<string[]>([]);
   const [sceneToDelete, setSceneToDelete] = useState<Scene | null>(null);
   const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
@@ -1227,8 +1229,45 @@ export function AdminDashboard() {
           evidenceRequired: r.evidenceRequired || "",
         })));
       }
-      setSceneWizardStep(2);
-      setMessage("AI 已根据场景描述生成角色和评分规则，请检查并调整。");
+      // 对齐原型：生成成功后关闭弹窗，进入独立表单页继续完善配置
+      setShowSceneWizard(false);
+      if (result.scene?.id) {
+        navigateTo(`/scenes/${result.scene.id}/edit`);
+      } else {
+        const industryId = aiGenerateForm.industryPackageId || industries[0]?.id || "";
+        const created = await apiFetch<Scene>("/scenes", {
+          method: "POST",
+          body: JSON.stringify({
+            industryPackageId: industryId,
+            name: aiGenerateForm.sceneDescription.slice(0, 30) || "新场景",
+            code: makeCode("CJ"),
+            mode: aiGenerateForm.mode,
+            createMode: aiGenerateForm.createMode || "ai_practice",
+            sceneType: "对话",
+            description: aiGenerateForm.sceneDescription,
+            aiRole: {
+              identity: draft.aiRole?.identity || "",
+              background: draft.aiRole?.background || "",
+              personality: draft.aiRole?.personality || "",
+              emotion: draft.aiRole?.emotion || "calm",
+              languageStyle: "",
+              goal: draft.learnerRole?.goal || "",
+            },
+            learnerRole: { identity: draft.learnerRole?.identity || "", goal: draft.learnerRole?.goal || "" },
+            endCondition: draft.endCondition || "",
+            interruptCondition: draft.interruptCondition || "",
+            initiator: "ai",
+            scoringRules: (draft.scoringRules || []).map((r) => ({
+              name: r.name,
+              score: r.score,
+              criteria: r.criteria,
+              deductionRule: r.deductionRule || "",
+              evidenceRequired: r.evidenceRequired || "",
+            })),
+          }),
+        });
+        navigateTo(`/scenes/${created.id}/edit`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI 生成场景失败，请检查模型配置。");
     } finally {
@@ -1378,11 +1417,56 @@ export function AdminDashboard() {
     await submitAction(`已删除 ${ids.length} 个场景。`, async () => {
       await apiFetch<{ deleted: number }>("/scenes/batch", { method: "DELETE", body: JSON.stringify({ ids }) });
       setSelectedSceneIds([]);
+      setBatchMode(false);
+      setScenePage(1);
     });
   }
 
   function toggleSceneSelection(sceneId: string) {
     setSelectedSceneIds((prev) => prev.includes(sceneId) ? prev.filter((id) => id !== sceneId) : [...prev, sceneId]);
+  }
+
+  // ===== 场景列表：过滤 + 每页 10 条客户端分页（对齐原型） =====
+  const SCENE_PAGE_SIZE = 10;
+  const sceneCreateModes = ["ai_practice", "ai_exam", "fixed_practice", "fixed_exam"];
+  const filteredScenes = scenes.filter((scene) => {
+    if (sceneFilter.status !== "all" && scene.status !== sceneFilter.status) return false;
+    if (sceneFilter.mode !== "all") {
+      if (sceneCreateModes.includes(sceneFilter.mode)) {
+        if ((scene.createMode || "ai_practice") !== sceneFilter.mode) return false;
+      } else if (scene.mode !== sceneFilter.mode) {
+        return false;
+      }
+    }
+    if (sceneFilter.org !== "all") {
+      const org = organizations.find((o) => o.id === sceneFilter.org);
+      if (org && scene.creatorOrgName !== org.name) return false;
+    }
+    if (sceneFilter.keyword && !`${scene.name} ${scene.code}`.toLowerCase().includes(sceneFilter.keyword.toLowerCase())) return false;
+    return true;
+  });
+  const totalScenePages = Math.max(1, Math.ceil(filteredScenes.length / SCENE_PAGE_SIZE));
+  const safeScenePage = Math.min(scenePage, totalScenePages);
+  const scenePageItems = filteredScenes.slice((safeScenePage - 1) * SCENE_PAGE_SIZE, safeScenePage * SCENE_PAGE_SIZE);
+  const currentPageIds = scenePageItems.map((s) => s.id);
+  const allCurrentPageChecked = currentPageIds.length > 0 && currentPageIds.every((id) => selectedSceneIds.includes(id));
+  function toggleAllCurrentPage(checked: boolean) {
+    setSelectedSceneIds((prev) => {
+      const next = prev.filter((id) => !currentPageIds.includes(id));
+      return checked ? [...next, ...currentPageIds] : next;
+    });
+  }
+  function toggleBatchMode() {
+    if (batchMode && selectedSceneIds.length > 0) {
+      setShowBatchDeleteConfirm(true);
+      return;
+    }
+    if (batchMode) {
+      setSelectedSceneIds([]);
+      setBatchMode(false);
+      return;
+    }
+    setBatchMode(true);
   }
 
   async function publishTask(taskId: string) {
@@ -1855,160 +1939,144 @@ export function AdminDashboard() {
         {activeSection === "scenes" && (
           <section className="page-section">
             <div className="home-grid">
-              <div className="home-main">
-                <div className="page-header">
+              <div className="home-main sc-mod">
+                <div className="scene-head card">
                   <div>
-                    <h1 className="page-title">场景管理</h1>
-                    <p className="page-desc">管理智能对练场景，快速创建并关联培训任务。</p>
+                    <h1>场景管理</h1>
+                    <p className="muted">管理智能对练场景，快速创建并关联培训任务。</p>
                   </div>
-                  <div className="toolbar">
-                    <button className="btn" type="button" disabled={selectedSceneIds.length === 0} onClick={() => setShowBatchDeleteConfirm(true)}>批量删除{selectedSceneIds.length > 0 ? `(${selectedSceneIds.length})` : ""}</button>
-                    <button className="btn primary" type="button" onClick={() => setShowSceneModePicker(true)}><Plus size={16} /> 添加场景</button>
-                  </div>
-                </div>
-
-                <div className="filter-bar card">
-                  <div className="filter-row">
-                    <input className="filter-input" type="text" placeholder="搜索名称/编号" value={sceneFilter.keyword || ""} onChange={(e) => setSceneFilter({ ...sceneFilter, keyword: e.target.value })} />
-                    <div className="filter-item">
-                      <span className="filter-label">状态：</span>
-                      <select className="filter-select" value={sceneFilter.status} onChange={(e) => setSceneFilter({ ...sceneFilter, status: e.target.value })}>
-                        <option value="all">全部</option>
-                        <option value="enabled">启用</option>
-                        <option value="disabled">停用</option>
-                      </select>
-                    </div>
-                    <div className="filter-item">
-                      <span className="filter-label">创建模式：</span>
-                      <select className="filter-select" value={sceneFilter.createMode} onChange={(e) => setSceneFilter({ ...sceneFilter, createMode: e.target.value })}>
-                        <option value="all">全部</option>
-                        <option value="ai_practice">AI对练模式</option>
-                        <option value="ai_exam">AI对练+考试模式</option>
-                        <option value="fixed_practice">固定对练模式</option>
-                        <option value="fixed_exam">固定对练+考试模式</option>
-                      </select>
-                    </div>
-                    <div className="filter-item">
-                      <span className="filter-label">对话模式：</span>
-                      <select className="filter-select" value={sceneFilter.mode} onChange={(e) => setSceneFilter({ ...sceneFilter, mode: e.target.value })}>
-                        <option value="all">全部</option>
-                        <option value="voice">语音模式</option>
-                        <option value="text">文本模式</option>
-                      </select>
-                    </div>
-                    <div className="filter-item">
-                      <span className="filter-label">创建部门：</span>
-                      <select className="filter-select" value={sceneFilter.org} onChange={(e) => setSceneFilter({ ...sceneFilter, org: e.target.value })}>
-                        <option value="all">全部</option>
-                        {organizations.map((org) => <option value={org.id} key={org.id}>{org.name}</option>)}
-                      </select>
-                    </div>
-                    <button className="btn" type="button" onClick={() => { /* filter applied reactively */ }}>查询</button>
+                  <div className="scene-actions">
+                    <button className="btn outline" type="button" onClick={toggleBatchMode}>
+                      {batchMode ? (selectedSceneIds.length > 0 ? `删除已选(${selectedSceneIds.length})` : "取消") : "批量删除"}
+                    </button>
+                    <button className="btn" type="button" onClick={() => setShowSceneModePicker(true)}>＋ 添加场景</button>
                   </div>
                 </div>
 
-                <div className="card section">
-                  <DataTable headers={["", "序号", "场景编号", "场景名称", "状态", "关联任务数", "创建部门", "创建人", "创建时间", "操作"]}>
-                    {scenes.filter((scene) => {
-                      if (sceneFilter.status !== "all" && scene.status !== sceneFilter.status) return false;
-                      if (sceneFilter.mode !== "all" && scene.mode !== sceneFilter.mode) return false;
-                      if (sceneFilter.createMode !== "all" && (scene.createMode || "ai_practice") !== sceneFilter.createMode) return false;
-                      if (sceneFilter.keyword && !`${scene.name} ${scene.code}`.toLowerCase().includes(sceneFilter.keyword.toLowerCase())) return false;
-                      return true;
-                    }).map((scene, idx) => (
-                      <tr key={scene.id}>
-                        <td>
-                          <input type="checkbox" checked={selectedSceneIds.includes(scene.id)} onChange={() => toggleSceneSelection(scene.id)} />
-                        </td>
-                        <td>{idx + 1}</td>
-                        <td className="muted-text">{scene.code}</td>
-                        <td>
-                          <strong>{scene.name}</strong>
-                          <span style={{ color: "#8b98aa", fontSize: 12, marginLeft: 6 }}>({modeLabel(scene.mode)})</span>
-                          {scene.createMode && <span style={{ color: "#367ff0", fontSize: 12, marginLeft: 6 }}>[{createModeLabel(scene.createMode)}]</span>}
-                        </td>
-                        <td>{statusBadge(scene.status)}</td>
-                        <td>{scene.taskCount ?? 0}</td>
-                        <td className="muted-text">{scene.creatorOrgName || "—"}</td>
-                        <td className="muted-text">{scene.creatorName || "—"}</td>
-                        <td className="muted-text">{scene.createdAt ? formatDate(scene.createdAt) : "—"}</td>
-                        <td>
-                          <div className="action-row">
-                            <button className="link-btn" type="button" onClick={() => { navigateTo('/scenes/' + scene.id); }}>预览</button>
-                            <button className="link-btn" type="button" onClick={() => { navigateTo('/scenes/' + scene.id + '/edit'); }}>编辑</button>
-                            {scene.status === "published" || scene.status === "enabled" ? (
-                              <button className="link-btn" type="button" onClick={() => disableScene(scene.id)} disabled={submitting}>禁用</button>
-                            ) : (
-                              <button className="link-btn" type="button" onClick={() => publishScene(scene.id)} disabled={submitting}>启用</button>
-                            )}
-                            <button className="link-btn" type="button">复制</button>
-                            <button className="link-btn" type="button" onClick={() => { navigateTo(`/practice?sceneId=${scene.id}`); }}>创建任务</button>
-                            <button className="link-btn" type="button" style={{ color: "#d64545" }} onClick={() => setSceneToDelete(scene)}>删除</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {!scenes.length && <div className="empty">暂无场景数据，请先添加行业包并创建场景。</div>}
-                  </DataTable>
-                  {/* 分页 */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, fontSize: 13, color: "#8b98aa" }}>
-                    <span>共{scenes.length}条记录</span>
+                <div className="scene-filter card">
+                  <input className="field" type="text" placeholder="搜索名称 / 编号" value={sceneFilter.keyword || ""} onChange={(e) => { setSceneFilter({ ...sceneFilter, keyword: e.target.value }); setScenePage(1); }} />
+                  <select className="field" value={sceneFilter.status} onChange={(e) => { setSceneFilter({ ...sceneFilter, status: e.target.value }); setScenePage(1); }}>
+                    <option value="all">状态：全部</option>
+                    <option value="enabled">启用</option>
+                    <option value="disabled">停用</option>
+                  </select>
+                  <select className="field" value={sceneFilter.mode} onChange={(e) => { setSceneFilter({ ...sceneFilter, mode: e.target.value }); setScenePage(1); }}>
+                    <option value="all">对话模式：全部</option>
+                    <option value="ai_practice">AI对练模式</option>
+                    <option value="ai_exam">AI对练+考试模式</option>
+                    <option value="fixed_practice">固定对练模式</option>
+                    <option value="fixed_exam">固定对练+考试模式</option>
+                    <option value="voice">语音模式</option>
+                    <option value="text">文本模式</option>
+                  </select>
+                  <select className="field" value={sceneFilter.org} onChange={(e) => { setSceneFilter({ ...sceneFilter, org: e.target.value }); setScenePage(1); }}>
+                    <option value="all">创建部门：全部</option>
+                    {organizations.map((org) => <option value={org.id} key={org.id}>{org.name}</option>)}
+                  </select>
+                  <button className="btn" type="button" onClick={() => setScenePage(1)}>查询</button>
+                </div>
+
+                <div className={`scene-list card ${batchMode ? "batch-mode" : ""}`}>
+                  <div className="table-wrap">
+                    <table className="scene-table">
+                      <thead>
+                        <tr>
+                          <th className="batch-col"><input type="checkbox" checked={allCurrentPageChecked} onChange={(e) => toggleAllCurrentPage(e.target.checked)} /></th>
+                          <th>序号</th>
+                          <th>场景编号</th>
+                          <th>场景名称</th>
+                          <th>状态</th>
+                          <th>关联任务数</th>
+                          <th>创建部门</th>
+                          <th>创建人</th>
+                          <th>创建时间</th>
+                          <th>操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {scenePageItems.map((scene, idx) => {
+                          const statusOn = scene.status === "enabled" || scene.status === "published" || scene.status === "active";
+                          const subMode = createModeLabel(scene.createMode) || modeLabel(scene.mode);
+                          return (
+                            <tr key={scene.id}>
+                              <td className="batch-col"><input type="checkbox" checked={selectedSceneIds.includes(scene.id)} onChange={() => toggleSceneSelection(scene.id)} /></td>
+                              <td>{(safeScenePage - 1) * SCENE_PAGE_SIZE + idx + 1}</td>
+                              <td>{scene.code}</td>
+                              <td className="name">{scene.name}<br /><small className="muted">{subMode}</small></td>
+                              <td><span className={`status ${statusOn ? "on" : "off"}`}>{statusOn ? "启用" : "停用"}</span></td>
+                              <td>{scene.taskCount ?? 0}</td>
+                              <td>{scene.creatorOrgName || "—"}</td>
+                              <td>{scene.creatorName || "—"}</td>
+                              <td>{scene.createdAt ? formatDate(scene.createdAt) : "—"}</td>
+                              <td>
+                                <div className="table-ops">
+                                  <a onClick={() => navigateTo(`/scenes/${scene.id}`)}>预览</a>
+                                  <a onClick={() => navigateTo(`/scenes/${scene.id}/edit`)}>编辑</a>
+                                  {statusOn ? <a onClick={() => disableScene(scene.id)}>禁用</a> : <a onClick={() => publishScene(scene.id)}>启用</a>}
+                                  <a>复制</a>
+                                  <a onClick={() => navigateTo(`/practice?sceneId=${scene.id}`)}>创建任务</a>
+                                  <a className="del" onClick={() => setSceneToDelete(scene)}>删除</a>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {scenePageItems.length === 0 && (
+                          <tr className="empty-row"><td colSpan={10}>暂无符合条件的场景</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="pagebar">
+                    <span>共 {filteredScenes.length} 条记录，第 {safeScenePage}/{totalScenePages} 页</span>
+                    <div className="pager">
+                      <button type="button" disabled={safeScenePage === 1} onClick={() => setScenePage(safeScenePage - 1)}>‹</button>
+                      {Array.from({ length: totalScenePages }, (_, i) => i + 1).map((p) => (
+                        <button type="button" key={p} className={p === safeScenePage ? "active" : ""} onClick={() => setScenePage(p)}>{p}</button>
+                      ))}
+                      <button type="button" disabled={safeScenePage === totalScenePages} onClick={() => setScenePage(safeScenePage + 1)}>›</button>
+                    </div>
                   </div>
                 </div>
 
 
 
             {showSceneModePicker && (
-              <div className="modal-overlay" onClick={() => setShowSceneModePicker(false)}>
-                <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 680 }}>
-                  <div className="modal-head">
+              <div className="scene-prompt-mask show" onClick={() => setShowSceneModePicker(false)}>
+                <div className="scene-prompt" role="dialog" aria-modal="true" aria-labelledby="scenePromptTitle" onClick={(e) => e.stopPropagation()}>
+                  <button className="close-prompt" type="button" onClick={() => setShowSceneModePicker(false)} aria-label="关闭">×</button>
+                  <div className="prompt-mode-step">
                     <h2>选择场景创建模式</h2>
-                    <button className="link-btn" type="button" onClick={() => setShowSceneModePicker(false)}>×</button>
+                    <p className="prompt-mode-desc">请选择一种对话模式，开始配置训练场景</p>
+                    <div className="mode-choice-grid">
+                      <button type="button" className="mode-choice ai" onClick={() => { setShowSceneModePicker(false); setAiGenerateForm((prev) => ({ ...prev, createMode: "ai_practice" })); setSceneWizardStep(1); setShowSceneWizard(true); }}>
+                        <span className="mode-choice-badge">智能生成</span>
+                        <span className="mode-choice-icon">✦</span>
+                        <h3>AI对练模式</h3>
+                        <p>输入场景描述，由 AI 辅助生成角色、对话目标和评分规则，适合开放式沟通训练。</p>
+                      </button>
+                      <button type="button" className="mode-choice ai exam" onClick={() => { setShowSceneModePicker(false); setAiGenerateForm((prev) => ({ ...prev, createMode: "ai_exam" })); setSceneWizardStep(1); setShowSceneWizard(true); }}>
+                        <span className="mode-choice-badge">智能生成</span>
+                        <span className="mode-choice-icon">✦</span>
+                        <h3>AI对练+考试模式</h3>
+                        <p>由 AI 生成对练场景，并结合考试评分要求进行能力评估，适合综合训练与考核。</p>
+                      </button>
+                      <button type="button" className="mode-choice fixed" onClick={() => { setShowSceneModePicker(false); navigateTo("/scenes/new?mode=fixed_practice"); }}>
+                        <span className="mode-choice-icon">▤</span>
+                        <h3>固定对练模式</h3>
+                        <p>配置预设对话流程和话术节点，适合标准化、流程化的对话训练。</p>
+                      </button>
+                      <button type="button" className="mode-choice fixed exam" onClick={() => { setShowSceneModePicker(false); navigateTo("/scenes/new?mode=fixed_exam"); }}>
+                        <span className="mode-choice-icon">▤</span>
+                        <h3>固定对练+考试模式</h3>
+                        <p>配置固定对话流程，并结合考试评分要求进行能力评估，适合标准化训练与考核。</p>
+                      </button>
+                    </div>
+                    <div className="prompt-mode-note">创建后仍可在场景配置页继续修改角色、目标和评分规则。</div>
+                    <div className="prompt-actions prompt-mode-actions">
+                      <button className="btn outline" type="button" onClick={() => setShowSceneModePicker(false)}>取消</button>
+                    </div>
                   </div>
-                  <p className="section-note" style={{ marginBottom: 18 }}>选择创建方式，AI 模式可快速生成，固定模式适合标准化流程训练。</p>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                    <button
-                      className="mode-choice"
-                      type="button"
-                      onClick={() => { setShowSceneModePicker(false); setAiGenerateForm((prev) => ({ ...prev, createMode: "ai_practice" })); setSceneWizardStep(1); setShowSceneWizard(true); }}
-                      style={{ minHeight: 160, padding: 18, border: "1px solid var(--line)", borderRadius: 14, background: "#f2f7ff", textAlign: "left", cursor: "pointer" }}
-                    >
-                      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12, color: "#367ff0" }}>✦ AI</div>
-                      <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>AI对练模式</h3>
-                      <p style={{ margin: 0, color: "#7b8da4", fontSize: 12, lineHeight: 1.7 }}>输入场景描述，由 AI 辅助生成角色、对话目标和评分规则，适合开放式沟通训练。</p>
-                    </button>
-                    <button
-                      className="mode-choice"
-                      type="button"
-                      onClick={() => { setShowSceneModePicker(false); setAiGenerateForm((prev) => ({ ...prev, createMode: "ai_exam" })); setSceneWizardStep(1); setShowSceneWizard(true); }}
-                      style={{ minHeight: 160, padding: 18, border: "1px solid var(--line)", borderRadius: 14, background: "#f2f7ff", textAlign: "left", cursor: "pointer" }}
-                    >
-                      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12, color: "#367ff0" }}>✦ AI</div>
-                      <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>AI对练+考试模式</h3>
-                      <p style={{ margin: 0, color: "#7b8da4", fontSize: 12, lineHeight: 1.7 }}>AI 对练结束后进入考试评分环节，综合训练与考核于一体。</p>
-                    </button>
-                    <button
-                      className="mode-choice"
-                      type="button"
-                      onClick={() => { setShowSceneModePicker(false); setAiGenerateForm((prev) => ({ ...prev, createMode: "fixed_practice" })); setSceneWizardStep(2); setShowSceneWizard(true); }}
-                      style={{ minHeight: 160, padding: 18, border: "1px solid var(--line)", borderRadius: 14, background: "#f2fbff", textAlign: "left", cursor: "pointer" }}
-                    >
-                      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12, color: "#32a5bd" }}>▤ 固</div>
-                      <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>固定对练模式</h3>
-                      <p style={{ margin: 0, color: "#7b8da4", fontSize: 12, lineHeight: 1.7 }}>配置预设对话流程和话术节点，适合标准化、流程化的对话训练。</p>
-                    </button>
-                    <button
-                      className="mode-choice"
-                      type="button"
-                      onClick={() => { setShowSceneModePicker(false); setAiGenerateForm((prev) => ({ ...prev, createMode: "fixed_exam" })); setSceneWizardStep(2); setShowSceneWizard(true); }}
-                      style={{ minHeight: 160, padding: 18, border: "1px solid var(--line)", borderRadius: 14, background: "#f2fbff", textAlign: "left", cursor: "pointer" }}
-                    >
-                      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12, color: "#32a5bd" }}>▤ 固</div>
-                      <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>固定对练+考试模式</h3>
-                      <p style={{ margin: 0, color: "#7b8da4", fontSize: 12, lineHeight: 1.7 }}>固定流程训练后进入考试评分，适合标准化岗位的考核场景。</p>
-                    </button>
-                  </div>
-                  <p className="section-note" style={{ marginTop: 16, marginBottom: 0, color: "#8b98aa" }}>创建后仍可在场景配置页继续修改角色、目标和评分规则。</p>
                 </div>
               </div>
             )}
@@ -2028,229 +2096,75 @@ export function AdminDashboard() {
             />
 
             {showSceneWizard && (
-              <div className="modal-overlay" onClick={() => setShowSceneWizard(false)}>
-                <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-                  <div className="wizard-steps">
-                    <div className={`wizard-step ${sceneWizardStep >= 1 ? "active" : ""} ${sceneWizardStep > 1 ? "done" : ""}`}>
-                      <span className="step-num">{sceneWizardStep > 1 ? "✓" : "1"}</span>
-                      <span className="step-label">选择描述</span>
-                    </div>
-                    <div className={`wizard-line ${sceneWizardStep > 1 ? "done" : ""}`} />
-                    <div className={`wizard-step ${sceneWizardStep >= 2 ? "active" : ""} ${sceneWizardStep > 2 ? "done" : ""}`}>
-                      <span className="step-num">{sceneWizardStep > 2 ? "✓" : "2"}</span>
-                      <span className="step-label">角色与对话</span>
-                    </div>
-                    <div className={`wizard-line ${sceneWizardStep > 2 ? "done" : ""}`} />
-                    <div className={`wizard-step ${sceneWizardStep >= 3 ? "active" : ""}`}>
-                      <span className="step-num">3</span>
-                      <span className="step-label">评分规则</span>
-                    </div>
-                  </div>
-
-                  {sceneWizardStep === 1 && (
-                    <div className="wizard-body">
-                      <h2>你需要创建什么场景？</h2>
-                      <input
-                        ref={sceneAttachmentInputRef}
-                        type="file"
-                        multiple
-                        accept=".pdf,.docx,.xlsx,.pptx,.txt,.md"
-                        style={{ display: "none" }}
-                        onChange={handleSceneAttachmentsSelected}
+              <div className="scene-prompt-mask show ai-flow" onClick={() => setShowSceneWizard(false)}>
+                <div className="scene-prompt" role="dialog" aria-modal="true" aria-labelledby="scenePromptTitle" onClick={(e) => e.stopPropagation()}>
+                  <button className="close-prompt" type="button" onClick={() => setShowSceneWizard(false)} aria-label="关闭">×</button>
+                  <div>
+                    <h2 id="scenePromptTitle">你需要创建什么场景？</h2>
+                    <div className="prompt-box">
+                      <textarea
+                        value={aiGenerateForm.sceneDescription}
+                        onChange={(e) => setAiGenerateForm({ ...aiGenerateForm, sceneDescription: e.target.value })}
+                        maxLength={500}
+                        placeholder="请输入场景内容，例如：模拟客户投诉、产品推介或安全生产问答等场景"
                       />
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                        <div
-                          className="upload-area"
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => sceneAttachmentInputRef.current?.click()}
-                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") sceneAttachmentInputRef.current?.click(); }}
-                          style={{ cursor: "pointer", minHeight: 110 }}
-                        >
-                          {sceneAttachmentsUploading ? (
-                            <Loader2 size={24} style={{ animation: "spin 1s linear infinite" }} />
-                          ) : (
-                            <Plus size={24} />
-                          )}
-                          <span>{sceneAttachmentsUploading ? "附件上传解析中…" : "＋ 本地文件"}</span>
-                          <small>选择本地文件上传，单个不超过 20MB；上传后自动存入企业知识库并作为生成依据</small>
+                      <div className="prompt-upload">
+                        <div className="prompt-upload-head">
+                          <div className="prompt-upload-title">上传附件<span>支持本地文件或企业知识库资料</span></div>
+                          <div className="prompt-upload-actions">
+                            <label className="prompt-upload-label" onClick={() => sceneAttachmentInputRef.current?.click()}>＋ 本地文件
+                              <input ref={sceneAttachmentInputRef} type="file" multiple accept=".pdf,.docx,.xlsx,.pptx,.txt,.md" onChange={handleSceneAttachmentsSelected} />
+                            </label>
+                            <button type="button" className="prompt-knowledge-select" onClick={openSceneKbPicker}>▣ 企业知识库</button>
+                          </div>
                         </div>
-                        <div
-                          className="upload-area"
-                          role="button"
-                          tabIndex={0}
-                          onClick={openSceneKbPicker}
-                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openSceneKbPicker(); }}
-                          style={{ cursor: "pointer", minHeight: 110, background: "#f6f9ff", borderColor: "#c9d9f5" }}
-                        >
-                          <FileText size={24} />
-                          <span>▣ 企业知识库</span>
-                          <small>从企业知识库中挑选已入库文件作为生成依据</small>
-                        </div>
-                      </div>
-                      {sceneAttachments.length > 0 && (
-                        <div style={{ margin: "10px 0 0", display: "flex", flexDirection: "column", gap: 6 }}>
+                        <div className="prompt-attachment-list">
                           {sceneAttachments.map((item) => (
-                            <div key={item.name} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#3d4d66", background: "#f7f9fc", border: "1px solid #e6eaf2", borderRadius: 6, padding: "6px 10px" }}>
-                              <Paperclip size={14} style={{ color: "#8b98aa", flexShrink: 0 }} />
-                              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
-                              {item.status === "uploading" && <span style={{ color: "#b08a00" }}>上传解析中…</span>}
-                              {item.status === "done" && item.fileId && <span style={{ color: "#22c55e" }}>知识库</span>}
-                              {item.status === "done" && !item.fileId && <span style={{ color: "#22c55e" }}>已入库</span>}
-                              {item.status === "failed" && <span style={{ color: "#ed2633" }} title={item.error}>解析失败</span>}
-                              <button
-                                className="link-btn"
-                                type="button"
-                                style={{ color: "#ed2633" }}
-                                onClick={() => removeSceneAttachment(item.name)}
-                                aria-label={`删除附件 ${item.name}`}
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
+                            <span className={`prompt-attachment ${item.status === "failed" ? "" : ""}`} key={item.name}>
+                              📎 {item.name}
+                              {item.status === "uploading" && <small> 上传解析中…</small>}
+                              {item.status === "done" && <small> 已入库</small>}
+                              {item.status === "failed" && <small> 解析失败</small>}
+                              <button type="button" onClick={() => removeSceneAttachment(item.name)} aria-label="移除附件">×</button>
+                            </span>
                           ))}
                         </div>
-                      )}
-                      <Field label="场景描述">
-                        <textarea
-                          value={aiGenerateForm.sceneDescription}
-                          onChange={(e) => setAiGenerateForm({ ...aiGenerateForm, sceneDescription: e.target.value })}
-                          placeholder="包含人物、场景、痛点、目标和关键沟通要求。如：一位客户咨询套餐资费，认为线下价格偏高且担心售后。训练学员识别诉求、解释方案并促成办理。"
-                          required
-                          style={{ minHeight: 120 }}
-                        />
-                        <span className="char-count">{aiGenerateForm.sceneDescription.length}/500</span>
-                      </Field>
-                      {/* P2 主动追问：AI 认为描述信息不足时在此补问 */}
-                      {aiFollowUpQuestions && aiFollowUpQuestions.length > 0 && (
-                        <div className="ai-followup-card">
-                          <div className="ai-followup-title">
-                            <Sparkles size={15} />
-                            <span>AI 需要补充几个关键信息才能生成更好的场景</span>
-                          </div>
-                          {aiFollowUpQuestions.map((q, i) => (
-                            <div key={i} className="ai-followup-item">
-                              <span className="ai-followup-q">{i + 1}. {q}</span>
-                              <input
-                                value={aiFollowUpAnswers[i] || ""}
-                                onChange={(e) => setAiFollowUpAnswers((prev) => ({ ...prev, [i]: e.target.value }))}
-                                placeholder="在此补充…"
-                              />
-                            </div>
-                          ))}
-                          <div className="ai-followup-actions">
-                            <button className="btn" type="button" onClick={() => setAiFollowUpQuestions(null)}>跳过，直接生成</button>
-                            <button className="btn primary" type="button" disabled={submitting} onClick={handleAiRegenerateWithAnswers}>
-                              {submitting ? "生成中…" : "补充后重新生成"}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                      <p className="field-hint">◈ 建议　包含人物、场景、痛点、目标和关键沟通要求。</p>
-                      <p className="field-hint">▣ 示例　一位客户咨询套餐资费，认为线下价格偏高且担心售后。训练学员识别诉求、解释方案并促成办理。</p>
-                    </div>
-                  )}
-
-                  {sceneWizardStep === 2 && (
-                    <div className="wizard-body">
-                      <h2>完善场景配置</h2>
-                      <p className="section-note">请继续填写 AI 对练的角色和目标</p>
-                      {/* P2 改前改后对照：AI 生成的场景 vs 用户原始描述 */}
-                      {aiGeneratedOriginal && (
-                        <details className="ai-compare-card" open={false}>
-                          <summary>
-                            <span>◈ 改前改后对照（AI 生成结果 vs 你的原始描述）</span>
-                          </summary>
-                          <div className="ai-compare-grid">
-                            <div className="ai-compare-col">
-                              <h4>你的原始描述</h4>
-                              <p>{aiGeneratedOriginal.sceneDescription}</p>
-                            </div>
-                            <div className="ai-compare-col">
-                              <h4>AI 生成的场景</h4>
-                              <p>{wizardRoleForm.sceneDescription || aiGenerateForm.sceneDescription}</p>
-                            </div>
-                          </div>
-                        </details>
-                      )}
-                      <div className="wizard-two-col">
-                        <div className="wizard-col">
-                          <h3>人员角色配置</h3>
-                          <Field label="* AI扮演角色"><input value={wizardRoleForm.aiIdentity} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiIdentity: e.target.value })} placeholder="如：投诉客户" required /><span className="char-count">{wizardRoleForm.aiIdentity.length}/200</span></Field>
-                          <Field label="背景简介"><textarea value={wizardRoleForm.aiBackground} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiBackground: e.target.value })} placeholder="如：长期客户，对服务有较高期待，投诉过两次宽带故障" style={{ minHeight: 60 }} /><span className="char-count">{wizardRoleForm.aiBackground.length}/300</span></Field>
-                          <Field label="AI角色性格"><input value={wizardRoleForm.aiPersonality} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiPersonality: e.target.value })} placeholder="如：急躁但理性" /><span className="char-count">{wizardRoleForm.aiPersonality.length}/200</span></Field>
-                          <Field label="AI语言风格"><input value={wizardRoleForm.aiStyle} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiStyle: e.target.value })} placeholder="如：礼貌、简洁，适当使用方言或行业术语" /><span className="char-count">{wizardRoleForm.aiStyle.length}/200</span></Field>
-                          <Field label="* AI情绪设置">
-                            <select value={wizardRoleForm.aiEmotion} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiEmotion: e.target.value })}>
-                              <option value="">请选择 AI 情绪</option>
-                              <option value="calm">平静</option>
-                              <option value="kind">亲切</option>
-                              <option value="anxious">焦急</option>
-                              <option value="angry">生气</option>
-                              <option value="furious">愤怒</option>
-                              <option value="depressed">沮丧</option>
-                              <option value="professional">专业</option>
-                            </select>
-                          </Field>
-                        </div>
-                        <div className="wizard-col">
-                          <h3>对话设置</h3>
-                          <Field label="* 学员角色扮演"><input value={wizardRoleForm.learnerIdentity} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, learnerIdentity: e.target.value })} placeholder="如：客服坐席" required /><span className="char-count">{wizardRoleForm.learnerIdentity.length}/200</span></Field>
-                          <Field label="* 对话目标"><textarea value={wizardRoleForm.dialogueGoal} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, dialogueGoal: e.target.value })} placeholder="如：识别诉求、安抚情绪、给出解决方案" required /><span className="char-count">{wizardRoleForm.dialogueGoal.length}/500</span></Field>
-                          <Field label="场景说明"><textarea value={wizardRoleForm.sceneDescription} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, sceneDescription: e.target.value })} placeholder="补充场景背景、关键流程或注意事项（选填）" style={{ minHeight: 60 }} /></Field>
-                          <Field label="对话发起人">
-                            <select value={wizardRoleForm.initiator} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, initiator: e.target.value })}>
-                              <option value="ai">AI</option>
-                              <option value="learner">学员</option>
-                              <option value="random">随机</option>
-                            </select>
-                          </Field>
-                          <Field label="结束条件"><input value={wizardRoleForm.endCondition} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, endCondition: e.target.value })} placeholder="如：学员给出明确处理时限" /></Field>
-                          <Field label="中断条件"><input value={wizardRoleForm.interruptCondition} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, interruptCondition: e.target.value })} placeholder="如：学员情绪失控或出现人身攻击" /></Field>
-                          <Field label="对话实例"><textarea value={wizardRoleForm.dialogueExample} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, dialogueExample: e.target.value })} placeholder="示例对话（可选）：客户：宽带又断了！客服：非常抱歉，我先帮您查一下线路状态…" style={{ minHeight: 70 }} /></Field>
-                        </div>
+                        {sceneAttachments.length === 0 && <div className="prompt-upload-empty">暂未选择附件</div>}
+                      </div>
+                      <div className="prompt-footer">
+                        <span className="prompt-count"><b>{aiGenerateForm.sceneDescription.length}</b>/500</span>
+                        <b>◈ 建议</b>　包含人物、场景、痛点、目标和关键沟通要求。<p><b>▣ 示例</b>　一位客户咨询套餐资费，认为线下价格偏高且担心售后。训练学员识别诉求、解释方案并促成办理。</p>
                       </div>
                     </div>
-                  )}
-
-                  {sceneWizardStep === 3 && (
-                    <div className="wizard-body">
-                      <h2>设置评分规则</h2>
-                      <p className="section-note">系统已根据场景内容自动生成评分规则，可直接修改。建议设置 3—5 个评分维度，所有分值合计为 100。</p>
-                      <div className="score-editor-list">
-                        {wizardScoringRules.map((rule, index) => (
-                          <div className="score-editor" key={`wizard-rule-${index}`}>
-                            <div className="score-editor-head">
-                              <strong>评分项 {index + 1}</strong>
-                              <button className="link-btn danger" type="button" onClick={() => removeWizardScoringRule(index)}>删除</button>
-                            </div>
-                            <div className="score-editor-grid">
-                              <Field label="名称"><input value={rule.name} onChange={(e) => updateWizardScoringRule(index, { name: e.target.value })} /></Field>
-                              <Field label="分值"><input type="number" min="0" max="100" value={rule.score} onChange={(e) => updateWizardScoringRule(index, { score: Number(e.target.value) })} /></Field>
-                            </div>
-                            <Field label="评分标准"><textarea value={rule.criteria} onChange={(e) => updateWizardScoringRule(index, { criteria: e.target.value })} /></Field>
+                    {/* P2 主动追问：AI 认为描述信息不足时在此补问 */}
+                    {aiFollowUpQuestions && aiFollowUpQuestions.length > 0 && (
+                      <div className="ai-followup-card">
+                        <div className="ai-followup-title">
+                          <Sparkles size={15} />
+                          <span>AI 需要补充几个关键信息才能生成更好的场景</span>
+                        </div>
+                        {aiFollowUpQuestions.map((q, i) => (
+                          <div key={i} className="ai-followup-item">
+                            <span className="ai-followup-q">{i + 1}. {q}</span>
+                            <input
+                              value={aiFollowUpAnswers[i] || ""}
+                              onChange={(e) => setAiFollowUpAnswers((prev) => ({ ...prev, [i]: e.target.value }))}
+                              placeholder="在此补充…"
+                            />
                           </div>
                         ))}
-                        <button className="btn" type="button" onClick={addWizardScoringRule}><Plus size={16} /> 添加评分项</button>
+                        <div className="ai-followup-actions">
+                          <button className="btn" type="button" onClick={() => setAiFollowUpQuestions(null)}>跳过，直接生成</button>
+                          <button className="btn primary" type="button" disabled={submitting} onClick={handleAiRegenerateWithAnswers}>
+                            {submitting ? "生成中…" : "补充后重新生成"}
+                          </button>
+                        </div>
                       </div>
-                      <div className="score-total-row">
-                        <span>总分：</span>
-                        <strong className={wizardScoringRules.reduce((sum, r) => sum + Number(r.score || 0), 0) === 100 ? "text-green" : "text-red"}>{wizardScoringRules.reduce((sum, r) => sum + Number(r.score || 0), 0)} 分</strong>
-                      </div>
+                    )}
+                    <div className="prompt-actions">
+                      <button className="btn outline" type="button" onClick={() => setShowSceneWizard(false)}>取消</button>
+                      <button className="btn" type="button" onClick={handleAiGenerateAndNext} disabled={submitting || !aiGenerateForm.sceneDescription.trim()}>{submitting ? "AI 生成中..." : "提交"}</button>
                     </div>
-                  )}
-
-                  <div className="wizard-footer">
-                    {sceneWizardStep > 1 ? (
-                      <button className="btn" type="button" onClick={() => setSceneWizardStep(sceneWizardStep - 1)}>返回上一步</button>
-                    ) : (
-                      <button className="btn" type="button" onClick={() => setShowSceneWizard(false)}>取消</button>
-                    )}
-                    {sceneWizardStep < 3 ? (
-                      <button className="btn primary" type="button" onClick={sceneWizardStep === 1 ? handleAiGenerateAndNext : () => setSceneWizardStep(sceneWizardStep + 1)} disabled={submitting || (sceneWizardStep === 1 && !aiGenerateForm.sceneDescription.trim())}>{submitting && sceneWizardStep === 1 ? "AI 生成中..." : "下一步"}</button>
-                    ) : (
-                      <button className="btn primary" type="button" onClick={handleWizardSubmit} disabled={submitting}>提交并创建</button>
-                    )}
                   </div>
                 </div>
               </div>
@@ -2714,7 +2628,7 @@ export function AdminDashboard() {
                               ))}
                               {!scenes.length ? <div className="empty">请先在场景管理里创建场景</div> : null}
                             </div>
-                            <button className="btn" type="button" onClick={() => setShowSceneWizard(true)}><Plus size={16} /> 添加业务场景</button>
+                            <button className="btn" type="button" onClick={() => { setAiGenerateForm((prev) => ({ ...prev, createMode: "ai_practice" })); setSceneWizardStep(1); setShowSceneWizard(true); }}><Plus size={16} /> 添加业务场景</button>
                             <p className="field-hint">已添加 {taskForm.sceneIds.length} 个场景</p>
                           </div>
                         )}
