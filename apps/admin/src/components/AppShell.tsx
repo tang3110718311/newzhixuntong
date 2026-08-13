@@ -13,27 +13,87 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
 
 // ---------- 导航配置 ----------
+// 图标采用原型链接（zxt-static-pages-attachment-v3）左侧菜单栏的线性描边 SVG，
+// 统一 viewBox="0 0 24 24"、fill:none、stroke:currentColor、stroke-width:1.8。
+
+const iconProps = {
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.8,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+};
+
+// 首页：房子
+const IcoHome = () => (
+  <svg {...iconProps}><path d="m3 10 9-7 9 7" /><path d="M5 9.5V21h14V9.5" /><path d="M9 21v-6h6v6" /></svg>
+);
+// 学员首页：人像
+const IcoStudent = () => (
+  <svg {...iconProps}><circle cx="12" cy="8" r="3.5" /><path d="M5 20c.8-3.4 3.2-5.2 7-5.2s6.2 1.8 7 5.2" /><path d="M4 12.5c1-.8 2-1.2 3.2-1.2M20 12.5c-1-.8-2-1.2-3.2-1.2" /></svg>
+);
+// 我的任务：清单
+const IcoTasks = () => (
+  <svg {...iconProps}><rect x="4" y="3.5" width="16" height="17" rx="2" /><path d="m8 8 1.4 1.4L12 6.8M14 9h3M8 14l1.4 1.4 2.6-2.6M14 15h3" /></svg>
+);
+// 我的考试：文档+对勾
+const IcoExams = () => (
+  <svg {...iconProps}><path d="M6 3.5h9l3 3V20H6z" /><path d="M15 3.5V7h3M9 11h6M9 15h4" /><path d="m8.5 18 1.3 1.3L12.5 16" /></svg>
+);
+// 场景管理：星星
+const IcoScenes = () => (
+  <svg {...iconProps}><path d="m12 3 1.7 5.1L19 10l-5.3 1.9L12 17l-1.7-5.1L5 10l5.3-1.9z" /><path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7zM5 3v3M3.5 4.5h3" /></svg>
+);
+// 企业知识库：书本
+const IcoKnowledge = () => (
+  <svg {...iconProps}><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H12v16H6.5A2.5 2.5 0 0 0 4 21z" /><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H12v16h5.5A2.5 2.5 0 0 1 20 21z" /><path d="M7.5 7H9M15 7h1.5" /></svg>
+);
+// 任务管理：文件+清单行
+const IcoTaskManage = () => (
+  <svg {...iconProps}><rect x="5" y="5" width="14" height="16" rx="2" /><path d="M9 5V3h6v2M8.5 10h7M8.5 14h7M8.5 18h4" /></svg>
+);
+// 申诉管理：聊天气泡
+const IcoAppeals = () => (
+  <svg {...iconProps}><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 4v-4h0A2.5 2.5 0 0 1 4 13.5z" /><path d="M8 8h8M8 12h5" /></svg>
+);
+// 数据统计：柱状图
+const IcoStatistics = () => (
+  <svg {...iconProps}><path d="M4 19V5M4 19h17" /><rect x="7" y="11" width="2.8" height="5" rx=".5" /><rect x="12" y="8" width="2.8" height="8" rx=".5" /><rect x="17" y="5" width="2.8" height="11" rx=".5" /></svg>
+);
+// 素材管理：文件夹
+const IcoMaterials = () => (
+  <svg {...iconProps}><path d="M4 7.5h6l1.7 2H20v9.5H4z" /><path d="M4 7.5V5h6l1.7 2" /></svg>
+);
+// 全局配置：齿轮
+const IcoSettings = () => (
+  <svg {...iconProps}><path d="m12 3 1.2 1.1 1.7-.3.8 1.5 1.7.5.1 1.7 1.4 1-.6 1.6.6 1.6-1.4 1-.1 1.7-1.7.5-.8 1.5-1.7-.3L12 21l-1.2-1.1-1.7.3-.8-1.5-1.7-.5-.1-1.7-1.4-1 .6-1.6-.6-1.6 1.4-1 .1-1.7 1.7-.5.8-1.5 1.7.3z" /><circle cx="12" cy="12" r="3" /></svg>
+);
+// 子菜单：部门数据（方块）
+const IcoDept = () => <span className="nav-sub-ico">▦</span>;
+// 子菜单：学员数据（棋子）
+const IcoLearner = () => <span className="nav-sub-ico">♙</span>;
 
 const defaultNavItems: NavItem[] = [
-  { id: "home", key: "overview", label: "首页", icon: <BarChart3 size={18} /> },
-  { id: "student-home", key: "student-home", label: "学员首页", icon: <Users size={18} /> },
-  { id: "my-tasks", key: "my-tasks", label: "我的任务", icon: <ClipboardList size={18} /> },
+  { id: "home", key: "overview", label: "首页", icon: <IcoHome /> },
+  { id: "student-home", key: "student-home", label: "学员首页", icon: <IcoStudent /> },
+  { id: "my-tasks", key: "my-tasks", label: "我的任务", icon: <IcoTasks /> },
   { id: "practice", key: "practice", label: "对练中心", icon: <MessageSquare size={18} /> },
   { id: "records", key: "records", label: "训练记录", icon: <ScrollText size={18} /> },
-  { id: "my-exams", key: "my-exams", label: "我的考试", icon: <FileText size={18} /> },
-  { id: "scenes", key: "scenes", label: "场景管理", icon: <Bot size={18} /> },
-  { id: "knowledge", key: "knowledge", label: "企业知识库", icon: <Database size={18} /> },
-  { id: "tasks", key: "tasks", label: "任务管理", icon: <ClipboardList size={18} /> },
-  { id: "appeals", key: "appeals", label: "申诉管理", icon: <AlertCircle size={18} /> },
+  { id: "my-exams", key: "my-exams", label: "我的考试", icon: <IcoExams /> },
+  { id: "scenes", key: "scenes", label: "场景管理", icon: <IcoScenes /> },
+  { id: "knowledge", key: "knowledge", label: "企业知识库", icon: <IcoKnowledge /> },
+  { id: "tasks", key: "tasks", label: "任务管理", icon: <IcoTaskManage /> },
+  { id: "appeals", key: "appeals", label: "申诉管理", icon: <IcoAppeals /> },
   {
-    id: "statistics", key: "statistics", label: "数据统计", icon: <BarChart3 size={18} />, group: "statistics",
+    id: "statistics", key: "statistics", label: "数据统计", icon: <IcoStatistics />, group: "statistics",
     children: [
-      { id: "statistics-dept", key: "statistics-dept", label: "部门数据", icon: <Building2 size={16} /> },
-      { id: "statistics-learner", key: "statistics-learner", label: "学员统计", icon: <Users size={16} /> },
+      { id: "statistics-dept", key: "statistics-dept", label: "部门数据", icon: <IcoDept /> },
+      { id: "statistics-learner", key: "statistics-learner", label: "学员统计", icon: <IcoLearner /> },
     ],
   },
-  { id: "materials", key: "materials", label: "素材管理", icon: <FileText size={18} /> },
-  { id: "settings", key: "settings", label: "全局配置", icon: <Settings size={18} /> },
+  { id: "materials", key: "materials", label: "素材管理", icon: <IcoMaterials /> },
+  { id: "settings", key: "settings", label: "全局配置", icon: <IcoSettings /> },
   {
     id: "sys", key: "sys", label: "系统管理", icon: <ShieldCheck size={18} />, group: "sys",
     children: [

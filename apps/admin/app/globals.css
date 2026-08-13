@@ -1872,12 +1872,14 @@ body {
   width: 22px;
   height: 22px;
   place-items: center;
-  border: 2px solid currentColor;
-  border-radius: 6px;
+  background: transparent;
+  color: currentColor;
 }
 
 .nav-icon svg {
-  display: none;
+  display: block;
+  width: 20px;
+  height: 20px;
 }
 
 .nav-label {
@@ -1920,7 +1922,6 @@ body {
 }
 
 .nav-group.open .group-head .nav-icon {
-  border-color: #4e63f0;
   color: #4e63f0;
 }
 
@@ -1952,8 +1953,16 @@ body {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.nav-item.sub .nav-icon {
-  display: none;
+/* 子菜单文字符号图标（▦/♙） */
+.nav-item.sub .nav-sub-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 14px;
+  line-height: 1;
+  color: currentColor;
 }
 
 .nav-item.sub.active {
