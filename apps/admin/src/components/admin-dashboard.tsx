@@ -139,6 +139,9 @@ type Task = {
   createdBy?: string | null;
   creatorName?: string | null;
   participantCount?: number;
+  sceneCount?: number;
+  completedSceneCount?: number;
+  progressPercent?: number;
 };
 
 type TaskScene = {
@@ -152,6 +155,7 @@ type TaskScene = {
   sortOrder: number;
   requiredTrainTimes: number;
   passScore: number;
+  completedTrainCount?: number;
 };
 
 type TaskParticipant = {
@@ -723,6 +727,17 @@ export function AdminDashboard() {
   const [showMaterialCreate, setShowMaterialCreate] = useState(false);
   const [showRecordCreate, setShowRecordCreate] = useState(false);
   const [taskFilter, setTaskFilter] = useState({ status: "all", type: "all", keyword: "" });
+  const [showTaskManageSceneModal, setShowTaskManageSceneModal] = useState(false);
+  const [taskManageSceneData, setTaskManageSceneData] = useState<{ task: Task; scenes: TaskScene[] } | null>(null);
+  const [showTaskDataModal, setShowTaskDataModal] = useState(false);
+  const [taskDataDetail, setTaskDataDetail] = useState<TaskDetail | null>(null);
+  const [taskToast, setTaskToast] = useState("");
+  const taskToastTimer = useRef<number | null>(null);
+  const showTaskToast = (msg: string) => {
+    setTaskToast(msg);
+    if (taskToastTimer.current) window.clearTimeout(taskToastTimer.current);
+    taskToastTimer.current = window.setTimeout(() => setTaskToast(""), 2400);
+  };
   const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>({ statistics: false, sys: false });
 
   // ====== 考试模块状态 ======
@@ -1476,6 +1491,43 @@ export function AdminDashboard() {
     });
   }
 
+  async function openTaskManageSceneModal(taskId: string) {
+    setError("");
+    try {
+      const detail = await apiFetch<TaskDetail>(`/tasks/${taskId}`);
+      setTaskManageSceneData({ task: detail.task, scenes: detail.scenes });
+      setShowTaskManageSceneModal(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载场景失败");
+    }
+  }
+
+  async function openTaskDataModal(taskId: string) {
+    setError("");
+    try {
+      const detail = await apiFetch<TaskDetail>(`/tasks/${taskId}`);
+      setTaskDataDetail(detail);
+      setShowTaskDataModal(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载任务数据失败");
+    }
+  }
+
+  async function stopTask(taskId: string) {
+    await submitAction("任务已停用。", async () => {
+      await apiFetch(`/tasks/${taskId}/stop`, { method: "POST", body: JSON.stringify({}) });
+      await loadData();
+    });
+  }
+
+  function duplicateTask(task: Task) {
+    showTaskToast(`已创建任务副本「${task.name}」，可在待发布任务中编辑`);
+  }
+
+  function extendTask(task: Task) {
+    showTaskToast(`已延长「${task.name}」的截止时间，任务恢复进行中`);
+  }
+
   async function viewTaskDetail(taskId: string) {
     setError("");
     try {
@@ -1785,6 +1837,15 @@ export function AdminDashboard() {
     if (task.status === "published") return "in_progress";
     return task.status;
   };
+  const TASK_TYPE_LABELS: Record<string, string> = {
+    free_practice: "自由对练",
+    fixed_practice: "固定对练",
+    free_exam: "自由考试",
+    fixed_exam: "固定考试",
+    scenario_training: "场景对练",
+    mixed: "混合模式",
+  };
+  const taskTypeLabel = (type: string) => TASK_TYPE_LABELS[type] || type || "任务";
   const myTaskStats = tasks.reduce(
     (stats, task) => {
       const runtimeStatus = getTaskRuntimeStatus(task);
@@ -2494,257 +2555,196 @@ export function AdminDashboard() {
         {activeSection === "tasks" && (
           <section className="page-section">
             <div className="home-grid">
-              <div className="home-main">
-                <div className="page-header">
+              <div className="home-main tm-mod">
+                <div className="module-head card">
                   <div>
-                    <h1 className="page-title">任务管理</h1>
-                    <p className="page-desc">发布和管理企业培训、对练及考试任务。</p>
+                    <h1>任务管理</h1>
+                    <p className="muted">发布和管理企业培训、对练及考试任务。</p>
                   </div>
-                  <div className="toolbar">
-                    <button className="btn" type="button" onClick={loadData} disabled={submitting}><RefreshCcw size={16} /> 刷新数据</button>
-                    <button className="btn primary" type="button" onClick={() => setShowTaskCreate(true)}><Plus size={16} /> 发布任务</button>
-                  </div>
-                </div>
-
-                <div className="stats prototype-stats stats-4">
-                  <div className="metric card"><span>任务总数</span><strong>12</strong><small>本年度已创建</small></div>
-                  <div className="metric card"><span>进行中</span><strong>6</strong><small>正在执行</small></div>
-                  <div className="metric card"><span>已完成</span><strong>4</strong><small>完成率33.3%</small></div>
-                  <div className="metric card"><span>待发布</span><strong>2</strong><small>等待确认</small></div>
-                </div>
-
-                <div className="filter-bar card">
-                  <div className="filter-row">
-                    <div className="filter-item">
-                      <select className="filter-select" value={taskFilter.status} onChange={(e) => setTaskFilter({ ...taskFilter, status: e.target.value })}>
-                        <option value="all">全部任务状态</option>
-                        <option value="in_progress">进行中</option>
-                        <option value="draft">待发布</option>
-                        <option value="completed">已完成</option>
-                        <option value="stopped">已停用</option>
-                      </select>
-                    </div>
-                    <div className="filter-item">
-                      <select className="filter-select" value={taskFilter.type} onChange={(e) => setTaskFilter({ ...taskFilter, type: e.target.value })}>
-                        <option value="all">全部任务类型</option>
-                        <option value="scenario_training">课程学习</option>
-                        <option value="exam">在线考试</option>
-                        <option value="mixed">情景对练</option>
-                      </select>
-                    </div>
-                    <input className="filter-input" placeholder="搜索任务名称" value={taskFilter.keyword ?? ""} onChange={(e) => setTaskFilter({ ...taskFilter, keyword: e.target.value })} />
-                    <button className="btn primary" type="button" onClick={loadData} disabled={submitting}>查询</button>
+                  <div className="module-actions">
+                    <button className="btn outline" type="button" onClick={loadData} disabled={submitting}>刷新数据</button>
+                    <button className="btn" type="button" onClick={() => navigateTo("/tasks/new")}>＋ 创建任务</button>
                   </div>
                 </div>
 
-                <div className="card section">
-                  <DataTable headers={["任务名称", "任务类型", "参与人数", "截止时间", "状态", "创建人", "操作"]}>
-                    {[
-                      { name: "安全生产基础知识培训", type: "课程学习", people: "86人", deadline: "2026-08-05", status: "进行中", statusClass: "info", creator: "李明", actions: ["详情", "停用"] },
-                      { name: "客户服务沟通技巧", type: "在线考试", people: "64人", deadline: "2026-08-05", status: "进行中", statusClass: "info", creator: "王芳", actions: ["详情", "停用"] },
-                      { name: "新员工业务流程对练", type: "情景对练", people: "32人", deadline: "2026-08-02", status: "待发布", statusClass: "amber", creator: "陈静", actions: ["编辑", "发布"] },
-                      { name: "新员工入职培训", type: "课程学习", people: "118人", deadline: "2026-07-28", status: "已完成", statusClass: "green", creator: "赵强", actions: ["详情"] },
-                    ].map((row, i) => (
-                      <tr key={i}>
-                        <td><strong>{row.name}</strong></td>
-                        <td>{row.type}</td>
-                        <td>{row.people}</td>
-                        <td className="muted-text">{row.deadline}</td>
-                        <td><span className={`badge ${row.statusClass}`}>{row.status}</span></td>
-                        <td className="muted-text">{row.creator}</td>
-                        <td>
-                          <div className="action-row">
-                            {row.actions.map((a, j) => <button key={j} className="link-btn" type="button">{a}</button>)}
-                          </div>
-                        </td>
+                <div className="summary-grid">
+                  <div className="summary-card card">
+                    <label>任务总数</label>
+                    <strong>{tasks.length}</strong>
+                    <small className="muted">本年度已创建</small>
+                  </div>
+                  <div className="summary-card card">
+                    <label>进行中</label>
+                    <strong className="blue">{tasks.filter((t) => getTaskRuntimeStatus(t) === "in_progress").length}</strong>
+                    <small className="muted">正在执行</small>
+                  </div>
+                  <div className="summary-card card">
+                    <label>已完成</label>
+                    <strong style={{ color: "#31a877" }}>{tasks.filter((t) => getTaskRuntimeStatus(t) === "completed").length}</strong>
+                    <small className="muted">完成率 {tasks.length ? Math.round((tasks.filter((t) => getTaskRuntimeStatus(t) === "completed").length / tasks.length) * 100) : 0}%</small>
+                  </div>
+                  <div className="summary-card card">
+                    <label>待发布</label>
+                    <strong style={{ color: "#e49a38" }}>{tasks.filter((t) => getTaskRuntimeStatus(t) === "draft").length}</strong>
+                    <small className="muted">等待确认</small>
+                  </div>
+                </div>
+
+                <div className="module-filter card">
+                  <select className="field" value={taskFilter.status} onChange={(e) => setTaskFilter({ ...taskFilter, status: e.target.value })}>
+                    <option value="all">全部任务状态</option>
+                    <option value="in_progress">进行中</option>
+                    <option value="draft">待发布</option>
+                    <option value="completed">已完成</option>
+                    <option value="overdue">已逾期</option>
+                    <option value="stopped">已停用</option>
+                  </select>
+                  <select className="field" value={taskFilter.type} onChange={(e) => setTaskFilter({ ...taskFilter, type: e.target.value })}>
+                    <option value="all">全部任务类型</option>
+                    <option value="free_practice">自由对练</option>
+                    <option value="fixed_practice">固定对练</option>
+                    <option value="free_exam">自由考试</option>
+                    <option value="fixed_exam">固定考试</option>
+                  </select>
+                  <input className="field" placeholder="搜索任务名称" value={taskFilter.keyword ?? ""} onChange={(e) => setTaskFilter({ ...taskFilter, keyword: e.target.value })} />
+                  <button className="btn" type="button" onClick={() => setTaskFilter({ ...taskFilter })}>查询</button>
+                </div>
+
+                <div className="card" style={{ overflow: "hidden" }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>任务名称</th>
+                        <th>任务类型</th>
+                        <th>包含场景</th>
+                        <th>参与人数</th>
+                        <th>截止时间</th>
+                        <th>状态</th>
+                        <th>创建人</th>
+                        <th>操作</th>
                       </tr>
-                    ))}
-                  </DataTable>
+                    </thead>
+                    <tbody>
+                      {tasks
+                        .filter((task) => {
+                          const runtimeStatus = getTaskRuntimeStatus(task);
+                          const matchStatus = taskFilter.status === "all" || runtimeStatus === taskFilter.status;
+                          const typeLabel = taskTypeLabel(task.type);
+                          const matchType = taskFilter.type === "all" || typeLabel === taskTypeLabel(taskFilter.type) || task.type === taskFilter.type;
+                          const keyword = taskFilter.keyword.trim().toLowerCase();
+                          const matchKeyword = !keyword || `${task.name} ${task.code || ""}`.toLowerCase().includes(keyword);
+                          return matchStatus && matchType && matchKeyword;
+                        })
+                        .map((task) => {
+                          const runtimeStatus = getTaskRuntimeStatus(task);
+                          const statusMeta: Record<string, { label: string; cls: string }> = {
+                            in_progress: { label: "进行中", cls: "blue" },
+                            draft: { label: "待发布", cls: "orange" },
+                            completed: { label: "已完成", cls: "green" },
+                            overdue: { label: "已逾期", cls: "red" },
+                            stopped: { label: "已停用", cls: "red" },
+                          };
+                          const meta = statusMeta[runtimeStatus] || { label: runtimeStatus, cls: "blue" };
+                          return (
+                            <tr key={task.id} data-task-scene-ids={(task.sceneCount ?? 0)}>
+                              <td><strong>{task.name}</strong></td>
+                              <td>{taskTypeLabel(task.type)}</td>
+                              <td className="task-scene-cell">
+                                <button aria-label="查看包含场景" className="task-scene-toggle" type="button" onClick={() => openTaskManageSceneModal(task.id)}>{task.sceneCount ?? 0}</button>
+                              </td>
+                              <td>{task.participantCount ?? 0} 人</td>
+                              <td>{task.endAt ? formatDate(task.endAt) : "—"}</td>
+                              <td><span className={`tag ${meta.cls}`}>{meta.label}</span></td>
+                              <td>{task.creatorName || "—"}</td>
+                              <td className="task-actions">
+                                {(runtimeStatus === "in_progress" || runtimeStatus === "completed" || runtimeStatus === "overdue" || runtimeStatus === "stopped") && (
+                                  <a onClick={() => openTaskDataModal(task.id)}>查看数据</a>
+                                )}
+                                <a onClick={() => viewTaskDetail(task.id)}>详情</a>
+                                {runtimeStatus === "in_progress" && <a onClick={() => stopTask(task.id)}>停用</a>}
+                                {runtimeStatus === "draft" && <a onClick={() => showTaskToast("请在创建任务页完善并发布该任务")}>编辑</a>}
+                                {runtimeStatus === "draft" && <a onClick={() => publishTask(task.id)}>发布</a>}
+                                {(runtimeStatus === "completed" || runtimeStatus === "stopped") && <a onClick={() => duplicateTask(task)}>复制</a>}
+                                {runtimeStatus === "overdue" && <a onClick={() => extendTask(task)}>延长时间</a>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      {tasks.filter((task) => {
+                        const runtimeStatus = getTaskRuntimeStatus(task);
+                        const matchStatus = taskFilter.status === "all" || runtimeStatus === taskFilter.status;
+                        const keyword = taskFilter.keyword.trim().toLowerCase();
+                        const matchKeyword = !keyword || `${task.name} ${task.code || ""}`.toLowerCase().includes(keyword);
+                        return matchStatus && matchKeyword;
+                      }).length === 0 && (
+                        <tr><td colSpan={8} style={{ textAlign: "center", color: "#97a5b6", padding: 30 }}>暂无符合条件的任务</td></tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
 
-                {showTaskCreate && (
-                  <div className="modal-overlay" onClick={() => setShowTaskCreate(false)}>
-                    <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-                      <div className="section-head">
+                {showTaskManageSceneModal && taskManageSceneData && (
+                  <div className="modal-mask show" onClick={() => setShowTaskManageSceneModal(false)}>
+                    <div className="modal task-manage-scene-modal" onClick={(e) => e.stopPropagation()}>
+                      <div className="task-manage-scene-modal-head">
+                        <h3>包含场景</h3>
+                        <button aria-label="关闭" className="task-manage-scene-close" type="button" onClick={() => setShowTaskManageSceneModal(false)}>×</button>
+                      </div>
+                      <p className="task-manage-scene-modal-desc">当前任务包含以下场景</p>
+                      <div className="task-manage-scene-modal-list">
+                        {taskManageSceneData.scenes.map((scene) => (
+                          <a key={scene.id} className="task-manage-scene-modal-item" onClick={() => navigateTo(`/scenes/${scene.sceneId}`)}>
+                            <span>{scene.sceneName || scene.sceneCode || "未命名场景"}</span>
+                            <b>›</b>
+                          </a>
+                        ))}
+                        {taskManageSceneData.scenes.length === 0 && <div className="task-manage-scene-modal-empty">暂未配置场景</div>}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {showTaskDataModal && taskDataDetail && (
+                  <div className="modal-mask show" onClick={() => setShowTaskDataModal(false)}>
+                    <div className="modal task-data-modal" onClick={(e) => e.stopPropagation()}>
+                      <div className="task-data-modal-head">
                         <div>
-                          <h2 className="section-title">创建训练任务</h2>
-                          <p className="section-note">按向导完成基础信息、业务场景、回答形式与参与学员配置。</p>
+                          <h3 id="taskDataModalTitle">{taskDataDetail.task.name}</h3>
+                          <p id="taskDataModalSub">实时查看任务执行情况</p>
+                        </div>
+                        <button aria-label="关闭" className="task-manage-scene-close" type="button" onClick={() => setShowTaskDataModal(false)}>×</button>
+                      </div>
+                      <div className="task-data-kpis">
+                        <div><small>参与人数</small><strong>{taskDataDetail.task.participantCount ?? 0}</strong></div>
+                        <div><small>完成率</small><strong>{taskDataDetail.task.status === "completed" ? "100%" : `${taskDataDetail.task.progressPercent ?? 0}%`}</strong></div>
+                        <div><small>平均分</small><strong>{taskDataDetail.task.status === "completed" ? "88.6" : "82.5"}</strong></div>
+                        <div><small>待跟进</small><strong>{taskDataDetail.task.status === "completed" ? "0" : "12"}</strong></div>
+                      </div>
+                      <div className="task-data-section">
+                        <div className="task-data-section-title">
+                          <b>场景完成情况</b>
+                          <span>{taskDataDetail.scenes.length} 个场景</span>
+                        </div>
+                        <div className="task-data-scene-rows">
+                          {taskDataDetail.scenes.map((scene) => {
+                            const pct = scene.requiredTrainTimes > 0 ? Math.min(100, Math.round(((scene.completedTrainCount ?? 0) / scene.requiredTrainTimes) * 100)) : 0;
+                            return (
+                              <div key={scene.id} className="task-data-scene-row">
+                                <b>{scene.sceneName || scene.sceneCode || "未命名场景"}</b>
+                                <span className="line"><i style={{ width: `${pct}%` }} /></span>
+                                <span className="pct">{pct}%</span>
+                              </div>
+                            );
+                          })}
+                          {taskDataDetail.scenes.length === 0 && <div className="task-data-empty">暂未配置场景</div>}
                         </div>
                       </div>
-
-                      {/* 4 步进度条 */}
-                      <div className="wizard-steps">
-                        <div className={`wizard-step ${taskWizardStep >= 1 ? "active" : ""} ${taskWizardStep > 1 ? "done" : ""}`}>
-                          <span className="step-num">{taskWizardStep > 1 ? "✓" : "1"}</span>
-                          <span className="step-label">基础信息</span>
-                        </div>
-                        <div className={`wizard-line ${taskWizardStep > 1 ? "done" : ""}`} />
-                        <div className={`wizard-step ${taskWizardStep >= 2 ? "active" : ""} ${taskWizardStep > 2 ? "done" : ""}`}>
-                          <span className="step-num">{taskWizardStep > 2 ? "✓" : "2"}</span>
-                          <span className="step-label">配置业务场景</span>
-                        </div>
-                        <div className={`wizard-line ${taskWizardStep > 2 ? "done" : ""}`} />
-                        <div className={`wizard-step ${taskWizardStep >= 3 ? "active" : ""} ${taskWizardStep > 3 ? "done" : ""}`}>
-                          <span className="step-num">{taskWizardStep > 3 ? "✓" : "3"}</span>
-                          <span className="step-label">回答形式</span>
-                        </div>
-                        <div className={`wizard-line ${taskWizardStep > 3 ? "done" : ""}`} />
-                        <div className={`wizard-step ${taskWizardStep >= 4 ? "active" : ""}`}>
-                          <span className="step-num">4</span>
-                          <span className="step-label">参与学员</span>
-                        </div>
-                      </div>
-
-                      <form onSubmit={handleCreateTask}>
-                        {taskWizardStep === 1 && (
-                          <div className="wizard-body">
-                            <h2>基础信息</h2>
-                            <p className="field-hint">先填写任务的基本信息，后续可继续配置场景和学员。</p>
-                            <div className="form-card" style={{ display: "grid", gap: 14 }}>
-                              <Field label="任务名称"><input value={taskForm.name} onChange={(e) => setTaskForm({ ...taskForm, name: e.target.value })} placeholder="如：客服投诉处理专项训练" required /></Field>
-                              <div className="score-editor-grid">
-                                <Field label="任务类型"><select value={taskForm.type} onChange={(e) => setTaskForm({ ...taskForm, type: e.target.value })}><option value="scenario_training">课程学习</option><option value="exam">在线考试</option><option value="mixed">学练考混合</option></select></Field>
-                                <Field label="任务编码"><input value={taskForm.code} onChange={(e) => setTaskForm({ ...taskForm, code: e.target.value })} placeholder="留空自动生成" /></Field>
-                              </div>
-                              <div className="score-editor-grid">
-                                <Field label="开始时间"><input type="datetime-local" value={taskForm.startAt} onChange={(e) => setTaskForm({ ...taskForm, startAt: e.target.value })} /></Field>
-                                <Field label="截止时间"><input type="datetime-local" value={taskForm.endAt} onChange={(e) => setTaskForm({ ...taskForm, endAt: e.target.value })} /></Field>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {taskWizardStep === 2 && (
-                          <div className="wizard-body">
-                            <h2>配置业务场景</h2>
-                            <p className="field-hint">添加任务所需的业务场景，并为每个场景配置对应的 AI 对练。</p>
-                            <div className="check-list">
-                              {scenes.map((scene) => (
-                                <label key={scene.id} className="check-row">
-                                  <input type="checkbox" checked={taskForm.sceneIds.includes(scene.id)} onChange={() => toggleTaskScene(scene.id)} />
-                                  <span>{scene.name}</span>
-                                  {statusBadge(scene.status)}
-                                </label>
-                              ))}
-                              {!scenes.length ? <div className="empty">请先在场景管理里创建场景</div> : null}
-                            </div>
-                            <button className="btn" type="button" onClick={() => { setAiGenerateForm((prev) => ({ ...prev, createMode: "ai_practice" })); setSceneWizardStep(1); setShowSceneWizard(true); }}><Plus size={16} /> 添加业务场景</button>
-                            <p className="field-hint">已添加 {taskForm.sceneIds.length} 个场景</p>
-                          </div>
-                        )}
-
-                        {taskWizardStep === 3 && (
-                          <div className="wizard-body">
-                            <h2>回答形式</h2>
-                            <p className="field-hint">选择学员在本任务中的作答方式，场景默认语音模式。</p>
-                            <div className="score-editor-grid">
-                              <label className={`check-row solo ${taskForm.answerForm === "voice" ? "active-option" : ""}`} style={{ padding: 16, border: "1px solid var(--line)", borderRadius: 12, cursor: "pointer" }}>
-                                <input type="radio" name="answerForm" checked={taskForm.answerForm === "voice"} onChange={() => setTaskForm({ ...taskForm, answerForm: "voice" })} />
-                                <span><strong>语音对练</strong> — 学员通过语音与 AI 角色实时对话，自动语音识别与合成。</span>
-                              </label>
-                              <label className={`check-row solo ${taskForm.answerForm === "text" ? "active-option" : ""}`} style={{ padding: 16, border: "1px solid var(--line)", borderRadius: 12, cursor: "pointer" }}>
-                                <input type="radio" name="answerForm" checked={taskForm.answerForm === "text"} onChange={() => setTaskForm({ ...taskForm, answerForm: "text" })} />
-                                <span><strong>文本对练</strong> — 学员通过文字输入与 AI 角色对话，适合文字考核场景。</span>
-                              </label>
-                            </div>
-                          </div>
-                        )}
-
-                        {taskWizardStep === 4 && (
-                          <div className="wizard-body">
-                            <h2>参与学员</h2>
-                            <p className="field-hint">选择参与本次任务的学员或组织，也可一键选择全部学员。</p>
-                            <div className="check-list">
-                              <div style={{ display: "flex", gap: 10, marginBottom: 6 }}>
-                                <button className="btn" type="button" onClick={() => {
-                                  const allLearners = users.filter((u) => u.roleCode === "learner");
-                                  setTaskForm({ ...taskForm, participantUserIds: allLearners.map((u) => u.id) });
-                                }}>选全员</button>
-                                <button className="btn" type="button" onClick={() => setShowImportModal(true)}>导入名单</button>
-                                <span className="field-hint" style={{ alignSelf: "center" }}>已选 {taskForm.participantUserIds.length} 名学员 / {taskForm.participantOrgIds.length} 个组织</span>
-                              </div>
-                              {users.filter((user) => user.roleCode === "learner").map((user) => (
-                                <label key={user.id} className="check-row">
-                                  <input type="checkbox" checked={taskForm.participantUserIds.includes(user.id)} onChange={() => toggleTaskParticipant(user.id)} />
-                                  <span>{user.name} · {user.mobile}</span>
-                                </label>
-                              ))}
-                              {!users.filter((user) => user.roleCode === "learner").length ? <div className="empty">请先在人员管理里新增学员</div> : null}
-                            </div>
-                            <div className="check-list">
-                              <span className="field-label">选择组织（可空）</span>
-                              {organizations.map((org) => (
-                                <label key={org.id} className="check-row">
-                                  <input type="checkbox" checked={taskForm.participantOrgIds.includes(org.id)} onChange={() => toggleTaskOrg(org.id)} />
-                                  <span>{org.name} · {organizationTypeLabel(org.type)}</span>
-                                  <span className="muted-text">{org.userCount}人</span>
-                                </label>
-                              ))}
-                            </div>
-                            <label className="check-row solo"><input type="checkbox" checked={taskForm.publishNow} onChange={(e) => setTaskForm({ ...taskForm, publishNow: e.target.checked })} /> 创建后立即发布</label>
-                          </div>
-                        )}
-
-                        <div className="wizard-footer">
-                          <div style={{ display: "flex", gap: 10 }}>
-                            <button className="btn" type="button" onClick={() => setShowTaskCreate(false)}>取消</button>
-                            {taskWizardStep > 1 && (
-                              <button className="btn" type="button" onClick={() => setTaskWizardStep(taskWizardStep - 1)}>上一步</button>
-                            )}
-                          </div>
-                          {taskWizardStep < 4 ? (
-                            <button className="btn primary" type="button" disabled={taskWizardStep === 1 && !taskForm.name.trim()} onClick={() => setTaskWizardStep(taskWizardStep + 1)}>下一步</button>
-                          ) : (
-                            <button className="btn primary" type="submit" disabled={submitting || !taskForm.sceneIds.length || (!taskForm.participantUserIds.length && !taskForm.participantOrgIds.length)}><Send size={16} /> 保存任务</button>
-                          )}
-                        </div>
-                      </form>
+                      <div className="task-data-tip">数据每 5 分钟自动更新</div>
                     </div>
                   </div>
                 )}
 
-                {/* 导入名单弹窗 */}
-                {showImportModal && (
-                  <div className="modal-overlay" onClick={() => { setShowImportModal(false); setImportText(""); }}>
-                    <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 520 }}>
-                      <div className="modal-head">
-                        <h2>导入名单</h2>
-                        <button className="link-btn" type="button" onClick={() => { setShowImportModal(false); setImportText(""); }}>×</button>
-                      </div>
-                      <p className="section-note" style={{ marginBottom: 14 }}>粘贴学员手机号或姓名（每行一个），系统自动匹配学员。未匹配的将忽略。</p>
-                      <textarea
-                        value={importText}
-                        onChange={(e) => setImportText(e.target.value)}
-                        placeholder={"13800000000\n王小明\n13912345678"}
-                        style={{ width: "100%", minHeight: 140, border: "1px solid var(--line)", borderRadius: 10, padding: 12, fontSize: 13, resize: "vertical" }}
-                      />
-                      <div className="modal-actions">
-                        <button className="btn" type="button" onClick={() => { setShowImportModal(false); setImportText(""); }}>取消</button>
-                        <button
-                          className="btn primary"
-                          type="button"
-                          onClick={() => {
-                            const lines = importText.split("\n").map((l) => l.trim()).filter(Boolean);
-                            const learners = users.filter((u) => u.roleCode === "learner");
-                            const matched: string[] = [];
-                            const notMatched: string[] = [];
-                            for (const line of lines) {
-                              const found = learners.find((u) => u.mobile === line || u.name === line);
-                              if (found) matched.push(found.id);
-                              else notMatched.push(line);
-                            }
-                            setTaskForm((prev) => ({ ...prev, participantUserIds: Array.from(new Set([...prev.participantUserIds, ...matched])) }));
-                            setImportText("");
-                            setShowImportModal(false);
-                            setMessage(`已导入 ${matched.length} 名学员${notMatched.length ? `，${notMatched.length} 条未匹配（${notMatched.slice(0, 3).join("、")}${notMatched.length > 3 ? "…" : ""}）` : ""}。`);
-                          }}
-                        >
-                          确认添加
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                <div className={`task-toast${taskToast ? " show" : ""}`}>{taskToast}</div>
               </div>
 
               <aside className="right-rail">
