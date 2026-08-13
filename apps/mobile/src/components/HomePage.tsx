@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { taskApi, examApi, attemptApi, type AuthUser, type TaskRow, type ExamRow } from "@/lib/api";
-import { statusClass, taskStatusText, taskTypeText, taskFormText, fmtDate } from "@/lib/types";
+import { statusClass, taskStatusText, taskTypeText } from "@/lib/types";
 import type { PageKey } from "./MobileApp";
 
 interface HomePageProps {
@@ -78,7 +78,10 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast }: Ho
         <div className="brand">
           <span className="brand-mark"></span>智训通
         </div>
-        <span className="hello">{user?.tenantName || "智训通"}</span>
+        <button className="hello" onClick={() => showToast("暂无可切换的企业")}>
+          {user?.tenantName || "智训通"}
+          <i className="hello-arrow">▾</i>
+        </button>
       </div>
       <div className="welcome-progress">
         <div className="hero">
@@ -169,25 +172,27 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast }: Ho
                 </div>
               </div>
             )}
-            {recentTasks.map((t) => (
-              <div
-                className="recent-item"
-                key={t.id}
-                onClick={() => onOpenTask(t.id)}
-                style={{ cursor: "pointer" }}
-              >
-                <span className="type-dot">训</span>
-                <div className="recent-main">
-                  <b>{t.name}</b>
-                  <small>
-                    {taskTypeText(t.type)} · {taskFormText(t.primaryMode)}
-                  </small>
+            {recentTasks.map((t) => {
+              const isPractice = (t.type || "").includes("practice") || (t.type || "").includes("scenario");
+              const stText = taskStatusText(t.status);
+              return (
+                <div
+                  className="recent-item"
+                  key={t.id}
+                  onClick={() => onOpenTask(t.id)}
+                  style={{ cursor: "pointer" }}
+                >
+                  <span className="type-dot">{isPractice ? "✦" : "✓"}</span>
+                  <div className="recent-main">
+                    <b>{t.name}</b>
+                    <small>
+                      {taskTypeText(t.type)} · {stText === "已逾期" ? "建议尽快完成" : `完成 ${t.progressPercent || 0}%`}
+                    </small>
+                  </div>
+                  <span className={`status ${statusClass(stText)}`}>{stText}</span>
                 </div>
-                <span className={`status ${statusClass(taskStatusText(t.status))}`}>
-                  {taskStatusText(t.status)}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ) : (

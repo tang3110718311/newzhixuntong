@@ -77,6 +77,11 @@ export default function MobileApp({ initialToken }: MobileAppProps) {
     }
   }, [loggedIn]);
 
+  // 切换页面时回到顶部（对齐原型 showPage 的 window.scrollTo(0,0)）
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [page, loggedIn]);
+
   if (!loggedIn) {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} showToast={showToast} />;
   }

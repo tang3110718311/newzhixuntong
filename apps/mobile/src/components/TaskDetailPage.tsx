@@ -217,7 +217,7 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
           <div className="task-detail-main">
             <h2>{task.name}</h2>
             <p>
-              {taskTypeText(task.type)}　｜　{taskFormText(task.primaryMode)}　｜　
+              {taskTypeText(task.type)} | {taskFormText(task.primaryMode)} |{" "}
               {task.creatorOrgName || "全体员工"}
             </p>
             <p className="task-detail-description compact">{task.description || "完成本任务要求的学习内容，并查看每个场景的学习结果。"}</p>

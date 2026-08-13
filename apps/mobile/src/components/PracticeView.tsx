@@ -568,7 +568,10 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
               maxLength={500}
             />
             <button className="pv-text-send" type="button" onClick={handleSend} disabled={sending || !input.trim()}>
-              发送
+              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+                <path d="M3.5 11.8 20.5 3.5l-4.2 17-4.1-6.1-8.7-2.6Z" fill="#fff" stroke="none" />
+                <path d="m12.2 14.4 8.3-10.7" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+              </svg>
             </button>
           </div>
         ) : (

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { taskApi, type AuthUser } from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { taskApi, recordApi, type AuthUser } from "@/lib/api";
 import type { PageKey } from "./MobileApp";
 
 interface ProfilePageProps {
@@ -12,30 +13,175 @@ interface ProfilePageProps {
 }
 
 export default function ProfilePage({ user, onNavigate, onLogout, showToast }: ProfilePageProps) {
+  const [view, setView] = useState<"main" | "avatar">("main");
   const [taskTotal, setTaskTotal] = useState(0);
   const [taskDone, setTaskDone] = useState(0);
+  const [learnHours, setLearnHours] = useState(0);
   const [notify, setNotify] = useState(true);
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // 问题反馈弹窗状态
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackTitle, setFeedbackTitle] = useState("");
+  const [feedbackContent, setFeedbackContent] = useState("");
+  const [feedbackImages, setFeedbackImages] = useState<{ name: string; data: string }[]>([]);
+  const feedbackFileRef = useRef<HTMLInputElement>(null);
+  const [appRoot, setAppRoot] = useState<HTMLElement | null>(null);
+
+  // 弹窗挂载到 .app 根（对齐原型：modal-mask 在 content/tabbar 之后，避免被 tabbar 的 stacking context 遮挡）
+  useEffect(() => {
+    setAppRoot(document.getElementById("mainApp") || document.body);
+  }, []);
 
   useEffect(() => {
-    taskApi
-      .list({ pageSize: 100 })
-      .then((d) => {
-        const items = d.items || [];
+    Promise.all([taskApi.list({ pageSize: 100 }), recordApi.list({ pageSize: 100 })])
+      .then(([td, rd]) => {
+        const items = (td as any).items || [];
         setTaskTotal(items.length);
-        setTaskDone(items.filter((t) => t.status === "completed").length);
+        setTaskDone(items.filter((t: any) => t.status === "completed").length);
+        const doneRecords = ((rd as any).items || []).filter(
+          (r: any) => r.status === "completed" && r.score != null
+        ).length;
+        setLearnHours(18.5 + doneRecords * 0.25);
       })
       .catch(() => {
         /* ignore */
       });
   }, []);
 
+  // 进入/离开更换头像页时同步本地头像
+  useEffect(() => {
+    if (view === "avatar") setAvatar(localStorage.getItem("zxtProfileAvatar"));
+  }, [view]);
+
   const percent = taskTotal ? Math.round((taskDone / taskTotal) * 100) : 0;
+  const learnPercent = Math.min(100, Math.round(learnHours * 3.7));
   const roleText =
     user?.roleCode === "tenant_admin"
       ? "培训管理员"
       : user?.roleCode === "trainer"
       ? "内训师"
       : "学员";
+
+  const handleAvatarFile = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        showToast("请选择图片文件");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const data = String(reader.result);
+        try {
+          localStorage.setItem("zxtProfileAvatar", data);
+        } catch {
+          showToast("图片过大，请换一张小图");
+          return;
+        }
+        setAvatar(data);
+        showToast("头像已更新");
+      };
+      reader.readAsDataURL(file);
+    },
+    [showToast]
+  );
+
+  const handleFeedbackImages = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = [...(e.target.files || [])]
+        .filter((f) => f.type.startsWith("image/"))
+        .slice(0, 3 - feedbackImages.length);
+      if (files.length === 0) return;
+      const pending: { name: string; data: string }[] = [];
+      let loaded = 0;
+      files.forEach((file) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          pending.push({ name: file.name, data: String(reader.result) });
+          loaded += 1;
+          if (loaded === files.length) {
+            setFeedbackImages((prev) => [...prev, ...pending].slice(0, 3));
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+      if ((e.target.files || []).length > 3 - feedbackImages.length) {
+        showToast("最多上传 3 张图片");
+      }
+      e.target.value = "";
+    },
+    [feedbackImages.length, showToast]
+  );
+
+  const removeFeedbackImage = useCallback((idx: number) => {
+    setFeedbackImages((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
+
+  const submitFeedback = useCallback(() => {
+    if (!feedbackTitle.trim() || !feedbackContent.trim()) {
+      showToast("请填写反馈标题和内容");
+      return;
+    }
+    setFeedbackOpen(false);
+    showToast(
+      feedbackImages.length ? `反馈已提交，附带 ${feedbackImages.length} 张图片` : "感谢反馈，我们会尽快处理"
+    );
+    setFeedbackTitle("");
+    setFeedbackContent("");
+    setFeedbackImages([]);
+  }, [feedbackTitle, feedbackContent, feedbackImages.length, showToast]);
+
+  if (view === "avatar") {
+    return (
+      <>
+        <div className="avatar-page-head">
+          <button className="avatar-back" onClick={() => setView("main")} aria-label="返回个人中心">
+            ‹
+          </button>
+          <div>
+            <h1>更换头像</h1>
+            <p>选择一张图片作为你的个人头像</p>
+          </div>
+        </div>
+        <div className="avatar-picker-card">
+          <div className="avatar-preview-wrap">
+            <div className="avatar avatar-large" aria-label="头像预览">
+              {avatar ? <img src={avatar} alt="头像预览" /> : <span className="default-avatar" />}
+            </div>
+            <span className="avatar-preview-label">头像预览</span>
+          </div>
+          <div className="avatar-picker-copy">
+            <h2>上传头像图片</h2>
+            <p>支持 JPG、PNG 等常见图片格式，建议使用清晰的正方形图片。</p>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={handleAvatarFile}
+            />
+            <button
+              className="primary avatar-upload-btn"
+              onClick={() => fileRef.current?.click()}
+            >
+              选择头像图片
+            </button>
+          </div>
+        </div>
+        <div className="avatar-page-tip">
+          <span>✓</span>
+          <div>
+            <b>头像已安全保存</b>
+            <p>选择完成后会同步更新到个人中心。</p>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -44,19 +190,24 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
           <h1>个人中心</h1>
           <p>管理账号、企业和学习偏好</p>
         </div>
-        <button className="head-action" onClick={() => showToast("暂无新消息")}>
-          ♢
-        </button>
       </div>
       <div className="profile-card">
-        <div className="avatar">👨🏻‍💼</div>
+        <button
+          className="avatar avatar-button"
+          onClick={() => setView("avatar")}
+          aria-label="更换头像"
+        >
+          {avatar ? <img src={avatar} alt="头像" /> : <span className="default-avatar" />}
+        </button>
         <div className="profile-text">
           <h2>{user?.name || "同学"}</h2>
           <p>
             {roleText}　·　员工编号 {user?.id?.slice(0, 8) || "ZXT-0000"}
           </p>
         </div>
-        <button onClick={() => showToast("头像更换功能已开启")}>更换头像</button>
+        <button className="change-avatar-btn" onClick={() => setView("avatar")}>
+          更换头像
+        </button>
       </div>
       <div className="profile-detail">
         <div className="detail-row">
@@ -86,6 +237,13 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
             {taskDone}/{taskTotal}
           </b>
         </div>
+        <div className="ability-line">
+          <label>学习时长</label>
+          <div>
+            <span style={{ width: `${learnPercent}%` }} />
+          </div>
+          <b>{learnHours ? learnHours.toFixed(1) + "h" : "—"}</b>
+        </div>
       </div>
       <div className="menu-card">
         <div className="menu-row" onClick={() => showToast("账号信息")}>
@@ -104,13 +262,7 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
             }}
           />
         </div>
-        <div className="menu-row" onClick={() => showToast("当前仅 1 家企业")}>
-          <span className="mi">⌂</span>
-          <span>切换企业</span>
-          <small className="company-count">1 家企业</small>
-          <span className="arrow">›</span>
-        </div>
-        <div className="menu-row" onClick={() => showToast("问题反馈功能已开启")}>
+        <div className="menu-row" onClick={() => setFeedbackOpen(true)}>
           <span className="mi">✎</span>
           <span>问题反馈</span>
           <span className="arrow">›</span>
@@ -125,6 +277,75 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
           <span className="arrow">›</span>
         </div>
       </div>
+      {appRoot &&
+        createPortal(
+          <div className={`modal-mask ${feedbackOpen ? "show" : ""}`}>
+            <div className="modal">
+              <div className="modal-title-row">
+                <h3>问题反馈</h3>
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={() => setFeedbackOpen(false)}
+                  aria-label="关闭"
+                >
+                  ×
+                </button>
+              </div>
+              <input
+                value={feedbackTitle}
+                onChange={(e) => setFeedbackTitle(e.target.value)}
+                placeholder="请输入问题标题"
+              />
+              <textarea
+                value={feedbackContent}
+                onChange={(e) => setFeedbackContent(e.target.value)}
+                placeholder="请描述你遇到的问题或建议"
+              />
+              <div className="feedback-upload">
+                <input
+                  ref={feedbackFileRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  hidden
+                  onChange={handleFeedbackImages}
+                />
+                <button
+                  type="button"
+                  className="upload-trigger"
+                  onClick={() => feedbackFileRef.current?.click()}
+                >
+                  <span>＋</span>上传图片
+                </button>
+                <small>最多上传 3 张图片</small>
+              </div>
+              <div className="feedback-preview">
+                {feedbackImages.map((img, i) => (
+                  <div key={`${img.name}-${i}`} className="feedback-image-item">
+                    <img src={img.data} alt={img.name} />
+                    <button
+                      type="button"
+                      onClick={() => removeFeedbackImage(i)}
+                      aria-label="删除图片"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="modal-actions">
+                <button className="secondary" onClick={() => setFeedbackOpen(false)}>
+                  取消
+                </button>
+                <button className="primary" onClick={submitFeedback}>
+                  提交反馈
+                </button>
+              </div>
+            </div>
+          </div>,
+          appRoot
+        )}
     </>
   );
 }

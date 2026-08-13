@@ -44,9 +44,14 @@ export function taskFormText(mode: string | null | undefined): string {
 
 export function taskTypeText(type: string | null | undefined): string {
   const map: Record<string, string> = {
+    free_practice: "自由对练",
+    fixed_practice: "固定对练",
+    free_exam: "自由考试",
+    fixed_exam: "固定考试",
     scenario_training: "常规对话",
     fixed_script: "固定剧本",
     exam: "阶段考试",
+    mixed: "混合模式",
   };
   return map[type || ""] || type || "常规对话";
 }

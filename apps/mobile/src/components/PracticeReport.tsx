@@ -75,9 +75,11 @@ function RadarChart({ items, size = 140 }: { items: Array<{ name: string; score:
   );
 }
 
-/** 合格/未合格标签（对练报告：浅绿） */
-function PassTag({ passed }: { passed: boolean }) {
-  return <span className={`pr-tag ${passed ? "ok" : "no"}`}>{passed ? "合格" : "未合格"}</span>;
+/** 合格/未合格标签（对练报告：按原型三档 <60不合格 / 60-85合格 / >85优秀） */
+function PassTag({ score }: { score: number }) {
+  if (score > 85) return <span className="pr-tag ok">优秀</span>;
+  if (score >= 60) return <span className="pr-tag ok">合格</span>;
+  return <span className="pr-tag no">不合格</span>;
 }
 
 export default function PracticeReport({ sessionId, recordId, scene, task, onClose, showToast }: PracticeReportProps) {
@@ -140,12 +142,15 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, recordId]);
 
-  const passScore = scene?.scene?.passScore ?? 80;
+  const passScore = 60; // 对练报告合格线对齐原型（<60 不合格 / 60-85 合格 / >85 优秀）
   const score = detail?.record?.score ?? 0;
   const passed = score >= passScore;
   const overallScores: Array<{ ruleName: string | null; score: number; level?: string | null; deductionReason?: string; evidenceText?: string }> =
     detail?.scores ?? [];
-  const avgScore = overallScores.length ? Math.round(overallScores.reduce((a, s) => a + (Number(s.score) || 0), 0) / overallScores.length) : score;
+  // 原型能力均分 = 综合得分（各维度加权后），对齐显示
+  const avgScore = score;
+  // 后端暂未返回权重：按维度数均分兜底（展示格式对齐原型「维度名（权重%）得分」）
+  const dimWeight = overallScores.length ? Math.round(100 / overallScores.length) : 0;
 
   // 对话记录 tab：第 n 条学员消息 = 第 n 轮，匹配 turnScores
   const transcript = useMemo(() => {
@@ -165,14 +170,25 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
     });
   }, [detail]);
 
-  // 中转页：对练报告生成中
+  // 中转页：对练报告生成中（对齐原型 report-generating-modal）
   if (!detail && !failed) {
     return (
       <div className="pr-shell">
-        <div className="pr-pending">
-          <div className="pr-spinner" aria-hidden="true"></div>
-          <h2>对练报告生成中</h2>
-          <p>正在分析你的对练表现与能力维度，请稍候…</p>
+        <div className="report-generating-modal show" role="status" aria-live="polite">
+          <div className="report-generating-panel">
+            <div className="report-generating-spinner">
+              <i></i>
+              <i></i>
+              <i></i>
+            </div>
+            <h3>生成报告中</h3>
+            <p>正在整理本次 AI 对练内容，请稍候…</p>
+            <div className="report-generating-steps">
+              <span className="active">整理对话记录</span>
+              <span>分析能力表现</span>
+              <span>生成对练报告</span>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -250,7 +266,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
                 <h3>本次AI对练评估</h3>
                 <p>综合得分 = 各能力维度得分 × 后台配置权重</p>
               </div>
-              <PassTag passed={passed} />
+              <PassTag score={score} />
             </div>
 
             <div className="pr-total-card">
@@ -294,7 +310,9 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
                 <div className="pr-radar-list">
                   {overallScores.map((s, i) => (
                     <div className="pr-radar-item" key={i}>
-                      <span>{s.ruleName || `维度${i + 1}`}</span>
+                      <span>
+                        {s.ruleName || `维度${i + 1}`}（{dimWeight}%）
+                      </span>
                       <b>{s.score}</b>
                     </div>
                   ))}
@@ -320,7 +338,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
                       <div className="pr-dim-top">
                         <span className={`pr-dim-dot ${isGood ? "good" : "warn"}`}></span>
                         <b>{s.ruleName || `维度${i + 1}`}</b>
-                        <span className="pr-dim-weight">权重按后台配置</span>
+                        <span className="pr-dim-weight">{dimWeight}%</span>
                         <span className="pr-dim-score">{s.score}</span>
                       </div>
                       <div className="pr-dim-bar">
@@ -377,7 +395,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
             </div>
             <div className="pr-final-row">
               <b>{score}</b>
-              <PassTag passed={passed} />
+              <PassTag score={score} />
             </div>
           </div>
 

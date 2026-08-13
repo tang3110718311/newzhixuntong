@@ -54,6 +54,14 @@ export default function LoginScreen({ onLoginSuccess, showToast }: LoginScreenPr
               <span>智训通</span>
             </h1>
             <div className="sms-field phone-field">
+              <button
+                type="button"
+                className="country-code"
+                onClick={() => showToast("当前仅支持中国大陆 +86")}
+                aria-label="区号 +86"
+              >
+                +86⌄
+              </button>
               <input
                 inputMode="numeric"
                 maxLength={11}

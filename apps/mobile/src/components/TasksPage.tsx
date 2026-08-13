@@ -122,7 +122,7 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
                 <div className="task-info">
                   <h3>{t.name}</h3>
                   <p>
-                    {taskTypeText(t.type)} · {taskFormText(t.primaryMode)} · 场景数：{t.sceneCount}
+                    {taskTypeText(t.type)} | {taskFormText(t.primaryMode)} | 场景数：{t.sceneCount}
                   </p>
                 </div>
                 <span className={`status ${cls}`}>{taskStatusText(t.status)}</span>
@@ -132,10 +132,10 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
               </div>
               <div className="reference-footer">
                 <span>
-                  截止 {fmtDate(t.endAt)} · {prog}%
+                  {t.status === "completed" ? "完成" : "截止"} {fmtDate(t.endAt)}
                 </span>
                 <a onClick={(e) => { e.stopPropagation(); onOpenTask(t.id); }}>
-                  查看详情 <span>›</span>
+                  {t.status === "completed" ? "查看记录" : "继续学习"} <span>›</span>
                 </a>
               </div>
             </article>
