@@ -640,7 +640,9 @@ function toDateTimeLocal(value?: string | null) {
 
 export function AdminDashboard() {
   const [activeSection, setActiveSection] = useState<ActiveSection>("overview");
+  // 登录态三态：authResolved 为 false 时统一渲染加载占位（SSR 首帧与 hydrate 首帧一致，避免整页跳转后闪现登录页）
   const [auth, setAuth] = useState<AuthSession | null>(null);
+  const [authResolved, setAuthResolved] = useState(false);
   const [loginForm, setLoginForm] = useState(initialLoginForm);
   const [codeCountdown, setCodeCountdown] = useState(0);
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
@@ -1712,11 +1714,12 @@ export function AdminDashboard() {
     }));
   }
 
-  // 首次加载：从 URL ?section=xxx 恢复目标菜单区块（从其他页面跳转回来时生效）
+  // 首次加载：从本地恢复登录态，再从 URL ?section=xxx 恢复目标菜单区块（从其他页面跳转回来时生效）
   useEffect(() => {
     const storedAuth = readStoredAuth();
-    if (!storedAuth) return;
     setAuth(storedAuth);
+    setAuthResolved(true);
+    if (!storedAuth) return;
     const sectionParam = new URLSearchParams(window.location.search).get("section");
     if (sectionParam && VALID_SECTIONS.has(sectionParam)) {
       setActiveSection(sectionParam as ActiveSection);
@@ -1724,6 +1727,15 @@ export function AdminDashboard() {
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 登录态恢复前统一渲染加载占位：SSR 首帧（无 localStorage）与客户端 hydrate 首帧保持一致，避免闪登录页
+  if (!authResolved) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f5f7fb", color: "#7c8da6", fontSize: 14 }}>
+        加载中…
+      </div>
+    );
+  }
 
   if (!auth) {
     return (
