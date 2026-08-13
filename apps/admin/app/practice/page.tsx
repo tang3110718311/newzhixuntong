@@ -167,6 +167,9 @@ export default function PracticePage() {
   } | null>(null);
   const [showBrief, setShowBrief] = useState(false);
   const [chatRound, setChatRound] = useState(0);
+  // 进入对练时间 + 展示用记录编号（对应截图顶部"编号 · 时间"）
+  const [enterTime, setEnterTime] = useState("");
+  const [recordNo, setRecordNo] = useState("");
   // 当前场景的评分维度（满分）与场景合格线
   const [sceneRules, setSceneRules] = useState<Array<{ id: string; name: string; score: number }>>([]);
   // AI 开场等待态：分步文案轮播的当前步骤索引
@@ -480,6 +483,13 @@ export default function PracticePage() {
       sessionIdRef.current = typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
         : `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      // 记录进入对练的时间与展示用编号（RW + 年月日时分）
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      setEnterTime(
+        `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`
+      );
+      setRecordNo(`RW${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`);
       setView("chat");
       setShowBrief(true);
       setChatRound(0);
@@ -979,13 +989,20 @@ export default function PracticePage() {
     };
   })();
 
+  // 训练提示（左栏训练目标卡片）：按轮次给方向性话术建议
+  const hint = (() => {
+    if (chatRound === 0) return { title: "开场回答方向", body: `先礼貌问候并说明来意，再结合"${selectedScene?.name || ""}"询问对方当前最关注的问题。` };
+    if (chatRound === 1) return { title: "需求推进方向", body: "先复述并确认对方需求，再分步骤说明方案，最后明确下一步行动和时间。" };
+    return { title: "收尾回答方向", body: "总结已经确认的信息，回应对方最后的顾虑，并自然提出后续跟进或复盘安排。" };
+  })();
+
   // ================= 渲染 =================
   return (
     <AppShell
       activeNavKey="practice"
       onNavClick={(key: string) => { stopAudio(); navigateTo("/?section=" + key); }}
-      rightRail={rightRail}
-      breadcrumb={{ label: "对练中心" }}
+      rightRail={view === "chat" ? undefined : rightRail}
+      breadcrumb={view === "chat" ? { label: "我的任务", childLabel: "AI对练" } : { label: "对练中心" }}
     >
       {error ? <div className="pc-error" onClick={() => setError("")}>{error}（点击关闭）</div> : null}
 
@@ -1006,281 +1023,375 @@ export default function PracticePage() {
 
         {view === "chat" && selectedScene && (
           <section className="pc-chat">
-            <div className="pc-chat-head">
-              {/* 左：标题+轮次 */}
-              <div className="pc-chat-title">
-                <strong>{selectedScene.name || "对练中"}</strong>
-                {chatRound > 0 && !chatFinished && (
-                  <span className="pc-round">第 {chatRound}/10 轮</span>
-                )}
+            {/* ===== 顶部对练状态栏（对应截图顶部白卡） ===== */}
+            <div className="pc-chat-topbar">
+              <div className="pc-chat-topbar-left">
+                <span className="pc-path-dot" aria-hidden="true" />
+                <div className="pc-topbar-meta">
+                  <span className="pc-topbar-path">我的任务 / AI对练</span>
+                  <h2>{selectedScene.name || "对练中"} · AI对练</h2>
+                  <p>
+                    {recordNo || "-"} · {enterTime || "-"}
+                  </p>
+                </div>
               </div>
-              {/* 中：对练配置（模式/语音发送） */}
-              <div className="pc-chat-config">
-                <span className="pc-mode">
-                  <button className={voiceMode ? "active" : ""} type="button" onClick={() => setVoiceMode(true)}>语音模式</button>
-                  <button className={!voiceMode ? "active" : ""} type="button" onClick={() => setVoiceMode(false)}>文本模式</button>
+              <div className="pc-chat-topbar-right">
+                <span className={`pc-live-pill${chatFinished ? " done" : ""}`}>
+                  <i aria-hidden="true" />{chatFinished ? "对练已完成" : "对练进行中"}
                 </span>
-                {voiceMode && (
-                  <button
-                    className={`pc-auto-send${autoSendVoice ? " on" : ""}`}
-                    type="button"
-                    onClick={toggleAutoSendVoice}
-                    title={autoSendVoice ? "语音识别后自动发送（点击关闭）" : "语音识别后回显确认再发送（点击开启自动发送）"}
-                  >
-                    {autoSendVoice ? "语音自动发送" : "回显确认"}
+                {!chatFinished && !chatEnding && (
+                  <button className="pc-btn-quit" type="button" onClick={backToHistory}>
+                    退出对练
                   </button>
                 )}
-              </div>
-              {/* 右：操作 */}
-              <div className="pc-chat-actions">
                 {!chatFinished && !chatEnding && (
                   <button
-                    className="pc-btn-ghost"
+                    className="pc-btn-end"
                     type="button"
                     disabled={chatSending || chatMessages.length < 2}
                     onClick={() => { if (window.confirm("确定结束本次对练并查看评分？")) void endTraining(); }}
-                    style={{ color: "#ef4444", borderColor: "#fecaca" }}
                   >
                     结束对练
                   </button>
                 )}
-                {!chatEnding && <button className="pc-back-mini" type="button" onClick={backToHistory}>← 返回历史</button>}
               </div>
             </div>
 
-            {showBrief && sceneBrief && (
-              <div className="pc-brief">
-                {/* 左：训练信息区 */}
-                <div className="pc-brief-info">
-                  <h3>{selectedScene.name || "训练说明"}</h3>
-                  {sceneBrief.description ? <p className="pc-brief-desc">{sceneBrief.description}</p> : null}
-                  <div className="pc-brief-grid">
-                    {sceneBrief.learnerRole?.identity ? (
-                      <div className="pc-brief-item">
-                        <span className="pc-brief-label">你的角色</span>
-                        <span className="pc-brief-value">{sceneBrief.learnerRole.identity}</span>
-                      </div>
+            {/* ===== 三列主体：左场景信息 / 中对话区 / 右实时评分 ===== */}
+            <div className="pc-chat-grid">
+              {/* 左列：场景说明 + 训练目标 */}
+              <aside className="pc-chat-left">
+                <div className="pc-scene-card">
+                  <span className="pc-scene-tag">当前场景</span>
+                  <h3>{selectedScene.name || "场景"}</h3>
+                  {sceneBrief?.description ? <p className="pc-scene-desc">{sceneBrief.description}</p> : null}
+                  <ul className="pc-scene-info">
+                    {sceneBrief?.learnerRole?.identity ? (
+                      <li>
+                        <span>你的角色</span>
+                        <b>{sceneBrief.learnerRole.identity}</b>
+                      </li>
                     ) : null}
-                    {sceneBrief.aiRole?.identity ? (
-                      <div className="pc-brief-item">
-                        <span className="pc-brief-label">AI 扮演</span>
-                        <span className="pc-brief-value">{sceneBrief.aiRole.identity}</span>
-                      </div>
+                    {sceneBrief?.aiRole?.identity ? (
+                      <li>
+                        <span>AI 扮演</span>
+                        <b>{sceneBrief.aiRole.identity}</b>
+                      </li>
                     ) : null}
-                    {sceneBrief.endCondition ? (
-                      <div className="pc-brief-item">
-                        <span className="pc-brief-label">训练目标</span>
-                        <span className="pc-brief-value">{sceneBrief.endCondition}</span>
-                      </div>
+                    {sceneBrief?.endCondition ? (
+                      <li>
+                        <span>训练目标</span>
+                        <b>{sceneBrief.endCondition}</b>
+                      </li>
                     ) : null}
-                  </div>
-                  {sceneBrief.scoringRules.length > 0 && (
-                    <div className="pc-brief-rules">
-                      <span className="pc-brief-label">评分标准(及格 {sceneBrief.passScore} 分)</span>
-                      <div className="pc-brief-rules-bars">
-                        {sceneBrief.scoringRules.map((r) => {
-                          const total = sceneBrief.scoringRules.reduce((sum, x) => sum + (x.score || 0), 0);
-                          const pct = total > 0 ? Math.round(((r.score || 0) / total) * 100) : 0;
-                          return (
-                            <div className="pc-brief-rule-bar" key={r.name}>
-                              <span className="pc-brief-rule-name">{r.name}</span>
-                              <div className="pc-brief-rule-track">
-                                <div className="pc-brief-rule-fill" style={{ width: `${pct}%` }} />
-                              </div>
-                              <span className="pc-brief-rule-score">{r.score}分</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                    <li>
+                      <span>当前轮数</span>
+                      <b className="hl">{chatRound}{chatRound > 0 ? "/10" : ""}</b>
+                    </li>
+                  </ul>
                 </div>
-                {/* 右：行动区 */}
-                <div className="pc-brief-action">
-                  {/* A:AI 开场白预览（消除未知感，让学员知道 AI 会怎么开场） */}
-                  <div className="pc-brief-preview">
-                    <div className="pc-brief-preview-head">
-                      <span>👀 AI 开场预览</span>
-                      {openingPreview && (
-                        <button type="button" className="pc-brief-preview-refresh" onClick={() => void loadOpeningPreview(selectedScene)}>
-                          换一段
-                        </button>
-                      )}
-                    </div>
-                    <div className="pc-brief-preview-body">
-                      {openingPreviewLoading ? (
-                        <span className="pc-brief-preview-loading">
-                          <i className="pc-spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
-                          AI 正在构思开场…
-                        </span>
-                      ) : openingPreview ? (
-                        <p className="pc-brief-preview-text">“{openingPreview}”</p>
-                      ) : (
-                        <p className="pc-brief-preview-text muted">开场白生成失败，点“开始训练”仍可正常对练。</p>
-                      )}
-                    </div>
+                <div className="pc-goal-card">
+                  <h4>本次训练目标</h4>
+                  <p>{sceneBrief?.endCondition || "与 AI 角色完成情境对话，达成场景目标。"}</p>
+                  <div className="pc-goal-hint">
+                    <b>训练提示</b>
+                    <p>{hint.body}</p>
                   </div>
-                  <div className="pc-brief-duration">
-                    <span className="pc-brief-duration-ico">⏱</span>
-                    <span>预计时长 3-5 分钟，AI 实时对练，结束后自动评分</span>
-                  </div>
-                  <button className="pc-btn-primary pc-brief-start" type="button" onClick={() => void startTraining()}>
-                    开始训练
-                  </button>
-                  {chatRound > 0 && !chatFinished && (
-                    <button className="pc-btn-ghost pc-brief-restart" type="button" onClick={() => void restartChat()}>
-                      重新训练
-                    </button>
-                  )}
                 </div>
-              </div>
-            )}
+              </aside>
 
-            {chatFinished ? (
-              <div className="pc-score-view">
-                {chatResult ? (
-                  <>
-                    <div className="pc-score-title">📊 训练评分</div>
-                    <ScoreCard
-                      result={chatResult}
-                      sceneRules={sceneRules}
-                      passScore={selectedScene.passScore}
-                      scenes={scenes}
-                      onBack={backToHistory}
-                      onRestart={() => void enterChat(selectedScene)}
-                      onRetrainWeak={(target) => void enterChat(target)}
-                    />
-                  </>
-                ) : (
-                  <div className="pc-score-loading">
-                    <div className="pc-spinner" />
-                    <p>对练已结束，正在生成评分报告…</p>
+              {/* 中列：对话区 */}
+              <div className="pc-chat-mid">
+                <div className="pc-chat-tipbar">
+                  <span className="pc-ai-badge" aria-hidden="true">AI</span>
+                    <div className="pc-chat-tipbar-text">
+                      <b>实时语音对练</b>
+                      <p>与AI角色进行情境对话</p>
+                    </div>
+                  <div className="pc-chat-tipbar-status">
+                    <span className="pc-ai-online"><i aria-hidden="true" />AI在线</span>
+                    <span>已完成轮数 {chatRound}</span>
+                    <span>当前综合分 {chatResult?.record?.score ?? 0}</span>
                   </div>
-                )}
-              </div>
-            ) : (
-              <>
-                <div className="pc-messages">
-                  {chatMessages.length === 0 && chatSending && (
-                    <div className="pc-opening">
-                      <div className="pc-spinner" />
-                      <p className="pc-opening-title">AI 教练正在准备开场…</p>
-                      <div className="pc-opening-steps">
-                        {AI_OPENING_STEPS.map((step, i) => (
-                          <span key={step} className={`pc-opening-step${i <= openingStep ? " active" : ""}`}>
-                            <i>{i < openingStep ? "✓" : i === openingStep ? "●" : "○"}</i>
-                            {step}
-                          </span>
-                        ))}
+                </div>
+
+                {/* 开始训练前引导：复用现有 brief（样式自适应中列） */}
+                {showBrief && sceneBrief && (
+                  <div className="pc-brief">
+                    <div className="pc-brief-info">
+                      <h3>{selectedScene.name || "训练说明"}</h3>
+                      {sceneBrief.description ? <p className="pc-brief-desc">{sceneBrief.description}</p> : null}
+                      <div className="pc-brief-grid">
+                        {sceneBrief.learnerRole?.identity ? (
+                          <div className="pc-brief-item">
+                            <span className="pc-brief-label">你的角色</span>
+                            <span className="pc-brief-value">{sceneBrief.learnerRole.identity}</span>
+                          </div>
+                        ) : null}
+                        {sceneBrief.aiRole?.identity ? (
+                          <div className="pc-brief-item">
+                            <span className="pc-brief-label">AI 扮演</span>
+                            <span className="pc-brief-value">{sceneBrief.aiRole.identity}</span>
+                          </div>
+                        ) : null}
+                        {sceneBrief.endCondition ? (
+                          <div className="pc-brief-item">
+                            <span className="pc-brief-label">训练目标</span>
+                            <span className="pc-brief-value">{sceneBrief.endCondition}</span>
+                          </div>
+                        ) : null}
                       </div>
-                      <p className="pc-opening-hint">通常需要 3-8 秒，请稍候</p>
-                      <button
-                        className="pc-btn-ghost pc-opening-cancel"
-                        type="button"
-                        onClick={() => { stopAudio(); backToHistory(); }}
-                      >
-                        取消并返回
+                      {sceneBrief.scoringRules.length > 0 && (
+                        <div className="pc-brief-rules">
+                          <span className="pc-brief-label">评分标准(及格 {sceneBrief.passScore} 分)</span>
+                          <div className="pc-brief-rules-bars">
+                            {sceneBrief.scoringRules.map((r) => {
+                              const total = sceneBrief.scoringRules.reduce((sum, x) => sum + (x.score || 0), 0);
+                              const pct = total > 0 ? Math.round(((r.score || 0) / total) * 100) : 0;
+                              return (
+                                <div className="pc-brief-rule-bar" key={r.name}>
+                                  <span className="pc-brief-rule-name">{r.name}</span>
+                                  <div className="pc-brief-rule-track">
+                                    <div className="pc-brief-rule-fill" style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <span className="pc-brief-rule-score">{r.score}分</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="pc-brief-action">
+                      <div className="pc-brief-preview">
+                        <div className="pc-brief-preview-head">
+                          <span>👀 AI 开场预览</span>
+                          {openingPreview && (
+                            <button type="button" className="pc-brief-preview-refresh" onClick={() => void loadOpeningPreview(selectedScene)}>
+                              换一段
+                            </button>
+                          )}
+                        </div>
+                        <div className="pc-brief-preview-body">
+                          {openingPreviewLoading ? (
+                            <span className="pc-brief-preview-loading">
+                              <i className="pc-spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                              AI 正在构思开场…
+                            </span>
+                          ) : openingPreview ? (
+                            <p className="pc-brief-preview-text">“{openingPreview}”</p>
+                          ) : (
+                            <p className="pc-brief-preview-text muted">开场白生成失败，点“开始训练”仍可正常对练。</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="pc-brief-duration">
+                        <span className="pc-brief-duration-ico">⏱</span>
+                        <span>预计时长 3-5 分钟，AI 实时对练，结束后自动评分</span>
+                      </div>
+                      <button className="pc-btn-primary pc-brief-start" type="button" onClick={() => void startTraining()}>
+                        开始训练
                       </button>
-                    </div>
-                  )}
-                  {chatMessages.map((m, idx) => (
-                    <div className={`pc-bubble ${m.role}`} key={`${m.role}-${idx}`}>
-                      <span className="pc-bubble-role">{m.role === "ai" ? "AI" : "我"}</span>
-                      <p className="pc-bubble-text">{m.content}</p>
-                      {m.role === "ai" && (
-                        <button
-                          className="pc-replay-tts-btn"
-                          type="button"
-                          onClick={() => void playTts(m.content, m.emotion, ttsVoice || undefined)}
-                        >
-                          🔊 重播
+                      {chatRound > 0 && !chatFinished && (
+                        <button className="pc-btn-ghost pc-brief-restart" type="button" onClick={() => void restartChat()}>
+                          重新训练
                         </button>
                       )}
-                    </div>
-                  ))}
-                  {chatSending && (
-                    <div className="pc-bubble ai">
-                      <span className="pc-bubble-role">AI</span>
-                      <p className="pc-bubble-text" style={{ color: "#86909c" }}>正在思考…</p>
-                    </div>
-                  )}
-                </div>
-
-                {coachTip && (
-                  <div className="pc-coachtip-float">
-                    <span className="pc-coachtip-icon">🎯</span>
-                    <div className="pc-coachtip-body">
-                      <div className="pc-coachtip-label">
-                        <span>教练提示</span>
-                        <button
-                          type="button"
-                          className="pc-coachtip-copy"
-                          onClick={() => void navigator.clipboard?.writeText(coachTip)}
-                          title="复制参考话术"
-                        >
-                          📋 复制话术
-                        </button>
-                      </div>
-                      <p className="pc-coachtip-text">{coachTip}</p>
                     </div>
                   </div>
                 )}
 
-                {chatEnding ? (
-                  <div className="pc-chat-ending">
-                    <div className="pc-spinner" />
-                    <p>AI 正在收尾总结，请稍候…</p>
-                    <button className="pc-btn-ghost pc-skip-end" type="button" onClick={skipEnding}>跳过，直接查看评分</button>
-                  </div>
-                ) : (
-                  <div className="pc-inputbar">
-                    <div className="pc-inputbar-tip">
-                      {voiceMode ? (
-                        isRecording ? (
-                          <span className="pc-inputbar-tip-rec">
-                            <span className="pc-inputbar-tip-dot" />
-                            录音中{liveTranscript ? `：${liveTranscript}` : "，请说话…"}
-                          </span>
-                        ) : (
-                          <span>语音模式：支持文字回复，或点击麦克风语音输入</span>
-                        )
-                      ) : (
-                        <span>文本模式：AI 以文字回复，请直接输入文字</span>
-                      )}
-                    </div>
-                    <div className="pc-inputbar-row">
-                      <div className={`pc-inputbar-text${isRecording ? " recording" : ""}`}>
-                        <input
-                          value={chatInput}
-                          onChange={(e) => setChatInput(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void sendChatMessage(chatInput); }}
-                          placeholder={isRecording ? "" : "输入消息…"}
-                          disabled={chatSending || isRecording}
+                {chatFinished ? (
+                  <div className="pc-score-view">
+                    {chatResult ? (
+                      <>
+                        <div className="pc-score-title">📊 训练评分</div>
+                        <ScoreCard
+                          result={chatResult}
+                          sceneRules={sceneRules}
+                          passScore={selectedScene.passScore}
+                          scenes={scenes}
+                          onBack={backToHistory}
+                          onRestart={() => void enterChat(selectedScene)}
+                          onRetrainWeak={(target) => void enterChat(target)}
                         />
+                      </>
+                    ) : (
+                      <div className="pc-score-loading">
+                        <div className="pc-spinner" />
+                        <p>对练已结束，正在生成评分报告…</p>
                       </div>
-                      <button
-                        className={`pc-inputbar-mic${isRecording ? " recording" : ""}`}
-                        type="button"
-                        onClick={toggleRecording}
-                        disabled={chatSending || !voiceMode}
-                        hidden={!voiceMode}
-                        title={!voiceMode ? "当前为文本模式，仅支持文字输入" : isRecording ? "停止录音并识别" : "按住说话"}
-                      >
-                        {isRecording ? "⏹" : "🎤"}
-                      </button>
-                      <button
-                        className={`pc-inputbar-send${chatInput.trim() ? " active" : ""}`}
-                        type="button"
-                        onClick={() => void sendChatMessage(chatInput)}
-                        disabled={chatSending || !chatInput.trim()}
-                      >
-                        发送
-                      </button>
-                    </div>
+                    )}
                   </div>
+                ) : (
+                  <>
+                    <div className="pc-messages">
+                      {chatMessages.length === 0 && chatSending && (
+                        <div className="pc-opening">
+                          <div className="pc-spinner" />
+                          <p className="pc-opening-title">AI 教练正在准备开场…</p>
+                          <div className="pc-opening-steps">
+                            {AI_OPENING_STEPS.map((step, i) => (
+                              <span key={step} className={`pc-opening-step${i <= openingStep ? " active" : ""}`}>
+                                <i>{i < openingStep ? "✓" : i === openingStep ? "●" : "○"}</i>
+                                {step}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="pc-opening-hint">通常需要 3-8 秒，请稍候</p>
+                          <button
+                            className="pc-btn-ghost pc-opening-cancel"
+                            type="button"
+                            onClick={() => { stopAudio(); backToHistory(); }}
+                          >
+                            取消并返回
+                          </button>
+                        </div>
+                      )}
+                      {chatMessages.map((m, idx) => (
+                        <div className={`pc-bubble ${m.role}`} key={`${m.role}-${idx}`}>
+                          <span className="pc-bubble-role">{m.role === "ai" ? "AI" : "我"}</span>
+                          <div className="pc-bubble-body">
+                            <p className="pc-bubble-text">{m.content}</p>
+                            <span className="pc-bubble-meta">{m.role === "ai" ? "AI角色 · 刚刚" : "我 · 刚刚"}</span>
+                          </div>
+                          {m.role === "ai" && (
+                            <button
+                              className="pc-replay-tts-btn"
+                              type="button"
+                              onClick={() => void playTts(m.content, m.emotion, ttsVoice || undefined)}
+                            >
+                              🔊 重播
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      {chatSending && (
+                        <div className="pc-bubble ai">
+                          <span className="pc-bubble-role">AI</span>
+                          <div className="pc-bubble-body">
+                            <p className="pc-bubble-text" style={{ color: "#86909c" }}>正在思考…</p>
+                            <span className="pc-bubble-meta">AI角色 · 刚刚</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {coachTip && (
+                      <div className="pc-coachtip-float">
+                        <span className="pc-coachtip-icon">🎯</span>
+                        <div className="pc-coachtip-body">
+                          <div className="pc-coachtip-label">
+                            <span>教练提示</span>
+                            <button
+                              type="button"
+                              className="pc-coachtip-copy"
+                              onClick={() => void navigator.clipboard?.writeText(coachTip)}
+                              title="复制参考话术"
+                            >
+                              📋 复制话术
+                            </button>
+                          </div>
+                          <p className="pc-coachtip-text">{coachTip}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {chatEnding ? (
+                      <div className="pc-chat-ending">
+                        <div className="pc-spinner" />
+                        <p>AI 正在收尾总结，请稍候…</p>
+                        <button className="pc-btn-ghost pc-skip-end" type="button" onClick={skipEnding}>跳过，直接查看评分</button>
+                      </div>
+                    ) : (
+                      <div className="pc-inputbar">
+                        <div className="pc-inputbar-tip">
+                          {voiceMode ? (
+                            isRecording ? (
+                              <span className="pc-inputbar-tip-rec">
+                                <span className="pc-inputbar-tip-dot" />
+                                录音中{liveTranscript ? `：${liveTranscript}` : "，请说话…"}
+                              </span>
+                            ) : (
+                              <span>回答后查看本轮评分</span>
+                            )
+                          ) : (
+                            <span>回答后查看本轮评分</span>
+                          )}
+                        </div>
+                        <div className="pc-inputbar-row">
+                          <div className={`pc-inputbar-text${isRecording ? " recording" : ""}`}>
+                            {voiceMode && <span className="pc-inputbar-dot" aria-hidden="true" />}
+                            <input
+                              value={chatInput}
+                              onChange={(e) => setChatInput(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void sendChatMessage(chatInput); }}
+                              placeholder={isRecording ? "" : voiceMode ? "点击开始语音回答" : "输入你的回答…"}
+                              disabled={chatSending || isRecording}
+                            />
+                          </div>
+                          <button
+                            className={`pc-inputbar-mic${isRecording ? " recording" : ""}`}
+                            type="button"
+                            onClick={toggleRecording}
+                            disabled={chatSending || !voiceMode}
+                            hidden={!voiceMode}
+                            title={!voiceMode ? "当前为文本模式，仅支持文字输入" : isRecording ? "停止录音并识别" : "按住说话"}
+                          >
+                            {isRecording ? "⏹" : "🎤"}
+                          </button>
+                          <button
+                            className={`pc-inputbar-send${chatInput.trim() ? " active" : ""}`}
+                            type="button"
+                            onClick={() => void sendChatMessage(chatInput)}
+                            disabled={chatSending || !chatInput.trim()}
+                          >
+                            发送
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
-              </>
-            )}
+              </div>
+
+              {/* 右列：实时评分 */}
+              <aside className="pc-chat-right">
+                <div className="pc-score-card">
+                  <div className="pc-score-card-head">
+                    <h3>实时评分</h3>
+                    <p>AI根据场景评分维度评估</p>
+                  </div>
+                  <div className="pc-score-dims">
+                    <div className="pc-score-dim">
+                      <div className="pc-score-dim-top">
+                        <span>综合分</span>
+                        <b>{chatResult?.record?.score ?? 0}</b>
+                      </div>
+                      <div className="pc-score-dim-track">
+                        <i style={{ width: `${Math.min(100, chatResult?.record?.score ?? 0)}%` }} />
+                      </div>
+                    </div>
+                    {(sceneRules.length > 0 ? sceneRules : [{ id: "t1", name: "需求理解", score: 100 }, { id: "t2", name: "沟通表达", score: 100 }, { id: "t3", name: "问题解决", score: 100 }]).map((r) => {
+                      const got = chatResult?.scores?.find((s) => (s as { scoringRuleId?: string }).scoringRuleId === r.id)?.score ?? 0;
+                      const max = r.score || 100;
+                      return (
+                        <div className="pc-score-dim" key={r.id}>
+                          <div className="pc-score-dim-top">
+                            <span>{r.name}</span>
+                            <b>{got > 0 ? got : 0}</b>
+                          </div>
+                          <div className="pc-score-dim-track">
+                            <i style={{ width: `${max > 0 ? Math.min(100, (got / max) * 100) : 0}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="pc-score-card-tip">评分会在每次回答实时更新，结束对练后生成本次记录。</div>
+                </div>
+              </aside>
+            </div>
           </section>
         )}
 

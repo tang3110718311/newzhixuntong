@@ -1427,3 +1427,640 @@
   border-radius: 4px;
   padding: 2px 8px;
 }
+
+/* ============================================================
+   AI 对练对话界面（对齐设计稿 v2：顶部状态栏 + 左场景/中对话/右评分 三列）
+   主色 #4080FF | 标题 #1D2129 | 正文 #4E5969 | 辅助 #86909C
+   ============================================================ */
+
+/* 整体容器：顶部状态栏 + 三列主体 */
+.pc-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  height: calc(100vh - 148px);
+  min-height: 560px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+/* ---- 顶部对练状态栏（白卡） ---- */
+.pc-chat-topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px 28px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+}
+.pc-chat-topbar-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.pc-path-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4080FF;
+  margin-top: 7px;
+}
+.pc-topbar-meta {
+  min-width: 0;
+}
+.pc-topbar-path {
+  display: block;
+  font-size: 12px;
+  color: #4080FF;
+  line-height: 1.3;
+}
+.pc-topbar-path:hover {
+  color: #3370E6;
+}
+.pc-topbar-meta h2 {
+  margin: 8px 0 8px;
+  font-size: 24px;
+  font-weight: 600;
+  color: #1D2129;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pc-topbar-meta p {
+  margin: 0;
+  font-size: 13px;
+  color: #86909C;
+}
+.pc-chat-topbar-right {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pc-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: #E8F3FF;
+  border: none;
+  color: #4080FF;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.pc-live-pill i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4080FF;
+}
+/* 已完成态 */
+.pc-live-pill.done {
+  background: #E8FFF2;
+  color: #00B42A;
+}
+.pc-live-pill.done i {
+  background: #00B42A;
+}
+.pc-btn-quit,
+.pc-btn-end {
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.pc-btn-quit {
+  background: #fff;
+  border: 1px solid #E5E6EB;
+  color: #4E5969;
+}
+.pc-btn-quit:hover {
+  background: #F7F8FA;
+  border-color: #C9CDD4;
+}
+.pc-btn-end {
+  background: #FFF1F0;
+  border: 1px solid #FFCCC7;
+  color: #F53F3F;
+}
+.pc-btn-end:hover {
+  background: #FFECEB;
+  border-color: #FFA39E;
+}
+.pc-btn-end:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ---- 三列主体网格：280px / 1fr / 280px，列间距 24px ---- */
+.pc-chat-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 280px;
+  gap: 24px;
+}
+
+/* ---- 左列：场景信息 ---- */
+.pc-chat-left {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+}
+/* 场景信息卡片：顶部 3px 蓝装饰条 */
+.pc-scene-card {
+  flex: none;
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  border-top: 3px solid #4080FF;
+}
+.pc-scene-tag {
+  display: inline-block;
+  font-size: 12px;
+  color: #86909C;
+  font-weight: 500;
+}
+.pc-scene-card h3 {
+  margin: 8px 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1D2129;
+  line-height: 1.4;
+}
+.pc-scene-desc {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #4E5969;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* 信息列表 */
+.pc-scene-info {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid #F2F3F5;
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pc-scene-info li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.pc-scene-info li span {
+  flex: none;
+  font-size: 13px;
+  color: #86909C;
+}
+.pc-scene-info li b {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1D2129;
+  text-align: right;
+  line-height: 1.5;
+  word-break: break-word;
+}
+.pc-scene-info li b.hl {
+  color: #4080FF;
+  font-weight: 600;
+}
+/* 训练目标卡：浅紫 #FBF9FF */
+.pc-goal-card {
+  flex: none;
+  background: #FBF9FF;
+  border-radius: 12px;
+  padding: 20px;
+}
+.pc-goal-card h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #86909C;
+}
+.pc-goal-card > p {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #4E5969;
+  line-height: 1.5;
+}
+.pc-goal-hint {
+  background: #F8FAFF;
+  border-radius: 8px;
+  padding: 12px;
+}
+.pc-goal-hint b {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #86909C;
+}
+.pc-goal-hint p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #4E5969;
+  line-height: 1.5;
+}
+
+/* ---- 中列：对话区 ---- */
+.pc-chat-mid {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+}
+/* 对话头部提示区 */
+.pc-chat-tipbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px;
+  border-bottom: 1px solid #F2F3F5;
+}
+/* AI 头像：蓝紫渐变 40px */
+.pc-ai-badge {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #7262FD, #4080FF);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+.pc-chat-tipbar-text {
+  flex: 1;
+  min-width: 0;
+}
+.pc-chat-tipbar-text b {
+  display: block;
+  font-size: 12px;
+  color: #4080FF;
+}
+.pc-chat-tipbar-text p {
+  margin: 4px 0 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1D2129;
+  line-height: 1.2;
+}
+.pc-chat-tipbar-status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  font-size: 12px;
+  color: #86909C;
+  white-space: nowrap;
+}
+.pc-ai-online {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #00B42A;
+}
+.pc-ai-online i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #00B42A;
+  animation: pc-pulse-ai 2s infinite;
+}
+@keyframes pc-pulse-ai {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+/* 统计数字 */
+.pc-chat-tipbar-status span {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+/* 中列内的引导层 */
+.pc-chat-mid .pc-brief {
+  padding: 18px 20px;
+  border-bottom: 1px solid #F2F3F5;
+  background: #F8FAFF;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+.pc-chat-mid .pc-brief-action {
+  flex: none;
+  width: 100%;
+  padding-left: 0;
+  border-left: none;
+  border-top: 1px dashed rgba(64, 128, 255, 0.25);
+  padding-top: 16px;
+}
+.pc-chat-mid .pc-brief-grid {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+/* 消息区 */
+.pc-chat-mid .pc-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 24px;
+  background: #fff;
+}
+
+/* ---- 对话气泡（差异化圆角） ---- */
+.pc-bubble {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 70%;
+}
+.pc-bubble.ai {
+  align-self: flex-start;
+}
+.pc-bubble.learner {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+/* AI 头像：浅紫底 #E5E0FF + #7262FD 字，32px */
+.pc-bubble.ai .pc-bubble-role {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #E5E0FF;
+  color: #7262FD;
+  font-size: 12px;
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+}
+/* 用户头像 */
+.pc-bubble.learner .pc-bubble-role {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #E5E6EB;
+  color: #4E5969;
+  font-size: 12px;
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+}
+.pc-bubble-body {
+  min-width: 0;
+  max-width: 100%;
+}
+/* AI 气泡：#F2F3F5 底，左上 2px，其余 12px */
+.pc-bubble.ai .pc-bubble-text {
+  background: #F2F3F5;
+  border: none;
+  color: #1D2129;
+  padding: 16px;
+  border-radius: 2px 12px 12px 12px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+/* 用户气泡：#4080FF 蓝底白字，右下 2px，其余 12px */
+.pc-bubble.learner .pc-bubble-text {
+  background: #4080FF;
+  color: #fff;
+  padding: 16px;
+  border-radius: 12px 2px 12px 12px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+/* 气泡下时间标注 */
+.pc-bubble-meta {
+  display: block;
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #86909C;
+}
+.pc-bubble.learner .pc-bubble-meta {
+  text-align: right;
+}
+
+/* ---- 底部输入区 ---- */
+.pc-chat-mid .pc-inputbar {
+  flex: none;
+  border-top: 1px solid #F2F3F5;
+  padding: 16px 24px 20px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.pc-chat-mid .pc-inputbar-tip {
+  font-size: 12px;
+  color: #86909C;
+  text-align: center;
+}
+.pc-inputbar-tip-rec {
+  color: #F53F3F !important;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: center;
+}
+.pc-chat-mid .pc-inputbar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* 输入框：#F8FAFF 底，48px 高，圆角 12px */
+.pc-chat-mid .pc-inputbar-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #F8FAFF;
+  border: 1px solid #E5E6EB;
+  border-radius: 12px;
+  height: 48px;
+  padding: 0 16px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pc-chat-mid .pc-inputbar-text:focus-within {
+  border-color: #4080FF;
+  box-shadow: 0 0 0 2px rgba(64, 128, 255, 0.1);
+}
+.pc-chat-mid .pc-inputbar-text.recording {
+  border-color: #F53F3F;
+  background: #FFF1F0;
+}
+.pc-inputbar-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4080FF;
+}
+.pc-chat-mid .pc-inputbar-text input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 14px;
+  color: #1D2129;
+  line-height: 1.4;
+}
+.pc-chat-mid .pc-inputbar-text input::placeholder {
+  color: #4E5969;
+}
+/* 话筒按钮 */
+.pc-chat-mid .pc-inputbar-mic {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border: 1px solid #E5E6EB;
+  background: #F8FAFF;
+  color: #4080FF;
+  border-radius: 12px;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.pc-chat-mid .pc-inputbar-mic.recording {
+  background: #F53F3F;
+  border-color: #F53F3F;
+  color: #fff;
+  animation: pc-pulse 1s ease-in-out infinite;
+}
+/* 发送按钮：48px 高，圆角 12px，100px 宽 */
+.pc-chat-mid .pc-inputbar-send {
+  flex-shrink: 0;
+  border: none;
+  background: #E5E6EB;
+  color: #86909C;
+  height: 48px;
+  width: 100px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: not-allowed;
+  transition: background 0.15s, color 0.15s;
+}
+.pc-chat-mid .pc-inputbar-send.active {
+  background: #4080FF;
+  color: #fff;
+  cursor: pointer;
+}
+.pc-chat-mid .pc-inputbar-send.active:hover:not(:disabled) {
+  background: #3370E6;
+}
+
+/* ---- 右列：实时评分（280px） ---- */
+.pc-chat-right {
+  min-height: 0;
+  overflow-y: auto;
+}
+.pc-score-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+}
+.pc-score-card-head h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1D2129;
+}
+.pc-score-card-head p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #86909C;
+}
+.pc-score-dims {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.pc-score-dim-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.pc-score-dim-top span {
+  font-size: 13px;
+  color: #4E5969;
+}
+.pc-score-dim-top b {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1D2129;
+}
+.pc-score-dim-track {
+  height: 4px;
+  border-radius: 2px;
+  background: #F2F3F5;
+  overflow: hidden;
+}
+.pc-score-dim-track i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: #4080FF;
+  transition: width 0.5s ease;
+}
+.pc-score-card-tip {
+  margin-top: 24px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #F8FAFF;
+  font-size: 12px;
+  color: #86909C;
+  line-height: 1.5;
+}
+
+/* 中列内的结束评分视图 */
+.pc-chat-mid .pc-score-view {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 20px 40px;
+}
+/* 中列内的教练提示条 */
+.pc-chat-mid .pc-coachtip-float {
+  margin: 0 24px 16px;
+}
+/* 中列内收尾加载区 */
+.pc-chat-mid .pc-chat-ending {
+  padding: 24px 0 32px;
+}
