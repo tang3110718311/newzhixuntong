@@ -1284,7 +1284,8 @@ export function AdminDashboard() {
         navigateTo(`/scenes/${created.id}/edit`);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "AI 生成场景失败，请检查模型配置。");
+      const raw = err instanceof Error ? err.message : "";
+      setError(raw.includes("at least 10 character") ? "场景描述至少需要 10 个字，请补充完整后再提交。" : (raw || "AI 生成场景失败，请检查模型配置。"));
     } finally {
       setSubmitting(false);
     }
@@ -2166,6 +2167,7 @@ export function AdminDashboard() {
                       <textarea
                         value={aiGenerateForm.sceneDescription}
                         onChange={(e) => setAiGenerateForm({ ...aiGenerateForm, sceneDescription: e.target.value })}
+                        minLength={10}
                         maxLength={500}
                         placeholder="请输入场景内容，例如：模拟客户投诉、产品推介或安全生产问答等场景"
                       />
@@ -2194,6 +2196,9 @@ export function AdminDashboard() {
                       </div>
                       <div className="prompt-footer">
                         <span className="prompt-count"><b>{aiGenerateForm.sceneDescription.length}</b>/500</span>
+                        {aiGenerateForm.sceneDescription.trim().length > 0 && aiGenerateForm.sceneDescription.trim().length < 10 && (
+                          <span style={{ color: "#e5484d", fontWeight: 600, marginLeft: 8 }}>场景描述至少需要 10 个字（当前 {aiGenerateForm.sceneDescription.trim().length} 字）</span>
+                        )}
                         <b>◈ 建议</b>　包含人物、场景、痛点、目标和关键沟通要求。<p><b>▣ 示例</b>　一位客户咨询套餐资费，认为线下价格偏高且担心售后。训练学员识别诉求、解释方案并促成办理。</p>
                       </div>
                     </div>
@@ -2224,7 +2229,7 @@ export function AdminDashboard() {
                     )}
                     <div className="prompt-actions">
                       <button className="btn outline" type="button" onClick={() => setShowSceneWizard(false)}>取消</button>
-                      <button className="btn" type="button" onClick={handleAiGenerateAndNext} disabled={submitting || !aiGenerateForm.sceneDescription.trim()}>{submitting ? "AI 生成中..." : "提交"}</button>
+                      <button className="btn" type="button" onClick={handleAiGenerateAndNext} disabled={submitting || !aiGenerateForm.sceneDescription.trim() || aiGenerateForm.sceneDescription.trim().length < 10}>{submitting ? "AI 生成中..." : "提交"}</button>
                     </div>
                   </div>
                 </div>

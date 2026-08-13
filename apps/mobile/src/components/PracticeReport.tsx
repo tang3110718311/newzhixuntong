@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { recordApi } from "@/lib/api";
 
 interface PracticeReportProps {
@@ -14,22 +14,23 @@ interface PracticeReportProps {
   showToast: (msg: string) => void;
 }
 
-/** 格式化 ISO 时间为 MM月DD日 HH:mm */
-function fmtTime(iso?: string | null): string {
+/** 格式化 ISO 时间为 YYYY-MM-DD HH:mm（参考图格式） */
+function fmtTimeFull(iso?: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/** 环形进度（报告页总得分卡） */
-function RingProgress({ value, size = 70, stroke = 7, color = "#10b981" }: { value: number; size?: number; stroke?: number; color?: string }) {
+/** 环形进度（对练报告：绿色） */
+function RingProgress({ value, size = 80, stroke = 6, color = "#27ae60" }: { value: number; size?: number; stroke?: number; color?: string }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const offset = c * (1 - Math.min(Math.max(value, 0), 100) / 100);
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e5e7eb" strokeWidth={stroke} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e5e6eb" strokeWidth={stroke} />
       <circle
         cx={size / 2}
         cy={size / 2}
@@ -46,12 +47,12 @@ function RingProgress({ value, size = 70, stroke = 7, color = "#10b981" }: { val
   );
 }
 
-/** 能力雷达图（SVG 多边形） */
-function RadarChart({ items, size = 168 }: { items: Array<{ name: string; score: number; maxScore: number }>; size?: number }) {
+/** 能力雷达图（SVG 多边形，蓝色） */
+function RadarChart({ items, size = 140 }: { items: Array<{ name: string; score: number; maxScore: number }>; size?: number }) {
   const n = items.length;
   const cx = size / 2;
   const cy = size / 2;
-  const R = Math.min(size / 2 - 24, 66);
+  const R = Math.min(size / 2 - 18, 52);
   const angle = (i: number) => (Math.PI * 2 * i) / n - Math.PI / 2;
   const pt = (i: number, r: number) => {
     const a = angle(i);
@@ -63,20 +64,20 @@ function RadarChart({ items, size = 168 }: { items: Array<{ name: string; score:
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
       {[1, 2, 3].map((k) => (
-        <polygon key={k} points={ringPts(k)} fill="none" stroke="#e2e8f0" strokeWidth="1" />
+        <polygon key={k} points={ringPts(k)} fill="none" stroke="#e5e6eb" strokeWidth="1" />
       ))}
       {items.map((_, i) => {
         const [x, y] = pt(i, R).split(",");
-        return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="#e2e8f0" strokeWidth="1" />;
+        return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="#e5e6eb" strokeWidth="1" />;
       })}
-      <polygon points={dataPts} fill="rgba(37,99,235,.22)" stroke="#2563eb" strokeWidth="2" strokeLinejoin="round" />
+      <polygon points={dataPts} fill="rgba(66,123,255,.12)" stroke="#427bff" strokeWidth="1.6" strokeLinejoin="round" />
     </svg>
   );
 }
 
-/** 合格/未合格标签 */
+/** 合格/未合格标签（对练报告：浅绿） */
 function PassTag({ passed }: { passed: boolean }) {
-  return <span className={`pr-pass-tag ${passed ? "ok" : "no"}`}>{passed ? "合格" : "未合格"}</span>;
+  return <span className={`pr-tag ${passed ? "ok" : "no"}`}>{passed ? "合格" : "未合格"}</span>;
 }
 
 export default function PracticeReport({ sessionId, recordId, scene, task, onClose, showToast }: PracticeReportProps) {
@@ -147,8 +148,6 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
   const avgScore = overallScores.length ? Math.round(overallScores.reduce((a, s) => a + (Number(s.score) || 0), 0) / overallScores.length) : score;
 
   // 对话记录 tab：第 n 条学员消息 = 第 n 轮，匹配 turnScores
-  const learnerSeqRef = useRef(0);
-  learnerSeqRef.current = 0;
   const transcript = useMemo(() => {
     if (!detail) return [];
     const turnScores: Array<{ roundNo: number; scores: Array<{ ruleName: string | null; score: number; deductionReason?: string; level?: string }> }> =
@@ -197,37 +196,41 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
 
   const sceneName = detail.record?.sceneName || scene?.scene?.name || "场景对练";
   const taskName = detail.record?.taskName || task?.name || "";
+  const subTitle = taskName ? `${taskName}·${sceneName}` : sceneName;
 
   return (
     <div className="pr-shell">
-      {/* ===== 头部 ===== */}
+      {/* ===== 顶部导航（白底，标题居中） ===== */}
       <header className="pr-head">
+        <button className="pr-head-btn" type="button" onClick={onClose} aria-label="返回">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 5l-7 7 7 7" />
+          </svg>
+        </button>
         <div className="pr-head-text">
           <h1>AI对练报告</h1>
-          <p>
-            {taskName}·{sceneName}
-          </p>
+          <p>{subTitle}</p>
         </div>
-        <button className="pr-close" type="button" onClick={onClose} aria-label="关闭报告">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+        <button className="pr-head-close" type="button" onClick={onClose} aria-label="关闭报告">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
             <path d="M6 6l12 12M18 6L6 18" />
           </svg>
         </button>
       </header>
 
-      {/* ===== 得分概览条 ===== */}
-      <div className="pr-score-brief">
+      {/* ===== 顶部得分区 ===== */}
+      <div className="pr-score">
         <div className="pr-score-num">
           <b>{score}</b>
           <span>分</span>
         </div>
         <div className="pr-score-meta">
           <span>本次整体成绩</span>
-          <em>{fmtTime(detail.record?.finishedAt)}</em>
+          <em>{fmtTimeFull(detail.record?.finishedAt)}</em>
         </div>
       </div>
 
-      {/* ===== Tab 切换 ===== */}
+      {/* ===== Tab ===== */}
       <div className="pr-tabs">
         <button className={`pr-tab ${tab === "report" ? "active" : ""}`} type="button" onClick={() => setTab("report")}>
           AI对练报告
@@ -238,99 +241,55 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
       </div>
 
       {tab === "report" ? (
+        /* ===== AI对练报告 tab ===== */
         <div className="pr-report-body">
           {/* 本次 AI 对练评估 */}
-          <div className="pr-section-head">
-            <h3>本次AI对练评估</h3>
-            <PassTag passed={passed} />
-          </div>
-          <p className="pr-formula">综合得分 = 各能力维度得分 × 后台配置权重</p>
+          <div className="pr-card">
+            <div className="pr-eval-head">
+              <div className="pr-eval-text">
+                <h3>本次AI对练评估</h3>
+                <p>综合得分 = 各能力维度得分 × 后台配置权重</p>
+              </div>
+              <PassTag passed={passed} />
+            </div>
 
-          {/* 总得分卡 */}
-          <div className="pr-total-card">
-            <div className="pr-ring-wrap">
+            <div className="pr-total-card">
               <div className="pr-ring">
-                <RingProgress value={score} />
+                <RingProgress value={score} color={passed ? "#27ae60" : "#f5a623"} />
                 <div className="pr-ring-center">
                   <b>{score}</b>
                   <span>综合得分</span>
                 </div>
               </div>
-            </div>
-            <div className="pr-total-text">
-              <b>{passed ? "表现达到合格要求，继续保持优势能力" : "表现未达合格线，建议针对短板加强练习"}</b>
-              <p>
-                系统依据评分维度与后台配置权重，综合评估你本次对练各能力维度的表现。得分越高代表该维度行为越规范。
-              </p>
-              <div className="pr-total-stats">
-                <span>
-                  能力均分 <b>{avgScore}</b>
-                </span>
-                <span>
-                  评价维度 <b>{overallScores.length}</b>
-                </span>
+              <div className="pr-total-text">
+                <b>{passed ? "表现达到合格要求，继续保持优势能力" : "表现未达合格线，建议针对短板加强练习"}</b>
+                <p>系统依据评分维度与后台配置权重，综合评估你本次对练各能力维度的表现。得分越高代表该维度行为越规范。</p>
+                <div className="pr-total-stats">
+                  能力均分 {avgScore}　评价维度 {overallScores.length}
+                </div>
               </div>
             </div>
-          </div>
-
-          {/* 能力维度分析 */}
-          <div className="pr-sec-title">
-            <i></i>
-            能力维度分析
-          </div>
-          <div className="pr-dims">
-            {overallScores.map((s, i) => {
-              const maxScore = 100; // 权重见下方展示，进度条按得分比例
-              const pct = Math.min(Math.max((Number(s.score) || 0) / maxScore, 0), 1) * 100;
-              const isGood = (Number(s.score) || 0) >= 80;
-              const dotColors = ["#3b82f6", "#8b5cf6", "#10b981", "#f59e0b", "#ef4444", "#06b6d4"];
-              return (
-                <div className="pr-dim-card" key={i}>
-                  <div className="pr-dim-top">
-                    <span className="pr-dim-dot" style={{ background: dotColors[i % dotColors.length] }}></span>
-                    <b>{s.ruleName || `维度${i + 1}`}</b>
-                    <span className="pr-dim-weight">权重{s.ruleName ? "按后台配置" : ""}</span>
-                    <span className="pr-dim-score">{s.score}</span>
-                  </div>
-                  <div className="pr-dim-bar">
-                    <i className={isGood ? "good" : "warn"} style={{ width: `${pct}%` }}></i>
-                  </div>
-                  <p className="pr-dim-desc">{s.deductionReason || "该维度依据对话中的行为锚点进行评估。"}</p>
-                  {s.level && (
-                    <div className="pr-dim-level">
-                      {s.level === "excellent" ? (
-                        <span className="pr-diamond good">◆ 优势项：表现优秀，可作标杆</span>
-                      ) : s.level === "pass" ? (
-                        <span className="pr-diamond mid">◆ 达标项：基本符合要求</span>
-                      ) : (
-                        <span className="pr-diamond warn">◆ 待提升：该维度存在明显短板</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
           </div>
 
           {/* 综合评价 */}
           {detail.capabilityProfile && (
-            <>
-              <div className="pr-sec-title">
+            <div className="pr-card">
+              <div className="pr-card-title">
                 <i></i>
                 综合评价
               </div>
-              <div className="pr-summary-card">{detail.capabilityProfile}</div>
-            </>
+              <p className="pr-summary">{detail.capabilityProfile}</p>
+            </div>
           )}
 
-          {/* 能力画像（雷达图） */}
+          {/* 能力画像 */}
           {overallScores.length >= 3 && (
-            <>
-              <div className="pr-sec-title">
+            <div className="pr-card">
+              <div className="pr-card-title">
                 <i></i>
                 能力画像
               </div>
-              <div className="pr-radar-card">
+              <div className="pr-radar">
                 <RadarChart items={overallScores.map((s) => ({ name: s.ruleName || "维度", score: Number(s.score) || 0, maxScore: 100 }))} />
                 <div className="pr-radar-list">
                   {overallScores.map((s, i) => (
@@ -341,46 +300,85 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
                   ))}
                 </div>
               </div>
-            </>
+            </div>
+          )}
+
+          {/* 能力维度分析 */}
+          {overallScores.length > 0 && (
+            <div className="pr-card">
+              <div className="pr-card-title">
+                <i></i>
+                能力维度分析
+              </div>
+              <div className="pr-dims">
+                {overallScores.map((s, i) => {
+                  const val = Number(s.score) || 0;
+                  const isGood = val >= 80;
+                  const pct = Math.min(Math.max(val / 100, 0), 1) * 100;
+                  return (
+                    <div className="pr-dim" key={i}>
+                      <div className="pr-dim-top">
+                        <span className={`pr-dim-dot ${isGood ? "good" : "warn"}`}></span>
+                        <b>{s.ruleName || `维度${i + 1}`}</b>
+                        <span className="pr-dim-weight">权重按后台配置</span>
+                        <span className="pr-dim-score">{s.score}</span>
+                      </div>
+                      <div className="pr-dim-bar">
+                        <i className={isGood ? "good" : "warn"} style={{ width: `${pct}%` }}></i>
+                      </div>
+                      <p className="pr-dim-desc">{s.deductionReason || "该维度依据对话中的行为锚点进行评估。"}</p>
+                      {s.level && (
+                        <ul className="pr-dim-list">
+                          <li>
+                            {s.level === "excellent" ? "优势项：表现优秀，可作标杆" : s.level === "pass" ? "达标项：基本符合要求" : "待提升：该维度存在明显短板"}
+                          </li>
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           {/* 表现反馈 */}
           {(detail.highlights?.length || detail.weaknesses?.length || detail.suggestions?.length) && (
-            <>
-              <div className="pr-sec-title">
+            <div className="pr-card">
+              <div className="pr-card-title">
                 <i></i>
                 表现反馈
               </div>
-              <div className="pr-feedback-grid">
+              <div className="pr-fb-grid">
                 {(detail.highlights?.length > 0 || detail.suggestions?.length > 0) && (
-                  <div className="pr-fb-card good">
+                  <div className="pr-fb good">
                     <h4>表现较好</h4>
-                    <ul>
-                      {(detail.highlights?.length ? detail.highlights : detail.suggestions).slice(0, 3).map((t: string, i: number) => (
-                        <li key={i}>{t}</li>
-                      ))}
-                    </ul>
+                    {(detail.highlights?.length ? detail.highlights : detail.suggestions).slice(0, 3).map((t: string, i: number) => (
+                      <p key={i}>{t}</p>
+                    ))}
                   </div>
                 )}
                 {detail.weaknesses?.length > 0 && (
-                  <div className="pr-fb-card warn">
+                  <div className="pr-fb warn">
                     <h4>提升建议</h4>
-                    <ul>
-                      {detail.weaknesses.slice(0, 3).map((t: string, i: number) => (
-                        <li key={i}>{t}</li>
-                      ))}
-                    </ul>
+                    {detail.weaknesses.slice(0, 3).map((t: string, i: number) => (
+                      <p key={i}>{t}</p>
+                    ))}
                   </div>
                 )}
               </div>
-            </>
+            </div>
           )}
 
           {/* 本次整体成绩 */}
-          <div className="pr-final-score">
-            <b>{score}</b>
-            <span>本次整体成绩</span>
-            <PassTag passed={passed} />
+          <div className="pr-card pr-final">
+            <div className="pr-card-title">
+              <i></i>
+              本次整体成绩
+            </div>
+            <div className="pr-final-row">
+              <b>{score}</b>
+              <PassTag passed={passed} />
+            </div>
           </div>
 
           <button className="pr-close-report" type="button" onClick={onClose}>
@@ -394,30 +392,33 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
           {transcript.map((t: any) => {
             if (t.speaker === "ai") {
               return (
-                <div className="pr-trn ai" key={t.key}>
-                  <span className="pr-trn-avatar ai" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" strokeWidth="1.7">
+                <div className="pr-msg ai" key={t.key}>
+                  <span className="pr-avatar ai" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#fff" strokeWidth="1.7">
                       <rect x="4.5" y="7" width="15" height="11" rx="3.2" />
                       <circle cx="9.2" cy="12.2" r="1.2" fill="#fff" stroke="none" />
                       <circle cx="14.8" cy="12.2" r="1.2" fill="#fff" stroke="none" />
                       <path d="M12 4.5v2.5" />
                       <circle cx="12" cy="3.6" r="1.1" fill="#fff" stroke="none" />
+                      <path d="M7 16.6h.01M11.5 16.6h.01M16 16.6h.01" strokeWidth="2" strokeLinecap="round" />
                     </svg>
                   </span>
-                  <div className="pr-trn-main">
-                    <span className="pr-trn-time">{fmtTime(detail.record?.startedAt)}</span>
-                    <div className="pr-trn-bubble ai">{t.text}</div>
+                  <div className="pr-msg-main">
+                    <span className="pr-time">{fmtTimeFull(detail.record?.startedAt)}</span>
+                    <div className="pr-bubble ai">{t.text}</div>
                   </div>
                 </div>
               );
             }
             return (
-              <div className="pr-trn-wrap" key={t.key}>
-                <div className="pr-trn user">
-                  <div className="pr-trn-main">
-                    <span className="pr-trn-time">{fmtTime(detail.record?.startedAt)}</span>
-                    <div className="pr-trn-bubble user">
-                      <span className="pr-trn-wave" aria-hidden="true">
+              <div className="pr-turn" key={t.key}>
+                <div className="pr-msg user">
+                  <span className="pr-avatar user" aria-hidden="true"></span>
+                  <div className="pr-msg-main">
+                    <span className="pr-time">{fmtTimeFull(detail.record?.startedAt)}</span>
+                    <div className="pr-bubble user">
+                      <span className="pr-wave" aria-hidden="true">
+                        <i></i>
                         <i></i>
                         <i></i>
                         <i></i>
@@ -425,18 +426,28 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
                       {t.text}
                     </div>
                   </div>
-                  <span className="pr-trn-avatar user" aria-hidden="true"></span>
                 </div>
-                <div className="pr-trn-feedback">
-                  <div className="pr-feedback-head">
-                    <b>实时点评</b>
+                <div className="pr-fb-card">
+                  <div className="pr-fb-head">
+                    <b>本次回答反馈</b>
                     <span>{t.turnTotal != null ? `${t.turnTotal}分` : "—"}</span>
                   </div>
-                  {t.reasons && t.reasons.length > 0 && (
-                    <div className="pr-feedback-sec">
-                      <span>评分依据</span>
-                      <p>{t.reasons.join("；")}</p>
-                    </div>
+                  {(t.reasons?.length > 0 || detail.suggestions?.length > 0) && (
+                    <>
+                      <div className="pr-fb-divider"></div>
+                      {t.reasons?.length > 0 && (
+                        <div className="pr-fb-row">
+                          <em>问题定位：</em>
+                          {t.reasons.join("；")}
+                        </div>
+                      )}
+                      {detail.suggestions?.length > 0 && (
+                        <div className="pr-fb-row">
+                          <em>改进建议：</em>
+                          {detail.suggestions[0]}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

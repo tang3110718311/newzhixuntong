@@ -129,6 +129,7 @@ export default function ScenarioWorkspace({
       <ExamReport
         record={reportView.record}
         sceneName={s?.name || sceneMeta?.sceneName || "场景考试"}
+        taskName={task?.name}
         onClose={() => setReportView(null)}
       />
     );

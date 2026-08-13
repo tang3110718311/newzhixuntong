@@ -236,7 +236,7 @@ export const updateAiProviderSchema = z.object({
 
 export const generateSceneSchema = z.object({
   industryPackageId: z.string().optional().nullable(),
-  sceneDescription: z.string().min(10).max(2000),
+  sceneDescription: z.string().min(10, "场景描述至少需要 10 个字").max(2000, "场景描述不能超过 2000 个字"),
   targetRole: z.string().min(1).max(120),
   mode: z.enum(["voice", "text"]).default("voice"),
   createMode: sceneCreateModeSchema.default("ai_practice"),
