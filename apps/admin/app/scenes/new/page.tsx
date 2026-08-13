@@ -182,7 +182,7 @@ export default function SceneNewPage() {
     setError("");
     try {
       const name = aiIdentity.replace(/\s+/g, " ").slice(0, 18) + (aiIdentity.length > 18 ? "…" : "");
-      const created = await apiFetch<{ id: string }>("/scenes", {
+      await apiFetch("/scenes", {
         method: "POST",
         body: JSON.stringify({
           name: name || "新场景",
@@ -214,7 +214,8 @@ export default function SceneNewPage() {
         }),
       });
       setMessage("创建成功。");
-      navigateTo(`/scenes/${created.id}/edit`);
+      // 创建完成后自动跳转回场景管理列表页
+      navigateTo("/?section=scenes");
     } catch (err) {
       setError(err instanceof Error ? err.message : "创建失败");
     } finally {
