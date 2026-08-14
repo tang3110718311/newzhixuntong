@@ -683,6 +683,18 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
+// 完整日期时间（对齐原型任务列表：2026-08-05 23:59:59）
+function formatDateTimeFull(value?: string | null) {
+  if (!value) return "-";
+  try {
+    const d = new Date(value);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  } catch {
+    return value;
+  }
+}
+
 function makeCode(prefix: string) {
   return `${prefix}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
 }
@@ -3154,106 +3166,92 @@ export function AdminDashboard() {
           </section>
         )}
         {activeSection === "my-tasks" && (
-          <section className="page-section">
+          <section className="page-section my-tasks-mod home-dashboard">
             <div className="home-grid">
               <div className="home-main">
-                <div className="page-header">
-                  <div>
-                    <h1 className="page-title">我的任务</h1>
-                    <p className="page-desc">集中查看个人培训、对练和考试任务，合理安排学习进度。</p>
+                {/* 任务头 + 4 统计（原型 .taskhead） */}
+                <div className="taskhead card">
+                  <h1>我的任务</h1>
+                  <p className="muted">集中查看个人培训、对练和考试任务，合理安排学习进度。</p>
+                  <div className="taskcounts">
+                    <div><span className="muted">全部任务</span><b>{myTaskStats.total}</b></div>
+                    <div><span className="muted">已逾期</span><b style={{ color: "#e49a38" }}>{myTaskStats.overdue}</b></div>
+                    <div><span className="muted">已完成</span><b style={{ color: "#31a877" }}>{myTaskStats.completed}</b></div>
+                    <div><span className="muted">进行中</span><b className="blue">{myTaskStats.inProgress}</b></div>
                   </div>
                 </div>
 
-                {/* 4统计卡 */}
-                <div className="stats prototype-stats stats-4" style={{ marginBottom: 24 }}>
-                  <div className="metric card"><span>全部任务</span><strong>{myTaskStats.total}</strong><small>本年度累计</small></div>
-                  <div className="metric card"><span>已逾期</span><strong style={{ color: "#e6a23c" }}>{myTaskStats.overdue}</strong><small>需尽快处理</small></div>
-                  <div className="metric card"><span>已完成</span><strong className="text-green">{myTaskStats.completed}</strong><small>学习完成</small></div>
-                  <div className="metric card"><span>进行中</span><strong className="text-blue">{myTaskStats.inProgress}</strong><small>正在执行</small></div>
+                {/* 筛选区（原型 .query） */}
+                <div className="query card">
+                  <select className="field" value={taskFilter.status === "all" ? "" : taskFilter.status} onChange={(e) => setTaskFilter({ ...taskFilter, status: e.target.value || "all" })}>
+                    <option value="">全部任务状态</option>
+                    <option value="in_progress">进行中</option>
+                    <option value="not_started">待开始</option>
+                    <option value="overdue">已逾期</option>
+                    <option value="completed">已完成</option>
+                  </select>
+                  <input className="field" type="text" placeholder="请输入任务名称" value={taskFilter.keyword || ""} onChange={(e) => setTaskFilter({ ...taskFilter, keyword: e.target.value })} />
+                  <button className="btn" type="button">搜索</button>
+                  <button className="btn gray" type="button" onClick={() => { setTaskFilter({ status: "all", type: "all", keyword: "" }); }}>重置</button>
                 </div>
 
-                {/* 筛选区 */}
-                <div className="filter-bar card">
-                  <div className="filter-row">
-                    <div className="filter-item">
-                      <select className="filter-select" value={taskFilter.status === "all" ? "" : taskFilter.status} onChange={(e) => setTaskFilter({ ...taskFilter, status: e.target.value || "all" })}>
-                        <option value="">全部任务状态</option>
-                        <option value="published">进行中</option>
-                        <option value="completed">已完成</option>
-                        <option value="overdue">已逾期</option>
-                      </select>
-                    </div>
-                    <input className="filter-input" type="text" placeholder="请输入任务名称" value={taskFilter.keyword || ""} onChange={(e) => setTaskFilter({ ...taskFilter, keyword: e.target.value })} />
-                    <button className="btn primary" type="button" onClick={() => { /* filter applied reactively */ }}>搜索</button>
-                    <button className="btn" type="button" onClick={() => { setTaskFilter({ status: "all", type: "all", keyword: "" }); }}>重置</button>
-                  </div>
-                </div>
-
-                <div className="card section" style={{ padding: 0 }}>
-                  {/* 任务卡片列表 */}
+                {/* 任务列表（原型 .tasks > .task） */}
+                <div className="tasks card">
                   {filteredMyTasks.length === 0 && <div className="empty" style={{ padding: 40 }}>暂无任务</div>}
                   {filteredMyTasks.map((task, idx) => {
                     const runtimeStatus = getTaskRuntimeStatus(task);
                     const isOverdue = runtimeStatus === "overdue";
                     const isCompleted = runtimeStatus === "completed";
-                    const categoryColors = ["#e6a23c", "#4e63f0", "#8b62e8", "#52c41a"];
-                    const categoryLabels = ["安全培训", "客户沟通", "业务对练", "入职课程"];
-                    const catColor = categoryColors[idx % categoryColors.length];
-                    const catLabel = categoryLabels[idx % categoryLabels.length];
-                    const statusLabel = isCompleted ? "已完成" : isOverdue ? "已逾期" : "进行中";
-                    const statusBg = isCompleted ? "#f6ffed" : isOverdue ? "#fff7e6" : "#e6f4ff";
-                    const statusColor = isCompleted ? "#52c41a" : isOverdue ? "#e6a23c" : "#4e63f0";
-                    const actionLabel = isCompleted ? "查看记录" : idx === 0 ? "继续学习" : "开始学习";
+                    const categoryGradients = ["linear-gradient(135deg,#f3a75c,#e87072)", "linear-gradient(135deg,#6a9bef,#6b70e8)", "linear-gradient(135deg,#9b82ed,#657de9)", "linear-gradient(135deg,#60c8a1,#4e9cd8)"];
+                    const categoryLabels = ["安全\n培训", "客户\n沟通", "业务\n对练", "入职\n课程"];
+                    const progress = isCompleted ? 100 : (task.progressPercent ?? (isCompleted ? 100 : 0));
+                    const actionLabel = isCompleted ? "查看记录" : progress > 0 ? "继续学习" : "开始学习";
                     return (
-                      <div key={task.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 20px", borderBottom: idx < tasks.length - 1 ? "1px solid var(--border)" : "none" }}>
-                        {/* 左侧分类图标 */}
-                        <div style={{ width: 52, height: 52, borderRadius: 10, background: catColor, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#fff", fontSize: 12, fontWeight: 700, textAlign: "center", lineHeight: 1.2 }}>
-                          {catLabel}
+                      <article className="task" key={task.id}>
+                        <div className="taskicon" style={{ background: categoryGradients[idx % 4] }}>{categoryLabels[idx % 4]}</div>
+                        <div>
+                          <h3>{task.name}</h3>
+                          <p>常规对话　|　语音形式　|　场景数：{task.sceneCount ?? 1}　|　完成进度：{progress}%</p>
+                          <div className="meta">
+                            <span>任务编号：{task.code || task.id}</span>
+                            <span>{isCompleted ? "完成时间" : "截止时间"}：{formatDateTimeFull(task.endAt)}</span>
+                          </div>
                         </div>
-                        {/* 中间任务信息 */}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <strong style={{ display: "block", fontSize: 15, marginBottom: 4 }}>{task.name}</strong>
-                          <span style={{ fontSize: 12, color: "#8b98aa", display: "block", marginBottom: 2 }}>
-                            常规对话 | 语音形式 | 场景数：1 | 完成进度：{isCompleted ? "100" : "68"}%
-                          </span>
-                          <span style={{ fontSize: 12, color: "#8b98aa" }}>
-                            任务编号：{task.code || task.id}{"   "}
-                            {isCompleted ? "完成时间" : "截止时间"}：{isCompleted ? formatDate(task.endAt || "—") : formatDate(task.endAt)}
-                          </span>
+                        <div className="action">
+                          {isCompleted ? <span className="tag green">已完成</span> : isOverdue ? <span className="overdue">已逾期</span> : <span className="tag blue">进行中</span>}
+                          <a onClick={() => { navigateTo("/tasks/" + task.id); }}>{actionLabel}　›</a>
                         </div>
-                        {/* 右侧状态+操作 */}
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
-                          <span style={{ padding: "2px 10px", borderRadius: 4, background: statusBg, color: statusColor, fontSize: 12, fontWeight: 600 }}>{statusLabel}</span>
-                          <button className="link-btn" type="button" style={{ color: "#4e63f0", fontSize: 13, fontWeight: 600 }} onClick={() => { navigateTo('/tasks/' + task.id); }}>
-                            {actionLabel} &gt;
-                          </button>
-                        </div>
-                      </div>
+                      </article>
                     );
                   })}
                 </div>
               </div>
 
-              {/* 右侧3卡 */}
+              {/* 右侧栏（原型 .right：个人资料 / 培训概况 / 通知消息） */}
               <aside className="right-rail">
-                <div className="profile card">
-                  <span className="avatar large" />
-                  <div>
-                    <h2>{auth.user.name}</h2>
-                    <p>企业管理员</p>
-                    <p>培训负责人</p>
+                <section className="profile card">
+                  <div className="profilehead">
+                    <div className="pic" />
+                    <div>
+                      <h3>{auth.user.name}</h3>
+                      <span className="tag">企业管理员</span>　<span className="tag">培训负责人</span>
+                    </div>
                   </div>
-                </div>
-                <div className="sidecard card">
-                  <div className="sidecard-head"><h2>培训概况</h2><span>本年度</span></div>
-                  <strong>{completedRecordCount}</strong>
-                  <p>已完成培训任务</p>
-                  <div className="mini-stats"><span>对练<b>{records.length}</b></span><span>考试<b>0</b></span><span>合格率<b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></span></div>
-                </div>
-                <div className="sidecard card">
-                  <h2>通知消息</h2>
-                  <p>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息，系统将及时推送任务派发、培训安排及学习进度提醒。"}</p>
-                </div>
+                </section>
+                <section className="sidecard card">
+                  <div className="row"><h3>培训概况</h3><span className="muted">本年度</span></div>
+                  <div className="score">{completedRecordCount.toLocaleString()}</div>
+                  <span className="muted">已完成培训任务</span>
+                  <div className="minis">
+                    <div><span className="muted">对练</span><b>{records.length.toLocaleString()}</b></div>
+                    <div><span className="muted">考试</span><b>{examAttempts.length.toLocaleString()}</b></div>
+                    <div><span className="muted">合格率</span><b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></div>
+                  </div>
+                </section>
+                <section className="sidecard card">
+                  <h3>通知消息</h3>
+                  <p className="muted" style={{ lineHeight: 1.8 }}>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息。系统将及时推送任务派发、培训安排及学习进度提醒。"}</p>
+                </section>
               </aside>
             </div>
           </section>
