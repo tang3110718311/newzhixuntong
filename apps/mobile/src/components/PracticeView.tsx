@@ -201,7 +201,10 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   }, [messages]);
 
   // 组件卸载时释放录音资源
+  // 注意：StrictMode 开发模式下组件会 mount→unmount→remount，useRef 在 remount 时保留旧值，
+  // 若不在挂载时重置 unmountedRef，cleanup 置的 true 会残留，导致 speakText 误判"已卸载"而不发 TTS 请求、AI 语音无法播放。
   useEffect(() => {
+    unmountedRef.current = false;
     return () => {
       unmountedRef.current = true;
       try {

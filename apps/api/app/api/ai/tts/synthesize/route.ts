@@ -161,12 +161,22 @@ export async function POST(request: Request) {
     }
 
     // 2. 主引擎：edge-tts（微软云端，自然男女声、情绪丰富、不占本地算力）
+    // edge-tts 偶发返回空音频/抖动（分句并发时更易触发），失败自动重试 1 次（退避 400ms）
     try {
-      const edgeResult = await synthesizeWithEdgeTts({
-        text,
-        voice: toEdgeVoice(voice),
-        emotion,
-      });
+      let edgeResult: TtsEngineResult | null = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          edgeResult = await synthesizeWithEdgeTts({
+            text,
+            voice: toEdgeVoice(voice),
+            emotion,
+          });
+        } catch {
+          edgeResult = null;
+        }
+        if (edgeResult && edgeResult.ok && edgeResult.audioBase64) break;
+        if (attempt === 0) await new Promise((r) => setTimeout(r, 400));
+      }
       if (!edgeResult || !edgeResult.ok || !edgeResult.audioBase64) {
         throw new Error(edgeResult?.error || "edge-tts returned empty audio");
       }
