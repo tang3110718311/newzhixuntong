@@ -75,6 +75,9 @@ services:
       - /data/zxt-next/deploy/env.test
     environment:
       NODE_ENV: production
+      NEXT_BASE_PATH: ${NEXT_MOBILE_BASE_PATH}
+      NEXT_PUBLIC_APP_BASE_PATH: ${NEXT_PUBLIC_MOBILE_APP_BASE_PATH}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_MOBILE_API_BASE_URL}
     depends_on:
       zxt-api:
         condition: service_healthy
