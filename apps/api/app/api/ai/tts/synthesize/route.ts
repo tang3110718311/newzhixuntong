@@ -22,6 +22,34 @@ const ALLOWED_EMOTIONS = [
   "cheerful", "calm", "serious", "polite", "default",
 ];
 
+// ---- TTS 结果内存 LRU 缓存 ----
+// edge-tts 云端整段合成耗时约 4-7s，同一文本（开场白、高频问答）二次请求直接命中秒回。
+// 注意：dev 热更新/重启会重置该缓存，不影响功能正确性。
+const TTS_CACHE_MAX = 120; // 最多缓存 120 条（每条约几十 KB base64，总量可控）
+type TtsCacheEntry = { audioBase64: string; format: string; engine: string };
+const ttsCache = new Map<string, TtsCacheEntry>();
+
+function ttsCacheKey(text: string, voice: string, emotion: string): string {
+  // 文本可能较长，直接拼 key 即可（Map 内部哈希），无需额外 hash 计算
+  return `${voice}|${emotion}|${text}`;
+}
+function ttsCacheGet(key: string): TtsCacheEntry | null {
+  const hit = ttsCache.get(key);
+  if (!hit) return null;
+  // LRU：命中后刷新到队尾
+  ttsCache.delete(key);
+  ttsCache.set(key, hit);
+  return hit;
+}
+function ttsCacheSet(key: string, entry: TtsCacheEntry) {
+  ttsCache.delete(key);
+  ttsCache.set(key, entry);
+  if (ttsCache.size > TTS_CACHE_MAX) {
+    const oldest = ttsCache.keys().next().value;
+    if (oldest !== undefined) ttsCache.delete(oldest);
+  }
+}
+
 const ttsRequestSchema = z.object({
   text: z.string().min(1).max(2000),
   voice: z.string().max(80).default("chattts-female-306"),
@@ -55,7 +83,15 @@ export async function POST(request: Request) {
     assertRateLimit("ai:tts:ip", getClientIp(request), { limit: 120, windowMs: 60_000, message: "语音合成请求过于频繁，请稍后再试。" });
     const { text, voice, emotion } = ttsRequestSchema.parse(await request.json());
 
-    // 0. 旧版智训通语音服务(配置 ZXT_TTS_BASE_URL 时优先,失败自动回退 edge-tts)
+    // 0. 命中缓存：直接返回，省去合成耗时（开场白/高频句重复播报时从 4-7s → 毫秒级）
+    const cacheKey = ttsCacheKey(text, voice, emotion);
+    const cached = ttsCacheGet(cacheKey);
+    if (cached) {
+      logAiCall({ tenantId, providerType: "tts", modelName: "tts-cache", bizType: "tts_synthesize", durationMs: Date.now() - started, success: true, traceId });
+      return ok({ ...cached, cached: true }, traceId);
+    }
+
+    // 1. 旧版智训通语音服务(配置 ZXT_TTS_BASE_URL 时优先,失败自动回退 edge-tts)
     if (ZXT_TTS_BASE_URL) {
       try {
         const legacyResult = await synthesizeWithLegacyTts({ text, voice, emotion });
@@ -63,17 +99,19 @@ export async function POST(request: Request) {
           throw new Error(legacyResult.error || "zxt-legacy-tts returned empty audio");
         }
         logAiCall({ tenantId, providerType: "tts", modelName: "zxt-legacy-tts", bizType: "tts_synthesize", durationMs: Date.now() - started, success: true, traceId });
-        return ok({
+        const result = {
           audioBase64: legacyResult.audioBase64,
           format: legacyResult.format || "wav",
           engine: "zxt-legacy-tts",
-        }, traceId);
+        };
+        ttsCacheSet(cacheKey, result);
+        return ok(result, traceId);
       } catch (legacyError) {
         // 旧版服务不可用时降级到 edge-tts,不影响主流程
       }
     }
 
-    // 1. 主引擎：edge-tts（微软云端，自然男女声、情绪丰富、不占本地算力）
+    // 2. 主引擎：edge-tts（微软云端，自然男女声、情绪丰富、不占本地算力）
     try {
       const edgeResult = await synthesizeWithEdgeTts({
         text,
@@ -84,11 +122,13 @@ export async function POST(request: Request) {
         throw new Error(edgeResult?.error || "edge-tts returned empty audio");
       }
       logAiCall({ tenantId, providerType: "tts", modelName: "edge-tts", bizType: "tts_synthesize", durationMs: Date.now() - started, success: true, traceId });
-      return ok({
+      const result = {
         audioBase64: edgeResult.audioBase64,
         format: edgeResult.format || "mp3",
         engine: "edge-tts",
-      }, traceId);
+      };
+      ttsCacheSet(cacheKey, result);
+      return ok(result, traceId);
     } catch (edgeError) {
       return fail("TTS_FAILED", `语音合成失败：${errorMessage(edgeError) || "unknown"}`, 502, traceId);
     }

@@ -802,11 +802,20 @@ input, select, textarea { font-family: inherit; }
 .pv-voice-wave{display:inline-flex;align-items:flex-end;gap:2.5px;margin-right:6px;vertical-align:-2px}
 .pv-voice-wave i{display:block;width:3px;border-radius:2px;background:#fff;opacity:.95}
 .pv-voice-wave i:nth-child(1){height:9px}.pv-voice-wave i:nth-child(2){height:16px}.pv-voice-wave i:nth-child(3){height:11px}.pv-voice-wave i:nth-child(4){height:15px}
-/* AI 播报中：气泡下方实时播放进度条 */
-.pv-ai-speaking{display:flex;align-items:center;gap:7px;margin-top:6px;max-width:180px}
-.pv-ai-speaking-bar{flex:1;min-width:0;height:4px;border-radius:4px;background:#e2e8f0;overflow:hidden}
-.pv-ai-speaking-bar i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,#6366f1);transition:width .2s linear}
-.pv-ai-speaking b{flex:none;font-size:10px;font-weight:600;color:#64748b;white-space:nowrap}
+/* AI 消息微信语音条：喇叭图标 + 进度轨道 + 时长；播放中高亮并填充进度 */
+.pv-ai-voicebar{display:flex;align-items:center;gap:8px;min-width:132px;max-width:100%;padding:7px 10px;border-radius:9px;background:#f1f5fb;border:1px solid #e3ebf6;transition:background .2s}
+.pv-ai-voicebar.playing{background:#e8f1ff;border-color:#c7ddfb}
+.pv-ai-voicebar-ico{flex:none;display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff}
+.pv-ai-voicebar-track{flex:1;min-width:0;height:4px;border-radius:4px;background:#dbe5f2;overflow:hidden}
+.pv-ai-voicebar-track i{display:block;height:100%;width:0;border-radius:4px;background:linear-gradient(90deg,#3b82f6,#6366f1);transition:width .12s linear}
+.pv-ai-voicebar-dur{flex:none;min-width:22px;font-size:11px;font-weight:700;color:#64748b;font-variant-numeric:tabular-nums;text-align:right}
+.pv-ai-voicebar.playing .pv-ai-voicebar-ico{animation:pvVoicePulse 1s ease-in-out infinite}
+@keyframes pvVoicePulse{0%,100%{opacity:1}50%{opacity:.55}}
+/* AI 消息语音条下方文字：打字机先行 → 随播放逐字 → 播完全文 */
+.pv-ai-voicebar-text{margin-top:7px}
+/* TTS 合成期间：浅色"语音准备中…"占位 */
+.pv-ai-preparing{margin-top:6px}
+.pv-ai-preparing b{font-size:10px;font-weight:500;color:#a3b0c2;white-space:nowrap}
 /* 学员录音中：实时录音时长进度条 */
 .pv-rec-progress{display:flex;align-items:center;gap:8px;margin-top:2px}
 .pv-rec-bar{flex:1;min-width:0;height:5px;border-radius:5px;background:#e2e8f0;overflow:hidden}
