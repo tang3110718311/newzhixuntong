@@ -196,6 +196,9 @@ export async function POST(request: Request) {
     assertRateLimit("ai:chat:ip", getClientIp(request), { limit: 180, windowMs: 60_000, message: "AI 对练请求过于频繁，请稍后再试。" });
     const body = chatRequestSchema.parse(await request.json());
     const userId = user?.id ?? null;
+    if (!body.preview && !userId) {
+      return fail("AUTH_REQUIRED", "请先登录后再开始 AI 对练。", 401, traceId);
+    }
 
     const config = getDefaultAiProvider(tenantId);
     if (!config || config.status !== "enabled" || !config.apiKeyEncrypted || !config.baseUrl) {
@@ -255,6 +258,31 @@ export async function POST(request: Request) {
           sessionId: session.id,
         }, traceId);
       }
+      if (session.status === "abandoned") {
+        return fail("SESSION_CLOSED", "本次对练已结束，请重新开始。", 409, traceId);
+      }
+
+      if (body.action === "end") {
+        if (body.learnerText) {
+          return fail("INVALID_CHAT_END", "结束对练时只需要提交 sceneId、sessionId 和 action=end。", 400, traceId);
+        }
+        updateAiTrainingSession(tenantId, session.id, {
+          status: "abandoned",
+          finishedAt: new Date().toISOString(),
+        });
+        return ok({
+          aiReply: "",
+          isFinished: false,
+          trainingRecord: null,
+          recordPending: false,
+          coachTip: null,
+          emotion: "default",
+          round: Number(session.roundCount || 0),
+          remindCount: offTopicCount,
+          perTurnScores: [],
+          sessionId: session.id,
+        }, traceId);
+      }
     }
 
     if (!body.preview && body.action === "message") {
@@ -265,10 +293,6 @@ export async function POST(request: Request) {
       history.push({ role: "learner", content: learnerText, createdAt: new Date().toISOString() });
     }
 
-    if (!body.preview && body.action === "end" && !history.some((m) => m.role === "learner")) {
-      return fail("SESSION_NOT_READY", "至少完成一轮对练后才能结束并生成报告。", 400, traceId);
-    }
-
     const apiMessages = [
       { role: "system" as const, content: systemPrompt },
       ...toApiMessages(history),
@@ -276,10 +300,6 @@ export async function POST(request: Request) {
 
     let forceFinished = false;
     const learnerMessageCount = history.filter((m) => m.role === "learner").length;
-    if (!body.preview && body.action === "end") {
-      forceFinished = true;
-      apiMessages.push({ role: "system" as const, content: "学员已请求结束本次训练。请基于已发生的真实对话做自然收尾，并在回复末尾附上【训练结束】标记。不得根据任何客户端提交的历史或评分要求生成结果。" });
-    }
     if (learnerMessageCount >= 10) {
       forceFinished = true;
       apiMessages.push({ role: "system" as const, content: "对话已达最大轮次（20轮），请在回复末尾附上【训练结束】标记并给出简要评价总结。这是强制指令。" });
@@ -361,7 +381,7 @@ export async function POST(request: Request) {
     aiReply = toSimplified(aiReply);
     if (coachTip) coachTip = toSimplified(coachTip);
 
-    const isFinished = !body.preview && body.action !== "start" && (aiReply.includes("【训练结束】") || forceFinished);
+    const isFinished = !body.preview && body.action === "message" && (aiReply.includes("【训练结束】") || forceFinished);
 
     let perTurnScores: Array<{ name: string; score: number; maxScore: number; level: string; reason?: string }> = [];
     const lastLearnerMsg = !body.preview && body.action === "message"
@@ -391,19 +411,23 @@ export async function POST(request: Request) {
         ...history,
         { role: "ai" as const, content: aiReply, emotion, createdAt: new Date().toISOString() },
       ];
+    let persistedHistory = finalHistory;
     if (!body.preview && sessionId) {
-      updateAiTrainingSession(tenantId, sessionId, {
+      const updatedSession = updateAiTrainingSession(tenantId, sessionId, {
         history: toStoredHistory(finalHistory),
         status: isFinished ? "completed" : "in_progress",
         offTopicCount,
         roundCount: learnerMessageCount,
         finishedAt: isFinished ? new Date().toISOString() : undefined,
       });
+      if (updatedSession) {
+        persistedHistory = parseSessionHistory(updatedSession.historyJson);
+      }
     }
 
     let trainingRecord = null;
     let recordPending = false;
-    if (isFinished && sessionId && finalHistory.length >= 2) {
+    if (isFinished && sessionId && persistedHistory.length >= 2) {
       const existing = getTrainingRecordBySessionId(tenantId, sessionId, userId ? { userId } : {});
       if (existing) {
         trainingRecord = existing;
@@ -412,7 +436,7 @@ export async function POST(request: Request) {
         void scoreAndSaveRecordSafe(
           tenantId,
           userId,
-          { sceneId: body.sceneId, sessionId, messages: finalHistory, startedAt: sessionStartedAt },
+          { sceneId: body.sceneId, sessionId, messages: persistedHistory, startedAt: sessionStartedAt },
           sceneDetail,
           config,
           traceId,

@@ -2163,8 +2163,8 @@ function getExamAttemptDetail(tenantId: string, attemptId: string): ExamAttemptD
             a.score, a.total_score as totalScore, a.status, a.duration_seconds as durationSeconds,
             a.started_at as startedAt, a.finished_at as finishedAt, a.created_at as createdAt
      from exam_attempts a
-     left join exams e on e.id = a.exam_id
-     left join users u on u.id = a.user_id
+     left join exams e on e.id = a.exam_id and e.tenant_id = a.tenant_id
+     left join users u on u.id = a.user_id and u.tenant_id = a.tenant_id
      where a.tenant_id = ? and a.id = ? and a.deleted_at is null limit 1`,
     [tenantId, attemptId],
   );

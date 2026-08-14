@@ -9,13 +9,11 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   try {
     const { tenantId, user } = await getTenantContext(request);
     const { id } = await context.params;
-    const detail = getTaskDetail(
-      tenantId,
-      id,
-      user?.roleCode === "learner"
-        ? { viewerUserId: user.id, viewerOrgId: user.orgId }
-        : undefined,
-    );
+    const isLearner = user?.roleCode === "learner";
+    const learnerScope = isLearner && user?.id
+      ? { viewerUserId: user.id, viewerOrgId: user.orgId }
+      : undefined;
+    const detail = getTaskDetail(tenantId, id, learnerScope);
     if (!detail) return fail("TASK_NOT_FOUND", "任务不存在或已删除。", 404);
     return ok(detail);
   } catch (error) {

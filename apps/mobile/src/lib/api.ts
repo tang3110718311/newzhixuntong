@@ -255,14 +255,13 @@ export const dashboardApi = {
 };
 
 // ============ AI 对练 ============
+export type AiChatRequest =
+  | { sceneId: string; action: "start"; preview?: boolean }
+  | { sceneId: string; action: "message"; sessionId: string; learnerText: string }
+  | { sceneId: string; action: "end"; sessionId: string };
+
 export const aiApi = {
-  chat: (body: {
-    sceneId: string;
-    action: "start" | "message" | "end";
-    sessionId?: string;
-    learnerText?: string;
-    preview?: boolean;
-  }) =>
+  chat: (body: AiChatRequest) =>
     request<any>("/ai/chat", { method: "POST", body }),
   stt: (audioBase64: string, format = "webm") =>
     request<{ text: string; durationMs: number }>("/ai/stt/transcribe", {

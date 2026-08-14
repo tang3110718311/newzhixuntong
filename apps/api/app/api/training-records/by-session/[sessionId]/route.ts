@@ -1,4 +1,4 @@
-import { getTrainingRecordBySessionId } from "@zxt/database";
+import { getAiTrainingSessionForUser, getTrainingRecordBySessionId } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 
@@ -14,13 +14,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
     const { sessionId } = await params;
     if (!sessionId) return ok(null);
 
+    const isAdmin = user?.roleCode === "tenant_admin";
     const currentUserId = user?.id;
-    if (!currentUserId) return fail("AUTH_REQUIRED", "请先登录后再访问训练报告。", 401);
+    if (!isAdmin && !currentUserId) return fail("AUTH_REQUIRED", "请先登录后再访问训练报告。", 401);
+
+    const decodedSessionId = decodeURIComponent(sessionId);
+    if (!isAdmin) {
+      const session = getAiTrainingSessionForUser(tenantId, decodedSessionId, currentUserId);
+      if (!session) return fail("SESSION_NOT_FOUND", "对练会话不存在或不属于当前用户。", 404);
+    }
 
     const detail = getTrainingRecordBySessionId(
       tenantId,
-      decodeURIComponent(sessionId),
-      { userId: currentUserId },
+      decodedSessionId,
+      isAdmin ? undefined : { userId: currentUserId },
     );
     return ok(detail ?? null);
   } catch (error) {
