@@ -1899,6 +1899,27 @@ export function AdminDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 从后端菜单表加载启停状态：status=disabled 的菜单 code 从导航中隐藏（菜单管理可实时生效）
+  // 注意：该 Hook 必须保持在所有条件 return 之前，否则登录态切换会导致 Hooks 调用顺序变化
+  const [disabledMenuCodes, setDisabledMenuCodes] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const token = getStoredAuthToken();
+    if (!token) return;
+    const headers: Record<string, string> = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+    fetch(`${API_BASE}/menus?pageSize=100`, { headers, cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json?.success && Array.isArray(json.data?.items)) {
+          const disabled = new Set<string>();
+          for (const menu of json.data.items as Array<{ code: string; status: string }>) {
+            if (menu.status === "disabled") disabled.add(menu.code);
+          }
+          setDisabledMenuCodes(disabled);
+        }
+      })
+      .catch(() => { /* 菜单加载失败时保持默认导航 */ });
+  }, []);
+
   // 登录态恢复前统一渲染加载占位：SSR 首帧（无 localStorage）与客户端 hydrate 首帧保持一致，避免闪登录页
   if (!authResolved) {
     return (
@@ -1975,25 +1996,6 @@ export function AdminDashboard() {
       </div>
     );
   }
-  // 从后端菜单表加载启停状态：status=disabled 的菜单 code 从导航中隐藏（菜单管理可实时生效）
-  const [disabledMenuCodes, setDisabledMenuCodes] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    const token = getStoredAuthToken();
-    if (!token) return;
-    const headers: Record<string, string> = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
-    fetch(`${API_BASE}/menus?pageSize=100`, { headers, cache: "no-store" })
-      .then((res) => res.json())
-      .then((json) => {
-        if (json?.success && Array.isArray(json.data?.items)) {
-          const disabled = new Set<string>();
-          for (const menu of json.data.items as Array<{ code: string; status: string }>) {
-            if (menu.status === "disabled") disabled.add(menu.code);
-          }
-          setDisabledMenuCodes(disabled);
-        }
-      })
-      .catch(() => { /* 菜单加载失败时保持默认导航 */ });
-  }, []);
 
   const navItems: NavItem[] = [
     { id: "home", key: "overview", label: "首页", icon: <IcoHome /> },
