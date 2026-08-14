@@ -65,6 +65,16 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const [aiSpeaking, setAiSpeaking] = useState(false);
   // AI 播报实时进度（0-1，timeupdate 驱动）
   const [aiSpeakProgress, setAiSpeakProgress] = useState(0);
+  // AI 消息逐字显示进度（msgId → 已显示字符数；未记录 = 显示全文）
+  const [aiDisp, setAiDisp] = useState<Record<string, number>>({});
+  // aiDisp 的同步引用（供 timer / audio 回调读取当前值，避免闭包过期）
+  const aiDispRef = useRef<Record<string, number>>({});
+  // 正在等待 TTS 合成的 AI 消息 id（合成期间气泡下显示"语音准备中…"）
+  const [ttsPreparing, setTtsPreparing] = useState<string | null>(null);
+  // 各 AI 消息语音条时长（秒，loadedmetadata 后写入；未记录 = 未知）
+  const [voiceDur, setVoiceDur] = useState<Record<string, number>>({});
+  // 打字机逐字显示定时器（音频就绪后切换为由播放进度驱动）
+  const aiTypeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // 正在播报语音的 AI 消息 id（进度条只显示在对应气泡下）
   const [speakMsgId, setSpeakMsgId] = useState<string | null>(null);
   // 学员录音已进行秒数（实时录音进度）
@@ -97,6 +107,8 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const speechActiveRef = useRef(false);
   // AI 播报中同步引用（供 startRecording 等回调同步判断）
   const aiSpeakingRef = useRef(false);
+  // 组件是否已卸载：用于中断"卸载后仍在 await 的 TTS 播放链"，防止关闭页面后语音继续播放
+  const unmountedRef = useRef(false);
   // 录音时长计时器
   const recSecTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // 当前播放中的 Audio 元素与其消息 id
@@ -153,12 +165,14 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   // 组件卸载时释放录音资源
   useEffect(() => {
     return () => {
+      unmountedRef.current = true;
       try {
         recogRef.current?.stop();
       } catch { /* ignore */ }
       if (silenceTimerRef.current) clearInterval(silenceTimerRef.current);
       if (liveSttTimerRef.current) clearInterval(liveSttTimerRef.current);
       if (recSecTimerRef.current) clearInterval(recSecTimerRef.current);
+      if (aiTypeTimerRef.current) clearInterval(aiTypeTimerRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       stopAiSpeak();
     };
@@ -270,11 +284,56 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     return btoa(bin);
   };
 
-  /** TTS 播放 AI 回复（记录播报状态与实时进度，供录音禁用与进度条展示） */
+  /** 补全某条 AI 消息的全文显示（取消逐字进度，供播完/中断/无音频时调用） */
+  const revealMsgFull = useCallback((id: string | null | undefined) => {
+    if (!id) return;
+    // 若该消息还在打字机逐字显示中，先停止打字机
+    if (aiTypeTimerRef.current) {
+      clearInterval(aiTypeTimerRef.current);
+      aiTypeTimerRef.current = null;
+    }
+    setAiDisp((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      aiDispRef.current = next;
+      return next;
+    });
+  }, []);
+
+  /** 打字机先行：AI 消息创建后立即逐字显示，无需等 TTS；音频就绪后由播放进度接管 */
+  const startTypewriter = useCallback((msgId: string, total: number) => {
+    if (aiTypeTimerRef.current) clearInterval(aiTypeTimerRef.current);
+    aiTypeTimerRef.current = setInterval(() => {
+      setAiDisp((prev) => {
+        const cur = prev[msgId] ?? 0;
+        // 每 tick 推进（长文本加速，约 1.3s 打完全文）
+        const step = Math.max(1, Math.round(total / 40));
+        const next = Math.min(total, cur + step);
+        const result = { ...prev, [msgId]: next };
+        aiDispRef.current = result;
+        if (next >= total && aiTypeTimerRef.current) {
+          clearInterval(aiTypeTimerRef.current);
+          aiTypeTimerRef.current = null;
+        }
+        return result;
+      });
+    }, 30);
+  }, []);
+
+  /** TTS 播放 AI 回复（记录播报状态与实时进度，供录音禁用与逐字显示） */
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const stopAiSpeak = useCallback(() => {
+    // 中断播报前先补全对应消息全文，避免逐字显示停留在半截
+    const speakingId = aiAudioMsgIdRef.current;
+    if (speakingId) revealMsgFull(speakingId);
+    if (aiTypeTimerRef.current) {
+      clearInterval(aiTypeTimerRef.current);
+      aiTypeTimerRef.current = null;
+    }
     if (audioRef.current) {
       try { audioRef.current.pause(); } catch { /* ignore */ }
+      try { URL.revokeObjectURL(audioRef.current.src); } catch { /* ignore */ }
       audioRef.current = null;
     }
     aiAudioMsgIdRef.current = null;
@@ -282,7 +341,8 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     setAiSpeaking(false);
     setAiSpeakProgress(0);
     setSpeakMsgId(null);
-  }, []);
+    setTtsPreparing(null);
+  }, [revealMsgFull]);
   const speakText = useCallback(
     async (text: string, msgId?: string): Promise<void> => {
       // 播完信号：自然播完 / 出错 / 被 stopAiSpeak 或新音频抢占时 resolve，供对练结束等关键节点等待
@@ -293,7 +353,24 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       const resolvePlayEnd = () => playEndResolvers.forEach((r) => r());
       try {
         const tts = await aiApi.tts(text);
+        // 组件已卸载（页面已关闭）：TTS 结果作废，不再创建音频播放，防止关闭页面后语音继续播放
+        if (unmountedRef.current) {
+          setTtsPreparing(null);
+          resolvePlayEnd();
+          return;
+        }
+        // TTS 合成期间学员已开始录音 → 放弃本次语音播放，避免双音源冲突；
+        // 文字已由打字机显示，这里补全全文即可（学员的回答优先）。
+        if (recordingRef.current) {
+          revealMsgFull(msgId);
+          setTtsPreparing(null);
+          resolvePlayEnd();
+          return;
+        }
         if (!tts?.audioBase64) {
+          // 无可用音频（如 TTS 静默失败）：直接显示全文
+          revealMsgFull(msgId);
+          setTtsPreparing(null);
           resolvePlayEnd();
           return;
         }
@@ -303,17 +380,31 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         const blob = new Blob([bytes], { type: tts.format === "wav" ? "audio/wav" : "audio/mpeg" });
         const url = URL.createObjectURL(blob);
         if (audioRef.current) {
+          // 新音频抢占旧音频：先把旧消息补全全文，避免其逐字进度卡住
+          const prevId = aiAudioMsgIdRef.current;
+          if (prevId && prevId !== msgId) revealMsgFull(prevId);
           audioRef.current.pause();
           URL.revokeObjectURL(audioRef.current.src);
         }
         const audio = new Audio(url);
         audioRef.current = audio;
+        // 记录语音条时长（微信语音条右侧显示秒数）
+        audio.addEventListener("loadedmetadata", () => {
+          if (audioRef.current === audio && msgId && audio.duration) {
+            setVoiceDur((prev) => {
+              const sec = Math.max(1, Math.round(audio.duration));
+              if (prev[msgId] === sec) return prev;
+              return { ...prev, [msgId]: sec };
+            });
+          }
+        });
         // 播报状态：AI 说话期间禁止学员录音
         aiAudioMsgIdRef.current = msgId || null;
         aiSpeakingRef.current = true;
         setAiSpeaking(true);
         setSpeakMsgId(msgId || null);
         setAiSpeakProgress(0);
+        setTtsPreparing(null);
         const handleEnd = () => {
           // 仅当仍是当前音频时清理，避免旧音频 ended 覆盖新音频状态
           if (audioRef.current === audio) {
@@ -325,13 +416,29 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
             setSpeakMsgId(null);
             URL.revokeObjectURL(url);
           }
+          // 播完：补全全文
+          revealMsgFull(msgId);
           resolvePlayEnd();
         };
         audio.addEventListener("ended", handleEnd);
         audio.addEventListener("error", handleEnd);
         audio.addEventListener("timeupdate", () => {
           if (audioRef.current !== audio || !audio.duration) return;
-          setAiSpeakProgress(Math.min(1, audio.currentTime / audio.duration));
+          const p = Math.min(1, audio.currentTime / audio.duration);
+          setAiSpeakProgress(p);
+          // 按播放进度逐字显示对应消息（说到哪个字，显示到哪个字）
+          // 与打字机进度取 max，避免音频进度落后于已打出的文字时出现倒退
+          if (msgId) {
+            const total = text.length;
+            const typed = aiDispRef.current[msgId] ?? 0;
+            const shown = Math.max(typed, Math.min(total, Math.ceil(p * total)));
+            setAiDisp((prev) => {
+              if (prev[msgId] === shown) return prev;
+              const next = { ...prev, [msgId]: shown };
+              aiDispRef.current = next;
+              return next;
+            });
+          }
         });
         // 播放被用户手势/其它调用中断也视为结束
         audio.addEventListener("pause", () => {
@@ -339,6 +446,11 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
           else resolvePlayEnd();
         });
         await audio.play();
+        // 音频已开始播放：停止打字机，改由播放进度逐字驱动
+        if (aiTypeTimerRef.current) {
+          clearInterval(aiTypeTimerRef.current);
+          aiTypeTimerRef.current = null;
+        }
         // 等待自然播完（或被 stopAiSpeak / 新音频抢占打断）
         await playEndPromise;
       } catch {
@@ -347,7 +459,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         stopAiSpeak();
       }
     },
-    [stopAiSpeak]
+    [stopAiSpeak, revealMsgFull]
   );
 
   const pushAiMsgAndSpeak = useCallback(
@@ -355,10 +467,19 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       // 防御性剥离模型可能残留的 [COACH_TIP:...]/【COACH_TIP:...】标记（后端已剥离，此处兜底）
       const cleaned = text.replace(/[\[【]\s*COACH_TIP\s*[:：][\s\S]*?[\]】]/g, "").trim();
       const msgId = pushMsg({ who: "ai", text: cleaned, time: now() });
+      // 打字机先行：立即逐字显示，不等 TTS 合成；音频就绪后由播放进度接管
+      setAiDisp((p) => {
+        const next = { ...p, [msgId]: 1 };
+        aiDispRef.current = next;
+        return next;
+      });
+      startTypewriter(msgId, cleaned.length);
+      // TTS 合成期间气泡下显示"语音准备中…"
+      setTtsPreparing(msgId);
       // 返回播完 promise，供对练结束等场景等待收尾话播完
       return speakText(cleaned, msgId);
     },
-    [pushMsg, speakText]
+    [pushMsg, speakText, startTypewriter]
   );
 
   /** 停止 Web Speech 实时识别与静音检测 */
@@ -495,8 +616,11 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
           const seg = (stt.text || "").trim();
           if (seg) {
             // 每次识别的是"录音开始到当前"的整段音频，直接覆盖显示（文字随录音逐步完整）
-            liveTextRef.current = seg;
-            setLiveText(seg);
+            // 仅在结果不短于当前时覆盖，避免识别波动导致已显示文字后退
+            if (seg.length >= liveTextRef.current.length) {
+              liveTextRef.current = seg;
+              setLiveText(seg);
+            }
           }
         } catch {
           /* 单次分段识别失败跳过，最终整段 STT 兜底 */
@@ -718,15 +842,40 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
                       <i></i>
                     </span>
                   )}
-                  {m.text}
+                  {m.who === "ai" ? (
+                    <>
+                      {/* 微信语音条：AI 消息固定展示（无论是否首次进入页面），播放中高亮+进度填充 */}
+                      <div className={`pv-ai-voicebar${aiSpeaking && speakMsgId === m.id ? " playing" : ""}`}>
+                        <span className="pv-ai-voicebar-ico" aria-hidden="true">
+                          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                            <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                          </svg>
+                        </span>
+                        <span className="pv-ai-voicebar-track" aria-hidden="true">
+                          <i
+                            style={{
+                              width: `${aiSpeaking && speakMsgId === m.id ? aiSpeakProgress * 100 : 0}%`,
+                            }}
+                          ></i>
+                        </span>
+                        <b className="pv-ai-voicebar-dur">
+                          {voiceDur[m.id] ? `${voiceDur[m.id]}″` : ""}
+                        </b>
+                      </div>
+                      {/* 语音条下方文字：打字机先行 → 随播放逐字 → 播完全文 */}
+                      <div className="pv-ai-voicebar-text">
+                        {aiDisp[m.id] != null ? m.text.slice(0, aiDisp[m.id]) : m.text}
+                      </div>
+                    </>
+                  ) : (
+                    m.text
+                  )}
                 </div>
-                {/* AI 播报中：对应气泡下显示实时播放进度 */}
-                {m.who === "ai" && aiSpeaking && speakMsgId === m.id && (
-                  <div className="pv-ai-speaking" aria-hidden="true">
-                    <span className="pv-ai-speaking-bar">
-                      <i style={{ width: `${Math.round(aiSpeakProgress * 100)}%` }}></i>
-                    </span>
-                    <b>AI 说话中 {Math.round(aiSpeakProgress * 100)}%</b>
+                {/* TTS 合成期间（音频尚未就绪）：语音条下方"语音准备中…"浅色占位 */}
+                {m.who === "ai" && !(aiSpeaking && speakMsgId === m.id) && ttsPreparing === m.id && (
+                  <div className="pv-ai-preparing" aria-hidden="true">
+                    <b>语音准备中…</b>
                   </div>
                 )}
               </div>
@@ -839,7 +988,6 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
                 className={`pv-record-btn${aiSpeaking ? " speaking-lock" : ""}`}
                 type="button"
                 onClick={startRecording}
-                disabled={aiSpeaking}
               >
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="9" y="3" width="6" height="11" rx="3" />
