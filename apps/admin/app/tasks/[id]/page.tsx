@@ -233,7 +233,8 @@ export default function TaskDetailPage() {
         (r) => r.status === "completed" && r.score >= (sc.passScore || 60),
       );
       map[sc.id] = {
-        study: !!studyDone[sc.id],
+        // 资料学习：本地记录完成，或有合格对练记录（说明资料已学过）即视为完成
+        study: !!studyDone[sc.id] || completedRecords.length > 0,
         practice:
           (sc.completedTrainCount ?? 0) >= sc.requiredTrainTimes || completedRecords.length > 0,
         // 该场景存在已完成考试记录（按任务+场景+当前用户过滤）即视为考试完成
@@ -325,19 +326,20 @@ export default function TaskDetailPage() {
   });
 
   // ---------- 场景学习步骤 ----------
+  // 链式解锁：资料学习始终可用（蓝色）；AI 对练需完成资料学习才解锁；场景考试需完成对练才解锁
   const steps = STAGE_ORDER.map((key) => {
     const isDone = st[key];
-    // 场景内顺序：资料学习/对练可直接开始，考试需先完成对练
-    const unlocked = key === "exam" ? st.practice : true;
+    const unlocked =
+      key === "study" ? true : key === "practice" ? st.study : st.practice;
     const active = !isDone && unlocked;
     const meta = STAGE_META[key];
-    // 完成后：按钮变蓝（默认 btn），对练/考试文案带"再次"
+    // 完成后：按钮保持蓝色（默认 btn），文案带"再次"
     const ctaLabel = isDone
-      ? key === "practice"
-        ? "再次对练"
-        : key === "exam"
-          ? "再次考试"
-          : meta.cta
+      ? key === "study"
+        ? "再次学习"
+        : key === "practice"
+          ? "再次对练"
+          : "再次考试"
       : meta.cta;
     return (
       <div className={`task-step-row ${isDone ? "done" : active ? "active" : ""}`} key={key}>
@@ -350,7 +352,8 @@ export default function TaskDetailPage() {
         </div>
         <div className="task-step-action">
           <button
-            className={`btn ${isDone ? "" : "gray"}`}
+            // 未解锁 = 灰色禁用；解锁/已完成 = 蓝色（默认 btn）
+            className={`btn ${unlocked ? "" : "gray"}`}
             type="button"
             disabled={!unlocked}
             onClick={() => handleStageAction(key)}
@@ -531,7 +534,9 @@ export default function TaskDetailPage() {
                       ? "当前场景已完成，可选择下一个场景。"
                       : st.practice
                         ? "完成 AI 对练后，解锁场景考试。"
-                        : "资料学习和 AI 对练均可直接开始，完成 AI 对练后解锁场景考试。"}
+                        : st.study
+                          ? "完成资料学习后，解锁 AI 对练。"
+                          : "按顺序完成各环节：资料学习后解锁 AI 对练，对练完成后解锁场景考试。"}
                   </div>
                 </div>
               </div>
