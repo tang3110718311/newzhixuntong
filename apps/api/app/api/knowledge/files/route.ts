@@ -9,7 +9,7 @@ import {
 } from "@zxt/database";
 import { createOpenAiCompatibleLlmProvider } from "@zxt/ai-provider";
 import { fail, handleRouteError, ok } from "@/lib/response";
-import { getTenantContext } from "@/lib/tenant";
+import { requireTrainingManager } from "@/lib/authz";
 import { detectRealMime, isSupportedDocumentMime, mimeFromExtension, parseDocumentFile } from "@/lib/document-parser";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ const STORAGE_ROOT = resolve(process.cwd(), "../../storage/knowledge");
 
 export async function GET(request: Request) {
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId } = await requireTrainingManager(request);
     const url = new URL(request.url);
     const folderId = url.searchParams.get("folderId") || "";
     if (!folderId) return fail("FOLDER_ID_REQUIRED", "缺少 folderId 参数。", 400);
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { tenantId, user } = await getTenantContext(request);
+    const { tenantId, user } = await requireTrainingManager(request);
     const formData = await request.formData();
     const file = formData.get("file");
     const folderId = String(formData.get("folderId") || "");

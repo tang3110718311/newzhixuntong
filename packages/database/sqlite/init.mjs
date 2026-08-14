@@ -292,6 +292,22 @@ create table if not exists training_records (
   unique(tenant_id, record_no)
 );
 
+create table if not exists ai_training_sessions (
+  id text primary key,
+  tenant_id text not null,
+  user_id text,
+  scene_id text not null,
+  status text not null default 'in_progress',
+  history_json text not null default '[]',
+  off_topic_count integer not null default 0,
+  round_count integer not null default 0,
+  started_at text,
+  finished_at text,
+  created_at text not null default current_timestamp,
+  updated_at text not null default current_timestamp,
+  deleted_at text
+);
+
 create table if not exists training_turns (
   id text primary key,
   tenant_id text not null,
@@ -532,6 +548,8 @@ ensureColumn("training_records", "capability_profile", "text not null default '[
 exec(`create index if not exists idx_tr_tenant_user_status on training_records(tenant_id, user_id, status)`);
 exec(`create index if not exists idx_tr_tenant_scene on training_records(tenant_id, scene_id)`);
 exec(`create index if not exists idx_tr_session on training_records(tenant_id, session_id)`);
+exec(`create index if not exists idx_ai_training_sessions_user on ai_training_sessions(tenant_id, user_id, status)`);
+exec(`create index if not exists idx_ai_training_sessions_scene on ai_training_sessions(tenant_id, scene_id)`);
 exec(`create index if not exists idx_tr_tenant_created on training_records(tenant_id, created_at)`);
 exec(`create index if not exists idx_tt_record on training_turns(record_id)`);
 exec(`create index if not exists idx_sd_record on score_details(record_id)`);

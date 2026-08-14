@@ -6,14 +6,14 @@ import {
   deleteExamQuestion,
 } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
-import { getTenantContext } from "@/lib/tenant";
+import { requireTrainingManager } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId } = await requireTrainingManager(request);
     const url = new URL(request.url);
     const bankId = url.searchParams.get("bankId") || undefined;
     return ok(listExamQuestions(tenantId, bankId));
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId } = await requireTrainingManager(request);
     const body = examQuestionInputSchema.parse(await request.json());
     const detail = addExamQuestion(tenantId, body);
     if (!detail) return fail("QUESTION_CREATE_FAILED", "题目创建失败。", 400);
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId } = await requireTrainingManager(request);
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
     if (!id) return fail("QUESTION_ID_REQUIRED", "缺少题目 ID。", 400);
@@ -51,7 +51,7 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId } = await requireTrainingManager(request);
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
     if (!id) return fail("QUESTION_ID_REQUIRED", "缺少题目 ID。", 400);

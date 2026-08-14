@@ -38,10 +38,11 @@ export default function ScenarioWorkspace({
   const sceneId = sceneMeta?.sceneId;
   const trainCount = sceneMeta?.completedTrainCount || 0;
   const required = sceneMeta?.requiredTrainTimes || 1;
+  // 本地资料/考试记录只作为 UI 展示态；可信完成状态以服务端训练计数为准。
   const materialDone = !!sceneId && (isMaterialDone(sceneId) || trainCount > 0);
   const practiceDone = trainCount >= required;
   const examCount = sceneId ? getExamCount(sceneId) : 0;
-  const sceneDone = practiceDone && examCount > 0;
+  const sceneDone = practiceDone;
 
   // ===== 历史记录（对练记录来自后端）=====
   const [recordTab, setRecordTab] = useState<"practice" | "exam">("practice");
@@ -62,7 +63,7 @@ export default function ScenarioWorkspace({
 
   const latestScore = records.length > 0 ? records[0]?.score : null;
 
-  // 考试记录：本地存储真实记录；无数据时造示例数据供查看报告效果
+  // 考试记录：本地展示记录；无数据时造示例数据供查看报告效果
   const examRecords = useMemo<ExamRecord[]>(() => (sceneId ? getExamRecords(sceneId) : []), [sceneId]);
   const examRecordsShown = useMemo<ExamRecord[]>(() => {
     if (examRecords.length > 0) return examRecords;

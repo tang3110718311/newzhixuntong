@@ -8,6 +8,13 @@ interface LoginScreenProps {
   showToast: (msg: string) => void;
 }
 
+function safeCaptchaImageUrl(value?: string): string | null {
+  const image = (value || "").trim();
+  if (/^data:image\/(?:jpeg|png|webp);base64,[a-z0-9+/=]+$/i.test(image)) return image;
+  if (image.startsWith("/") && !image.startsWith("//") && !/[\s"'()\\]/.test(image)) return image;
+  return null;
+}
+
 export default function LoginScreen({ onLoginSuccess, showToast }: LoginScreenProps) {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -101,13 +108,29 @@ export default function LoginScreen({ onLoginSuccess, showToast }: LoginScreenPr
               <input type="checkbox" defaultChecked />
               <span>
                 登录即代表同意
-                <a href="javascript:void(0)" onClick={() => showToast("用户协议")}>
+                <button
+                  type="button"
+                  className="agreement-link"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showToast("用户协议");
+                  }}
+                >
                   《用户协议》
-                </a>
+                </button>
                 和
-                <a href="javascript:void(0)" onClick={() => showToast("隐私协议")}>
+                <button
+                  type="button"
+                  className="agreement-link"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showToast("隐私协议");
+                  }}
+                >
                   《隐私协议》
-                </a>
+                </button>
               </span>
             </label>
           </div>
@@ -171,12 +194,6 @@ function CaptchaModal({ onClose, onPass }: { onClose: () => void; onPass: (captc
     if (!dragging || done || !challenge) return;
     setDragging(false);
     const finalPos = Math.round(lastPos.current);
-    if (Math.abs(finalPos - challenge.targetX) > 16) {
-      setError("拼图未对齐，请再试一次");
-      setPos(0);
-      lastPos.current = 0;
-      return;
-    }
 
     setLoading(true);
     try {
@@ -185,12 +202,15 @@ function CaptchaModal({ onClose, onPass }: { onClose: () => void; onPass: (captc
       setError("");
       window.setTimeout(() => onPass(result.captchaToken), 350);
     } catch (e: any) {
-      setError(e.message || "图形验证码校验失败");
+      const message = e.message || "图形验证码校验失败";
       await loadChallenge();
+      setError(message);
     } finally {
       setLoading(false);
     }
   };
+  const captchaBackgroundImage = safeCaptchaImageUrl(challenge?.backgroundImage);
+
 
   return (
     <div className="captcha-modal show" role="dialog" aria-modal="true" aria-label="拖动图形验证码">
@@ -209,9 +229,20 @@ function CaptchaModal({ onClose, onPass }: { onClose: () => void; onPass: (captc
               刷新
             </button>
           </div>
-          <div className="captcha-image" id="captchaImage">
+          <div
+            className="captcha-image"
+            id="captchaImage"
+            style={
+              captchaBackgroundImage
+                ? {
+                    backgroundImage: `url("${captchaBackgroundImage}")`,
+                    backgroundPosition: "center",
+                    backgroundSize: "cover",
+                  }
+                : undefined
+            }
+          >
             <div className="captcha-piece" style={{ left: `${12 + pos}px` }} />
-            {challenge ? <div className="captcha-target" style={{ left: `${12 + challenge.targetX}px` }} /> : null}
           </div>
           <div className={`captcha-track ${done ? "done" : ""}`}>
             <span id="captchaHint">{done ? "✓ 验证通过" : error || "拖动滑块完成拼图"}</span>

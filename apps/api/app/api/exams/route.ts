@@ -8,6 +8,7 @@ import {
   deleteExam,
 } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
+import { requireTrainingManager } from "@/lib/authz";
 import { getTenantContext } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId } = await requireTrainingManager(request);
     const body = createExamSchema.parse(await request.json());
     const detail = createExam(tenantId, body);
     if (!detail) return fail("EXAM_CREATE_FAILED", "考试创建失败。", 400);
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId } = await requireTrainingManager(request);
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
     if (!id) return fail("EXAM_ID_REQUIRED", "缺少考试 ID。", 400);
@@ -58,7 +59,7 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId } = await requireTrainingManager(request);
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
     if (!id) return fail("EXAM_ID_REQUIRED", "缺少考试 ID。", 400);
@@ -71,7 +72,7 @@ export async function DELETE(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId } = await requireTrainingManager(request);
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
     if (!id) return fail("EXAM_ID_REQUIRED", "缺少考试 ID。", 400);

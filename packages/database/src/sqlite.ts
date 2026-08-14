@@ -248,6 +248,21 @@ const MIGRATION_SQL: string[] = [
     updated_at text not null default (datetime('now')),
     deleted_at text
   )`,
+  `CREATE TABLE IF NOT EXISTS ai_training_sessions (
+    id text primary key,
+    tenant_id text not null,
+    user_id text,
+    scene_id text not null,
+    status text not null default 'in_progress',
+    history_json text not null default '[]',
+    off_topic_count integer not null default 0,
+    round_count integer not null default 0,
+    started_at text,
+    finished_at text,
+    created_at text not null default (datetime('now')),
+    updated_at text not null default (datetime('now')),
+    deleted_at text
+  )`,
 ];
 
 function applyMigrations() {
@@ -271,6 +286,8 @@ function applyMigrations() {
   db.run("create index if not exists idx_tr_tenant_user_status on training_records(tenant_id, user_id, status)");
   db.run("create index if not exists idx_tr_tenant_scene on training_records(tenant_id, scene_id)");
   db.run("create index if not exists idx_tr_session on training_records(tenant_id, session_id)");
+  db.run("create index if not exists idx_ai_training_sessions_user on ai_training_sessions(tenant_id, user_id, status)");
+  db.run("create index if not exists idx_ai_training_sessions_scene on ai_training_sessions(tenant_id, scene_id)");
   db.run("create index if not exists idx_tr_tenant_created on training_records(tenant_id, created_at)");
   db.run("create index if not exists idx_tt_record on training_turns(record_id)");
   db.run("create index if not exists idx_sd_record on score_details(record_id)");

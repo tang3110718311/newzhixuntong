@@ -301,6 +301,28 @@ export type CreateTrainingRecordInput = {
   scores: Array<{ scoringRuleId?: string | null; score: number; deductionReason?: string; evidenceText?: string; level?: string | null; roundNo?: number }>;
 };
 
+export type AiTrainingSessionMessage = {
+  role: "ai" | "learner";
+  content: string;
+  emotion?: string;
+  createdAt?: string;
+};
+
+export type AiTrainingSessionRow = {
+  id: string;
+  tenantId: string;
+  userId: string | null;
+  sceneId: string;
+  status: "in_progress" | "completed" | "abandoned";
+  historyJson: string;
+  offTopicCount: number;
+  roundCount: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AppealRow = {
   id: string;
   bizType: string;
@@ -1157,7 +1179,10 @@ export function createMaterial(
   );
 }
 
-export function listTasks(tenantId: string, options: { page: number; pageSize: number; keyword?: string; status?: string }) {
+export function listTasks(
+  tenantId: string,
+  options: { page: number; pageSize: number; keyword?: string; status?: string; assigneeUserId?: string; assigneeOrgId?: string | null },
+) {
   const filters = ["t.tenant_id = ?", "t.deleted_at is null"];
   const params: unknown[] = [tenantId];
   if (options.status) {
@@ -1168,23 +1193,42 @@ export function listTasks(tenantId: string, options: { page: number; pageSize: n
     filters.push("(t.name like ? or t.code like ?)");
     params.push(`%${options.keyword}%`, `%${options.keyword}%`);
   }
+  if (options.assigneeUserId) {
+    const participantFilters = ["tp_scope.user_id = ?"];
+    params.push(options.assigneeUserId);
+    if (options.assigneeOrgId) {
+      participantFilters.push("tp_scope.org_id = ?");
+      params.push(options.assigneeOrgId);
+    }
+    filters.push(
+      `exists (
+        select 1 from task_participants tp_scope
+        where tp_scope.tenant_id = t.tenant_id
+          and tp_scope.task_id = t.id
+          and tp_scope.deleted_at is null
+          and (${participantFilters.join(" or ")})
+      )`,
+    );
+  }
   const where = filters.join(" and ");
+  const progressUserClause = options.assigneeUserId ? " and tr.user_id = ?" : "";
+  const progressParams = options.assigneeUserId ? [options.assigneeUserId] : [];
   const total = get<{ count: number }>(`select count(*) as count from tasks t where ${where}`, params)?.count ?? 0;
   const items = all<Omit<TaskRow, "progressPercent">>(
     `select t.id, t.name, t.code, t.type, coalesce(t.description, '') as description, t.status,
             t.start_at as startAt, t.end_at as endAt, t.publish_at as publishAt, t.created_by as createdBy,
-            (select max(tr.finished_at) from training_records tr where tr.tenant_id = t.tenant_id and tr.task_id = t.id and tr.status = 'completed' and tr.deleted_at is null) as completedAt,
+            (select max(tr.finished_at) from training_records tr where tr.tenant_id = t.tenant_id and tr.task_id = t.id and tr.status = 'completed' and tr.deleted_at is null${progressUserClause}) as completedAt,
             u.name as creatorName, o.name as creatorOrgName,
             (select count(*) from task_participants tp where tp.tenant_id = t.tenant_id and tp.task_id = t.id and tp.deleted_at is null) as participantCount,
             (select count(*) from task_scenes ts where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null) as sceneCount,
-            (select count(distinct tr.scene_id) from training_records tr where tr.tenant_id = t.tenant_id and tr.task_id = t.id and tr.status = 'completed' and tr.deleted_at is null) as completedSceneCount,
+            (select count(distinct tr.scene_id) from training_records tr where tr.tenant_id = t.tenant_id and tr.task_id = t.id and tr.status = 'completed' and tr.deleted_at is null${progressUserClause}) as completedSceneCount,
             (select s.scene_type from task_scenes ts left join scenes s on s.id = ts.scene_id and s.tenant_id = ts.tenant_id where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null order by ts.sort_order asc limit 1) as primarySceneType,
             (select s.mode from task_scenes ts left join scenes s on s.id = ts.scene_id and s.tenant_id = ts.tenant_id where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null order by ts.sort_order asc limit 1) as primaryMode
      from tasks t
      left join users u on u.id = t.created_by and u.tenant_id = t.tenant_id
      left join organizations o on o.id = u.org_id and o.tenant_id = u.tenant_id
      where ${where} order by t.created_at desc limit ? offset ?`,
-    [...params, options.pageSize, (options.page - 1) * options.pageSize],
+    [...progressParams, ...progressParams, ...params, options.pageSize, (options.page - 1) * options.pageSize],
   ).map((task) => {
     const sceneCount = Number(task.sceneCount || 0);
     const completedSceneCount = Math.min(Number(task.completedSceneCount || 0), sceneCount);
@@ -1199,22 +1243,47 @@ export function listTasks(tenantId: string, options: { page: number; pageSize: n
   return { items, total, page: options.page, pageSize: options.pageSize };
 }
 
-export function getTaskDetail(tenantId: string, taskId: string): TaskDetail | undefined {
+export function getTaskDetail(
+  tenantId: string,
+  taskId: string,
+  options: { viewerUserId?: string; viewerOrgId?: string | null } = {},
+): TaskDetail | undefined {
+  const taskFilters = ["t.tenant_id = ?", "t.id = ?", "t.deleted_at is null"];
+  const taskParams: unknown[] = [tenantId, taskId];
+  if (options.viewerUserId) {
+    const participantFilters = ["tp_scope.user_id = ?"];
+    taskParams.push(options.viewerUserId);
+    if (options.viewerOrgId) {
+      participantFilters.push("tp_scope.org_id = ?");
+      taskParams.push(options.viewerOrgId);
+    }
+    taskFilters.push(
+      `exists (
+        select 1 from task_participants tp_scope
+        where tp_scope.tenant_id = t.tenant_id
+          and tp_scope.task_id = t.id
+          and tp_scope.deleted_at is null
+          and (${participantFilters.join(" or ")})
+      )`,
+    );
+  }
+  const progressUserClause = options.viewerUserId ? " and tr.user_id = ?" : "";
+  const progressParams = options.viewerUserId ? [options.viewerUserId] : [];
   const rawTask = get<Omit<TaskRow, "progressPercent">>(
     `select t.id, t.name, t.code, t.type, coalesce(t.description, '') as description, t.status,
             t.start_at as startAt, t.end_at as endAt, t.publish_at as publishAt, t.created_by as createdBy,
-            (select max(tr.finished_at) from training_records tr where tr.tenant_id = t.tenant_id and tr.task_id = t.id and tr.status = 'completed' and tr.deleted_at is null) as completedAt,
+            (select max(tr.finished_at) from training_records tr where tr.tenant_id = t.tenant_id and tr.task_id = t.id and tr.status = 'completed' and tr.deleted_at is null${progressUserClause}) as completedAt,
             u.name as creatorName, o.name as creatorOrgName,
             (select count(*) from task_participants tp where tp.tenant_id = t.tenant_id and tp.task_id = t.id and tp.deleted_at is null) as participantCount,
             (select count(*) from task_scenes ts where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null) as sceneCount,
-            (select count(distinct tr.scene_id) from training_records tr where tr.tenant_id = t.tenant_id and tr.task_id = t.id and tr.status = 'completed' and tr.deleted_at is null) as completedSceneCount,
+            (select count(distinct tr.scene_id) from training_records tr where tr.tenant_id = t.tenant_id and tr.task_id = t.id and tr.status = 'completed' and tr.deleted_at is null${progressUserClause}) as completedSceneCount,
             (select s.scene_type from task_scenes ts left join scenes s on s.id = ts.scene_id and s.tenant_id = ts.tenant_id where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null order by ts.sort_order asc limit 1) as primarySceneType,
             (select s.mode from task_scenes ts left join scenes s on s.id = ts.scene_id and s.tenant_id = ts.tenant_id where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null order by ts.sort_order asc limit 1) as primaryMode
      from tasks t
      left join users u on u.id = t.created_by and u.tenant_id = t.tenant_id
      left join organizations o on o.id = u.org_id and o.tenant_id = u.tenant_id
-     where t.tenant_id = ? and t.id = ? and t.deleted_at is null limit 1`,
-    [tenantId, taskId],
+     where ${taskFilters.join(" and ")} limit 1`,
+    [...progressParams, ...progressParams, ...taskParams],
   );
   if (!rawTask) return undefined;
   const sceneCount = Number(rawTask.sceneCount || 0);
@@ -1229,26 +1298,28 @@ export function getTaskDetail(tenantId: string, taskId: string): TaskDetail | un
   const scenes = all<TaskSceneRow>(
     `select ts.id, ts.scene_id as sceneId, s.name as sceneName, s.code as sceneCode, s.scene_type as sceneType,
             s.mode, s.status, ts.sort_order as sortOrder, ts.required_train_times as requiredTrainTimes, ts.pass_score as passScore,
-            (select count(*) from training_records tr where tr.tenant_id = ts.tenant_id and tr.task_id = ts.task_id and tr.scene_id = ts.scene_id and tr.status = 'completed' and tr.deleted_at is null) as completedTrainCount
+            (select count(*) from training_records tr where tr.tenant_id = ts.tenant_id and tr.task_id = ts.task_id and tr.scene_id = ts.scene_id and tr.status = 'completed' and tr.deleted_at is null${progressUserClause}) as completedTrainCount
      from task_scenes ts
      left join scenes s on s.id = ts.scene_id and s.tenant_id = ts.tenant_id
      where ts.tenant_id = ? and ts.task_id = ? and ts.deleted_at is null
      order by ts.sort_order asc, ts.created_at asc`,
-    [tenantId, taskId],
+    [...progressParams, tenantId, taskId],
   );
-  const participants = all<TaskParticipantRow>(
-    `select tp.id,
-            case when tp.user_id is not null then 'user' else 'org' end as participantType,
-            tp.user_id as userId, u.name as userName, u.mobile,
-            tp.org_id as orgId, o.name as orgName,
-            tp.status, tp.finished_at as finishedAt
-     from task_participants tp
-     left join users u on u.id = tp.user_id and u.tenant_id = tp.tenant_id
-     left join organizations o on o.id = tp.org_id and o.tenant_id = tp.tenant_id
-     where tp.tenant_id = ? and tp.task_id = ? and tp.deleted_at is null
-     order by participantType desc, tp.created_at asc`,
-    [tenantId, taskId],
-  );
+  const participants: TaskParticipantRow[] = options.viewerUserId
+    ? []
+    : all<TaskParticipantRow>(
+      `select tp.id,
+              case when tp.user_id is not null then 'user' else 'org' end as participantType,
+              tp.user_id as userId, u.name as userName, u.mobile,
+              tp.org_id as orgId, o.name as orgName,
+              tp.status, tp.finished_at as finishedAt
+       from task_participants tp
+       left join users u on u.id = tp.user_id and u.tenant_id = tp.tenant_id
+       left join organizations o on o.id = tp.org_id and o.tenant_id = tp.tenant_id
+       where tp.tenant_id = ? and tp.task_id = ? and tp.deleted_at is null
+       order by participantType desc, tp.created_at asc`,
+      [tenantId, taskId],
+    );
   return { task, scenes, participants };
 }
 export function createTask(tenantId: string, input: { name: string; code: string; type: string; sceneIds: string[]; participantUserIds?: string[]; participantOrgIds?: string[]; startAt?: string; endAt?: string; answerForm?: string }) {
@@ -1286,6 +1357,85 @@ export function updateTaskStatus(tenantId: string, taskId: string, status: "draf
   const publishAt = status === "published" ? ", publish_at = datetime('now')" : "";
   run(`update tasks set status = ?, updated_at = datetime('now')${publishAt} where tenant_id = ? and id = ? and deleted_at is null`, [status, tenantId, taskId]);
   return get<TaskRow>("select id, name, code, type, status, end_at as endAt from tasks where tenant_id = ? and id = ?", [tenantId, taskId]);
+}
+
+export function createAiTrainingSession(
+  tenantId: string,
+  input: { sceneId: string; userId?: string | null; history?: AiTrainingSessionMessage[] },
+): AiTrainingSessionRow | undefined {
+  const scene = get<{ id: string }>("select id from scenes where tenant_id = ? and id = ? and deleted_at is null limit 1", [tenantId, input.sceneId]);
+  if (!scene) return undefined;
+  if (input.userId) {
+    const user = get<{ id: string }>("select id from users where tenant_id = ? and id = ? and deleted_at is null limit 1", [tenantId, input.userId]);
+    if (!user) return undefined;
+  }
+
+  const id = `sess_${randomBytes(16).toString("base64url")}`;
+  const startedAt = new Date().toISOString();
+  run(
+    `insert into ai_training_sessions (id, tenant_id, user_id, scene_id, status, history_json, off_topic_count, round_count, started_at, created_at, updated_at)
+     values (?, ?, ?, ?, 'in_progress', ?, 0, 0, ?, datetime('now'), datetime('now'))`,
+    [id, tenantId, input.userId ?? null, input.sceneId, JSON.stringify(input.history ?? []), startedAt],
+  );
+  return getAiTrainingSession(tenantId, id);
+}
+
+export function getAiTrainingSession(tenantId: string, sessionId: string): AiTrainingSessionRow | undefined {
+  return get<AiTrainingSessionRow>(
+    `select id, tenant_id as tenantId, user_id as userId, scene_id as sceneId, status, history_json as historyJson,
+            off_topic_count as offTopicCount, round_count as roundCount, started_at as startedAt, finished_at as finishedAt,
+            created_at as createdAt, updated_at as updatedAt
+     from ai_training_sessions where tenant_id = ? and id = ? and deleted_at is null limit 1`,
+    [tenantId, sessionId],
+  );
+}
+
+export function getAiTrainingSessionForUser(tenantId: string, sessionId: string, userId?: string | null): AiTrainingSessionRow | undefined {
+  const userFilter = userId ? "user_id = ?" : "user_id is null";
+  const params = userId ? [tenantId, sessionId, userId] : [tenantId, sessionId];
+  return get<AiTrainingSessionRow>(
+    `select id, tenant_id as tenantId, user_id as userId, scene_id as sceneId, status, history_json as historyJson,
+            off_topic_count as offTopicCount, round_count as roundCount, started_at as startedAt, finished_at as finishedAt,
+            created_at as createdAt, updated_at as updatedAt
+     from ai_training_sessions where tenant_id = ? and id = ? and ${userFilter} and deleted_at is null limit 1`,
+    params,
+  );
+}
+
+export function updateAiTrainingSession(
+  tenantId: string,
+  sessionId: string,
+  input: {
+    history?: AiTrainingSessionMessage[];
+    status?: "in_progress" | "completed" | "abandoned";
+    offTopicCount?: number;
+    roundCount?: number;
+    finishedAt?: string | null;
+  },
+) {
+  const current = getAiTrainingSession(tenantId, sessionId);
+  if (!current) return undefined;
+  const nextStatus = input.status ?? current.status;
+  const finishedAt = input.finishedAt !== undefined
+    ? input.finishedAt
+    : nextStatus === "completed"
+      ? current.finishedAt ?? new Date().toISOString()
+      : current.finishedAt;
+  run(
+    `update ai_training_sessions
+     set history_json = ?, status = ?, off_topic_count = ?, round_count = ?, finished_at = ?, updated_at = datetime('now')
+     where tenant_id = ? and id = ? and deleted_at is null`,
+    [
+      input.history ? JSON.stringify(input.history) : current.historyJson,
+      nextStatus,
+      input.offTopicCount ?? current.offTopicCount,
+      input.roundCount ?? current.roundCount,
+      finishedAt,
+      tenantId,
+      sessionId,
+    ],
+  );
+  return getAiTrainingSession(tenantId, sessionId);
 }
 
 export function listTrainingRecords(
@@ -1331,9 +1481,15 @@ export function listTrainingRecords(
 export function createTrainingRecord(tenantId: string, input: CreateTrainingRecordInput) {
   // 幂等：同一对练会话（sessionId）只允许一条训练记录，重复请求直接返回已有记录
   if (input.sessionId) {
+    const existingFilters = ["tenant_id = ?", "session_id = ?", "deleted_at is null"];
+    const existingParams: unknown[] = [tenantId, input.sessionId];
+    if (input.userId) {
+      existingFilters.push("user_id = ?");
+      existingParams.push(input.userId);
+    }
     const existing = get<{ id: string }>(
-      "select id from training_records where tenant_id = ? and session_id = ? and deleted_at is null limit 1",
-      [tenantId, input.sessionId],
+      `select id from training_records where ${existingFilters.join(" and ")} limit 1`,
+      existingParams,
     );
     if (existing) {
       return getTrainingRecordDetail(tenantId, existing.id);
@@ -1384,7 +1540,17 @@ export function createTrainingRecord(tenantId: string, input: CreateTrainingReco
   }
   return getTrainingRecordDetail(tenantId, id);
 }
-export function getTrainingRecordDetail(tenantId: string, recordId: string): TrainingRecordDetail | undefined {
+export function getTrainingRecordDetail(
+  tenantId: string,
+  recordId: string,
+  options: { userId?: string } = {},
+): TrainingRecordDetail | undefined {
+  const filters = ["tr.tenant_id = ?", "tr.id = ?", "tr.deleted_at is null"];
+  const params: unknown[] = [tenantId, recordId];
+  if (options.userId) {
+    filters.push("tr.user_id = ?");
+    params.push(options.userId);
+  }
   const record = get<TrainingRecordRow>(
     `select tr.id, tr.record_no as recordNo, tr.task_id as taskId, t.name as taskName, tr.scene_id as sceneId, s.name as sceneName,
             tr.user_id as userId, u.name as userName, tr.mode, tr.status, tr.score, tr.session_id as sessionId,
@@ -1394,8 +1560,8 @@ export function getTrainingRecordDetail(tenantId: string, recordId: string): Tra
      left join tasks t on t.id = tr.task_id and t.tenant_id = tr.tenant_id
      left join scenes s on s.id = tr.scene_id and s.tenant_id = tr.tenant_id
      left join users u on u.id = tr.user_id and u.tenant_id = tr.tenant_id
-     where tr.tenant_id = ? and tr.id = ? and tr.deleted_at is null limit 1`,
-    [tenantId, recordId],
+     where ${filters.join(" and ")} limit 1`,
+    params,
   );
   if (!record) return undefined;
   const turns = all<TrainingTurnRow>(
@@ -1462,13 +1628,23 @@ export function getTrainingRecordDetail(tenantId: string, recordId: string): Tra
 }
 
 /** 按对练会话查询训练记录（评分异步完成后前端轮询用） */
-export function getTrainingRecordBySessionId(tenantId: string, sessionId: string): TrainingRecordDetail | undefined {
+export function getTrainingRecordBySessionId(
+  tenantId: string,
+  sessionId: string,
+  options: { userId?: string } = {},
+): TrainingRecordDetail | undefined {
+  const filters = ["tenant_id = ?", "session_id = ?", "deleted_at is null"];
+  const params: unknown[] = [tenantId, sessionId];
+  if (options.userId) {
+    filters.push("user_id = ?");
+    params.push(options.userId);
+  }
   const found = get<{ id: string }>(
-    "select id from training_records where tenant_id = ? and session_id = ? and deleted_at is null limit 1",
-    [tenantId, sessionId],
+    `select id from training_records where ${filters.join(" and ")} limit 1`,
+    params,
   );
   if (!found) return undefined;
-  return getTrainingRecordDetail(tenantId, found.id);
+  return getTrainingRecordDetail(tenantId, found.id, options);
 }
 
 export function getAppeal(tenantId: string, appealId: string) {
@@ -1908,10 +2084,21 @@ export function createExamAttempt(tenantId: string, input: { examId: string; use
   return getExamAttemptDetail(tenantId, id);
 }
 
-export function submitExamAttempt(tenantId: string, attemptId: string, answers: Array<{ questionId: string; answer: string }>) {
+export function submitExamAttempt(
+  tenantId: string,
+  attemptId: string,
+  answers: Array<{ questionId: string; answer: string }>,
+  options: { userId?: string } = {},
+) {
+  const filters = ["tenant_id = ?", "id = ?", "deleted_at is null"];
+  const params: unknown[] = [tenantId, attemptId];
+  if (options.userId) {
+    filters.push("user_id = ?");
+    params.push(options.userId);
+  }
   const attempt = get<{ id: string; examId: string; status: string }>(
-    `select id, exam_id as examId, status from exam_attempts where tenant_id = ? and id = ? and deleted_at is null limit 1`,
-    [tenantId, attemptId],
+    `select id, exam_id as examId, status from exam_attempts where ${filters.join(" and ")} limit 1`,
+    params,
   );
   if (!attempt || attempt.status === "completed") return undefined;
   const exam = getExam(tenantId, attempt.examId);
@@ -1946,17 +2133,27 @@ function normalizeAnswer(a: string) {
   return String(a || "").trim().toUpperCase();
 }
 
-export function listExamAttempts(tenantId: string, examId?: string) {
+export function listExamAttempts(tenantId: string, options: { examId?: string; userId?: string } = {}) {
+  const filters = ["a.tenant_id = ?", "a.deleted_at is null"];
+  const params: unknown[] = [tenantId];
+  if (options.examId) {
+    filters.push("a.exam_id = ?");
+    params.push(options.examId);
+  }
+  if (options.userId) {
+    filters.push("a.user_id = ?");
+    params.push(options.userId);
+  }
   return all<ExamAttemptRow>(
     `select a.id, a.exam_id as examId, e.name as examName, a.user_id as userId, u.name as userName,
             a.score, a.total_score as totalScore, a.status, a.duration_seconds as durationSeconds,
             a.started_at as startedAt, a.finished_at as finishedAt, a.created_at as createdAt
      from exam_attempts a
-     left join exams e on e.id = a.exam_id
-     left join users u on u.id = a.user_id
-     where a.tenant_id = ? and a.deleted_at is null ${examId ? "and a.exam_id = ?" : ""}
+     left join exams e on e.id = a.exam_id and e.tenant_id = a.tenant_id
+     left join users u on u.id = a.user_id and u.tenant_id = a.tenant_id
+     where ${filters.join(" and ")}
      order by a.created_at desc`,
-    examId ? [tenantId, examId] : [tenantId],
+    params,
   );
 }
 
@@ -2462,6 +2659,3 @@ export function listKnowledgeSummaries(tenantId: string, limit = 20, fileIds?: s
     [...params, limit],
   );
 }
-
-
-

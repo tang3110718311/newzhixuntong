@@ -1,11 +1,13 @@
 ﻿import { defaultTenantCode } from "@zxt/shared";
 import { ensureDb, getTenantByCode, getUserBySessionToken } from "@zxt/database";
+import { getAuthCookieToken } from "./auth-cookie";
 import { HttpError } from "./response";
 
 export function getBearerToken(request?: Request) {
   const authorization = request?.headers.get("authorization") || "";
   const [scheme, token] = authorization.split(" ");
-  return scheme?.toLowerCase() === "bearer" && token ? token : "";
+  if (scheme?.toLowerCase() === "bearer" && token) return token;
+  return getAuthCookieToken(request);
 }
 
 function hostnameOf(value: string) {

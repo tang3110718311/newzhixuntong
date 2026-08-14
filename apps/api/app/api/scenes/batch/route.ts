@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { batchDeleteScenes } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
-import { getTenantContext } from "@/lib/tenant";
+import { requireTrainingManager } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,7 +12,7 @@ const batchDeleteSchema = z.object({
 
 export async function DELETE(request: Request) {
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId } = await requireTrainingManager(request);
     const body = batchDeleteSchema.parse(await request.json());
     const deleted = batchDeleteScenes(tenantId, body.ids);
     return ok({ deleted });

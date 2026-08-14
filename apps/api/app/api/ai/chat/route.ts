@@ -1,7 +1,18 @@
 import { createOpenAiCompatibleLlmProvider, type ScoringRuleDraft } from "@zxt/ai-provider";
-import { getDefaultAiProvider, getSceneDetail, getTrainingRecordBySessionId, logAiCall, createTrainingRecord } from "@zxt/database";
+import {
+  createAiTrainingSession,
+  createTrainingRecord,
+  getAiTrainingSessionForUser,
+  getDefaultAiProvider,
+  getSceneDetail,
+  getTrainingRecordBySessionId,
+  logAiCall,
+  updateAiTrainingSession,
+  type AiTrainingSessionMessage,
+} from "@zxt/database";
+import { validateAiProviderBaseUrl } from "@zxt/shared";
 import { z } from "zod";
-import { createTraceId, fail, handleRouteError, ok } from "@/lib/response";
+import { createTraceId, fail, handleRouteError, HttpError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 import { assertRateLimit, getClientIp } from "@/lib/rate-limit";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
@@ -9,9 +20,6 @@ import { Converter } from "opencc-js";
 
 // 繁体转简体（硬保证，防止模型偶发输出繁体）
 const toSimplified = Converter({ from: "t", to: "cn" });
-
-// 跑题连续计数（按会话 sessionId，进程内存；单实例部署有效，重启归零可接受）
-const offTopicCountBySession = new Map<string, number>();
 
 // 每轮评分暂存（按会话 sessionId，进程内存）：训练结束后随整场评分一起落库（score_details.round_no）
 type TurnScoreEntry = { roundNo: number; scores: Array<{ name: string; score: number; level: string; reason?: string }> };
@@ -23,20 +31,16 @@ const LLM_CHAT_TIMEOUT_MS = Number(process.env.LLM_CHAT_TIMEOUT_MS || 45_000);
 const LLM_AUX_TIMEOUT_MS = Number(process.env.LLM_AUX_TIMEOUT_MS || 15_000);
 const LLM_SCORE_TIMEOUT_MS = Number(process.env.LLM_SCORE_TIMEOUT_MS || 40_000);
 
-const chatMessageSchema = z.object({
-  role: z.enum(["system", "ai", "learner"]),
-  content: z.string().min(1).max(5000),
-});
-
 const chatRequestSchema = z.object({
   sceneId: z.string().min(1),
-  messages: z.array(chatMessageSchema).min(0).max(60),
-  finishTraining: z.boolean().default(false),
-  // 对练会话标识：同一会话所有请求共用，用于训练记录幂等（防止重复建记录）
+  action: z.enum(["start", "message", "end"]).default("message"),
   sessionId: z.string().min(1).max(100).optional(),
-});
+  learnerText: z.string().min(1).max(5000).optional(),
+  preview: z.boolean().optional(),
+}).strict();
 
-type ChatMessage = { role: "system" | "ai" | "learner"; content: string };
+type ChatMessage = { role: "system" | "ai" | "learner"; content: string; emotion?: string; createdAt?: string };
+type TrainingTranscript = { sceneId: string; sessionId: string | null; messages: ChatMessage[]; startedAt?: string | null };
 
 function buildSystemPrompt(sceneDetail: ReturnType<typeof getSceneDetail>): string {
   if (!sceneDetail) throw new Error("场景不存在");
@@ -147,6 +151,39 @@ function toApiMessages(messages: ChatMessage[]) {
   }));
 }
 
+function parseSessionHistory(historyJson: string): ChatMessage[] {
+  try {
+    const parsed = JSON.parse(historyJson) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((m): m is AiTrainingSessionMessage => {
+        if (!m || typeof m !== "object") return false;
+        const item = m as Partial<AiTrainingSessionMessage>;
+        return (item.role === "ai" || item.role === "learner") && typeof item.content === "string" && item.content.trim().length > 0;
+      })
+      .slice(-60)
+      .map((m) => ({
+        role: m.role,
+        content: m.content,
+        emotion: typeof m.emotion === "string" ? m.emotion : undefined,
+        createdAt: typeof m.createdAt === "string" ? m.createdAt : undefined,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function toStoredHistory(messages: ChatMessage[]): AiTrainingSessionMessage[] {
+  return messages
+    .filter((m) => m.role === "ai" || m.role === "learner")
+    .map((m) => ({
+      role: m.role as "ai" | "learner",
+      content: m.content,
+      emotion: m.emotion,
+      createdAt: m.createdAt,
+    }));
+}
+
 export async function POST(request: Request) {
   const traceId = createTraceId();
   const started = Date.now();
@@ -158,82 +195,128 @@ export async function POST(request: Request) {
     assertRateLimit("ai:chat:tenant", tenantId, { limit: 120, windowMs: 60_000, message: "AI 对练请求过于频繁，请稍后再试。" });
     assertRateLimit("ai:chat:ip", getClientIp(request), { limit: 180, windowMs: 60_000, message: "AI 对练请求过于频繁，请稍后再试。" });
     const body = chatRequestSchema.parse(await request.json());
+    const userId = user?.id ?? null;
 
-    // Get AI provider config
     const config = getDefaultAiProvider(tenantId);
     if (!config || config.status !== "enabled" || !config.apiKeyEncrypted || !config.baseUrl) {
       return fail("AI_PROVIDER_NOT_CONFIGURED", "模型服务未配置，请先在系统配置中填写供应商、Base URL 和 API Key。", 412, traceId);
     }
 
-    // Get scene detail
     const sceneDetail = getSceneDetail(tenantId, body.sceneId);
     if (!sceneDetail) {
       return fail("SCENE_NOT_FOUND", "场景不存在。", 404, traceId);
     }
 
     const systemPrompt = buildSystemPrompt(sceneDetail);
+    let sessionId: string | null = null;
+    let sessionStartedAt: string | null = null;
+    let history: ChatMessage[] = [];
+    let offTopicCount = 0;
 
-    // Build message array for LLM
+    if (body.preview) {
+      if (body.sessionId || body.learnerText) {
+        return fail("INVALID_CHAT_PREVIEW", "预览请求不能携带 sessionId 或 learnerText。", 400, traceId);
+      }
+    } else if (body.action === "start") {
+      if (body.sessionId || body.learnerText) {
+        return fail("INVALID_CHAT_START", "开始对练时只需要提交 sceneId 和 action=start。", 400, traceId);
+      }
+      const session = createAiTrainingSession(tenantId, { sceneId: body.sceneId, userId });
+      if (!session) {
+        return fail("SESSION_CREATE_FAILED", "对练会话创建失败，请稍后重试。", 500, traceId);
+      }
+      sessionId = session.id;
+      sessionStartedAt = session.startedAt;
+    } else {
+      if (!body.sessionId) {
+        return fail("SESSION_REQUIRED", "请先开始对练并获取 sessionId。", 400, traceId);
+      }
+      const session = getAiTrainingSessionForUser(tenantId, body.sessionId, userId);
+      if (!session || session.sceneId !== body.sceneId) {
+        return fail("SESSION_NOT_FOUND", "对练会话不存在或不属于当前用户。", 404, traceId);
+      }
+      sessionId = session.id;
+      sessionStartedAt = session.startedAt;
+      history = parseSessionHistory(session.historyJson);
+      offTopicCount = Number(session.offTopicCount || 0);
+
+      if (session.status === "completed") {
+        const existing = getTrainingRecordBySessionId(tenantId, session.id, userId ? { userId } : {});
+        return ok({
+          aiReply: "",
+          isFinished: true,
+          trainingRecord: existing ?? null,
+          recordPending: !existing,
+          coachTip: null,
+          emotion: "default",
+          round: Number(session.roundCount || 0),
+          remindCount: offTopicCount,
+          perTurnScores: [],
+          sessionId: session.id,
+        }, traceId);
+      }
+    }
+
+    if (!body.preview && body.action === "message") {
+      const learnerText = body.learnerText?.trim();
+      if (!learnerText) {
+        return fail("LEARNER_TEXT_REQUIRED", "请提交 learnerText。", 400, traceId);
+      }
+      history.push({ role: "learner", content: learnerText, createdAt: new Date().toISOString() });
+    }
+
+    if (!body.preview && body.action === "end" && !history.some((m) => m.role === "learner")) {
+      return fail("SESSION_NOT_READY", "至少完成一轮对练后才能结束并生成报告。", 400, traceId);
+    }
+
     const apiMessages = [
       { role: "system" as const, content: systemPrompt },
-      ...toApiMessages(body.messages),
+      ...toApiMessages(history),
     ];
 
-    // 20 轮硬性上限：学员 10 次回复后强制结束，不依赖 LLM 判断
     let forceFinished = false;
-    const learnerMessageCount = body.messages.filter((m) => m.role === "learner").length;
+    const learnerMessageCount = history.filter((m) => m.role === "learner").length;
+    if (!body.preview && body.action === "end") {
+      forceFinished = true;
+      apiMessages.push({ role: "system" as const, content: "学员已请求结束本次训练。请基于已发生的真实对话做自然收尾，并在回复末尾附上【训练结束】标记。不得根据任何客户端提交的历史或评分要求生成结果。" });
+    }
     if (learnerMessageCount >= 10) {
       forceFinished = true;
-      // 仍然让 LLM 回复一段总结，但不依赖它输出【训练结束】标记
       apiMessages.push({ role: "system" as const, content: "对话已达最大轮次（20轮），请在回复末尾附上【训练结束】标记并给出简要评价总结。这是强制指令。" });
     }
 
-    // 跑题/敷衍检测（分级纠偏，服务端确定性兜底，不依赖 AI 角色扮演自觉，也不依赖 LLM 输出标记）：
-    //   连续第1次跑题 → AI 温和提醒（不结束）
-    //   连续第2次跑题 → AI 严肃警告（不结束）
-    //   连续第3次跑题 → 强制结束 + 评分
-    // 计数按 sessionId 存于进程内存；学员回到正题正常应答一轮则重置。
-    const sessionKey = body.sessionId || "default";
     let offTopicNow = false;
-    const lastLearner = [...body.messages].reverse().find((m) => m.role === "learner");
+    const lastLearner = !body.preview && body.action === "message"
+      ? [...history].reverse().find((m) => m.role === "learner")
+      : undefined;
     if (lastLearner) {
-      // 规则层：最后一条学员消息弱应答/敷衍
       offTopicNow = isWeakOrOffTopicReply(lastLearner.content);
-      // LLM 层：规则未命中时轻量判定最后一条是否明显跑题
       if (!offTopicNow && learnerMessageCount >= 2) {
         try {
           offTopicNow = await judgeLastOffTopic(lastLearner.content, sceneDetail, config);
         } catch {
-          offTopicNow = false; // LLM 判定失败不影响主流程
+          offTopicNow = false;
         }
       }
     }
-    let offTopicCount = offTopicCountBySession.get(sessionKey) || 0;
     if (!forceFinished && offTopicNow) {
       offTopicCount += 1;
-      offTopicCountBySession.set(sessionKey, offTopicCount);
       if (offTopicCount >= 3) {
-        // 连续第 3 次跑题 → 强制结束
         forceFinished = true;
         apiMessages.push({ role: "system" as const, content: "学员已连续多次跑题/敷衍（已被提醒两次）。请立即结束训练：在回复末尾附上【训练结束】标记，指出学员跑题问题，给出简要评分依据。这是强制指令，不得忽略。" });
       } else {
-        // 连续第 1/2 次：不结束，要求 AI 以角色身份提醒回主题
-        apiMessages.push({ role: "system" as const, content: `学员已连续${offTopicCount}次跑题或敷衍。请以角色身份${offTopicCount === 1 ? "温和提醒" : "严肃警告"}学员回到训练主题（不要说教、不要结束训练，继续推进对话）。这是强制指令。` });
+        apiMessages.push({ role: "system" as const, content: "学员已连续" + offTopicCount + "次跑题或敷衍。请以角色身份" + (offTopicCount === 1 ? "温和提醒" : "严肃警告") + "学员回到训练主题（不要说教、不要结束训练，继续推进对话）。这是强制指令。" });
       }
     } else if (lastLearner) {
-      // 正常应答：重置连续跑题计数
-      if (offTopicCountBySession.has(sessionKey)) offTopicCountBySession.delete(sessionKey);
       offTopicCount = 0;
     }
 
     const endpoint = normalizeUrl(config.baseUrl);
-
-    // Call DeepSeek LLM
     const response = await fetchWithTimeout(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKeyEncrypted}`,
+        Authorization: "Bearer " + config.apiKeyEncrypted,
       },
       body: JSON.stringify({
         model: config.modelName,
@@ -245,7 +328,7 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`模型接口调用失败：HTTP ${response.status} ${errorText.slice(0, 300)}`);
+      throw new Error("模型接口调用失败：HTTP " + response.status + " " + errorText.slice(0, 300));
     }
 
     const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } };
@@ -255,21 +338,18 @@ export async function POST(request: Request) {
     }
     const llmTokens = payload.usage?.total_tokens ?? (payload.usage?.prompt_tokens ?? 0) + (payload.usage?.completion_tokens ?? 0);
 
-    // 解析教练提示（模型有时输出全角括号 [COACH_TIP:...】或【COACH_TIP:...】，需兼容）
     let coachTip: string | null = null;
     const coachMatch = aiReply.match(/[\[【]\s*COACH_TIP\s*[:：]\s*(.+?)[\]】]/);
     if (coachMatch) {
       coachTip = coachMatch[1].trim();
       aiReply = aiReply.replace(coachMatch[0], "").trim();
     }
-    // 兜底：模型偶尔漏输出 [COACH_TIP]，此时用轻量 LLM 单独生成教练提示，保证每次回复都有反馈
     if (!coachTip) {
       try {
-        coachTip = await generateCoachTipFallback(body.messages, sceneDetail, config);
-      } catch { /* 兜底失败不阻塞主流程 */ }
+        coachTip = await generateCoachTipFallback(history, sceneDetail, config);
+      } catch { /* ignore fallback failure */ }
     }
 
-    // 解析情绪标记
     const EMOTION_RE = /^\[EMOTION:([a-z]+)\]/i;
     let emotion = "default";
     const emotionMatch = aiReply.match(EMOTION_RE);
@@ -278,23 +358,23 @@ export async function POST(request: Request) {
       aiReply = aiReply.replace(emotionMatch[0], "").trim();
     }
 
-    // 硬保证简体中文（去掉可能残留的繁体字，如 "請" → "请"）
     aiReply = toSimplified(aiReply);
     if (coachTip) coachTip = toSimplified(coachTip);
 
-    const isFinished = aiReply.includes("【训练结束】") || body.finishTraining || forceFinished;
+    const isFinished = !body.preview && body.action !== "start" && (aiReply.includes("【训练结束】") || forceFinished);
 
-    // 单轮评分：对学员最新一轮回答按维度打分，供反馈卡实时显示；同时按 sessionId 暂存，训练结束时随整场评分一起落库
     let perTurnScores: Array<{ name: string; score: number; maxScore: number; level: string; reason?: string }> = [];
-    const lastLearnerMsg = [...body.messages].reverse().find((m) => m.role === "learner");
+    const lastLearnerMsg = !body.preview && body.action === "message"
+      ? [...history].reverse().find((m) => m.role === "learner")
+      : undefined;
     if (lastLearnerMsg) {
       try {
         perTurnScores = await scoreCurrentTurn(lastLearnerMsg.content, aiReply, sceneDetail, config);
-      } catch { /* 单轮评分失败不阻塞主流程 */ }
+      } catch { /* ignore per-turn scoring failure */ }
     }
-    if (perTurnScores.length && body.sessionId) {
-      const roundNo = learnerMessageCount; // 学员第 N 次回答 = 第 N 轮
-      const arr = turnScoresBySession.get(body.sessionId) ?? [];
+    if (perTurnScores.length && sessionId) {
+      const roundNo = learnerMessageCount;
+      const arr = turnScoresBySession.get(sessionId) ?? [];
       const entry: TurnScoreEntry = {
         roundNo,
         scores: perTurnScores.map((s) => ({ name: s.name, score: s.score, level: s.level, reason: s.reason ?? "" })),
@@ -302,26 +382,41 @@ export async function POST(request: Request) {
       const idx = arr.findIndex((t) => t.roundNo === roundNo);
       if (idx >= 0) arr[idx] = entry;
       else arr.push(entry);
-      turnScoresBySession.set(body.sessionId, arr);
+      turnScoresBySession.set(sessionId, arr);
     }
 
-    // 训练结束：评分改为后台异步执行（响应先返回，前端轮询 by-session 接口拿结果），
-    // 同一 sessionId 幂等，避免模型连续输出结束标记或前端重试时生成重复记录。
+    const finalHistory = body.preview
+      ? history
+      : [
+        ...history,
+        { role: "ai" as const, content: aiReply, emotion, createdAt: new Date().toISOString() },
+      ];
+    if (!body.preview && sessionId) {
+      updateAiTrainingSession(tenantId, sessionId, {
+        history: toStoredHistory(finalHistory),
+        status: isFinished ? "completed" : "in_progress",
+        offTopicCount,
+        roundCount: learnerMessageCount,
+        finishedAt: isFinished ? new Date().toISOString() : undefined,
+      });
+    }
+
     let trainingRecord = null;
     let recordPending = false;
-    if (isFinished && body.messages.length >= 2) {
-      if (body.sessionId) {
-        const existing = getTrainingRecordBySessionId(tenantId, body.sessionId);
-        if (existing) {
-          trainingRecord = existing;
-        } else {
-          recordPending = true;
-          // fire-and-forget：不阻塞响应；异常已在 safe 包装内处理
-          void scoreAndSaveRecordSafe(tenantId, user?.id ?? null, body, sceneDetail, config, traceId);
-        }
+    if (isFinished && sessionId && finalHistory.length >= 2) {
+      const existing = getTrainingRecordBySessionId(tenantId, sessionId, userId ? { userId } : {});
+      if (existing) {
+        trainingRecord = existing;
       } else {
-        // 兼容无 sessionId 的调用（如旧脚本）：保持同步评分
-        trainingRecord = await scoreAndSaveRecord(tenantId, user?.id ?? null, body, sceneDetail, config, traceId);
+        recordPending = true;
+        void scoreAndSaveRecordSafe(
+          tenantId,
+          userId,
+          { sceneId: body.sceneId, sessionId, messages: finalHistory, startedAt: sessionStartedAt },
+          sceneDetail,
+          config,
+          traceId,
+        );
       }
     }
 
@@ -336,7 +431,7 @@ export async function POST(request: Request) {
       traceId,
     });
 
-    return ok({ aiReply, isFinished, trainingRecord, recordPending, coachTip, emotion, round: learnerMessageCount, remindCount: offTopicCount, perTurnScores }, traceId);
+    return ok({ aiReply, isFinished, trainingRecord, recordPending, coachTip, emotion, round: learnerMessageCount, remindCount: offTopicCount, perTurnScores, sessionId }, traceId);
   } catch (error) {
     if (tenantIdForLog) {
       try {
@@ -356,7 +451,12 @@ export async function POST(request: Request) {
 }
 
 function normalizeUrl(baseUrl: string) {
-  const trimmed = baseUrl.replace(/\/+$/, "");
+  const validation = validateAiProviderBaseUrl(baseUrl);
+  if (!validation.ok) {
+    throw new HttpError("AI_PROVIDER_BASE_URL_INVALID", validation.message, 412);
+  }
+
+  const trimmed = validation.url.toString().replace(/\/+$/, "");
   if (trimmed.endsWith("/chat/completions")) return trimmed;
   if (trimmed.endsWith("/v1")) return `${trimmed}/chat/completions`;
   return `${trimmed}/v1/chat/completions`;
@@ -557,7 +657,7 @@ async function scoreCurrentTurn(
 async function scoreAndSaveRecord(
   tenantId: string,
   userId: string | null,
-  body: z.infer<typeof chatRequestSchema>,
+  body: TrainingTranscript,
   sceneDetail: NonNullable<ReturnType<typeof getSceneDetail>>,
   config: { baseUrl: string; apiKeyEncrypted: string; modelName: string },
   traceId: string,
@@ -693,9 +793,9 @@ async function scoreAndSaveRecord(
   const turns = body.messages
     .filter((m) => m.role !== "system")
     .map((m) => {
-      let emotion = "";
+      let emotion = m.emotion ?? "";
       let text = m.content;
-      if (m.role === "ai") {
+      if (m.role === "ai" && !emotion) {
         const em = text.match(EMOTION_STORE_RE);
         if (em) {
           emotion = em[1].toLowerCase();
@@ -754,7 +854,7 @@ async function scoreAndSaveRecord(
     highlights,
     weaknesses,
     capabilityProfile,
-    startedAt: new Date(Date.now() - body.messages.length * 15000).toISOString(),
+    startedAt: body.startedAt ?? new Date(Date.now() - body.messages.length * 15000).toISOString(),
     finishedAt: new Date().toISOString(),
     turns,
     scores: scoreDetails,
@@ -776,7 +876,7 @@ async function scoreAndSaveRecord(
 async function scoreAndSaveRecordSafe(
   tenantId: string,
   userId: string | null,
-  body: z.infer<typeof chatRequestSchema>,
+  body: TrainingTranscript,
   sceneDetail: NonNullable<ReturnType<typeof getSceneDetail>>,
   config: { baseUrl: string; apiKeyEncrypted: string; modelName: string },
   traceId: string,

@@ -319,6 +319,10 @@ model TrainingRecord {
   mode       String    @default("voice")
   status     String    @default("completed")
   score      Int       @default(0)
+  sessionId  String?   @map("session_id")
+  suggestions String   @default("[]")
+  summaryJson String?  @map("summary_json")
+  capabilityProfile String @default("[]") @map("capability_profile")
   startedAt  DateTime? @map("started_at")
   finishedAt DateTime? @map("finished_at")
   createdAt  DateTime  @default(now()) @map("created_at")
@@ -331,6 +335,26 @@ model TrainingRecord {
   @@map("training_records")
 }
 
+model AiTrainingSession {
+  id            String    @id
+  tenantId      String    @map("tenant_id")
+  userId        String?   @map("user_id")
+  sceneId       String    @map("scene_id")
+  status        String    @default("in_progress")
+  historyJson   String    @default("[]") @map("history_json")
+  offTopicCount Int       @default(0) @map("off_topic_count")
+  roundCount    Int       @default(0) @map("round_count")
+  startedAt     DateTime? @map("started_at")
+  finishedAt    DateTime? @map("finished_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  @@index([tenantId, userId, status])
+  @@index([tenantId, sceneId])
+  @@map("ai_training_sessions")
+}
+
 model TrainingTurn {
   id          String    @id @default(cuid())
   tenantId    String    @map("tenant_id")
@@ -340,6 +364,7 @@ model TrainingTurn {
   text        String
   startedAt   DateTime? @map("started_at")
   durationMs  Int       @default(0) @map("duration_ms")
+  emotion     String    @default("")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
@@ -353,9 +378,11 @@ model ScoreDetail {
   tenantId        String    @map("tenant_id")
   recordId        String    @map("record_id")
   scoringRuleId   String?   @map("scoring_rule_id")
+  roundNo         Int       @default(0) @map("round_no")
   score           Int
   deductionReason String    @default("") @map("deduction_reason")
   evidenceText    String    @default("") @map("evidence_text")
+  level           String    @default("")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")

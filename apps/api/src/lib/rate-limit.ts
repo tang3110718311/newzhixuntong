@@ -14,9 +14,42 @@ type RateLimitOptions = {
 const buckets = new Map<string, Bucket>();
 let lastCleanupAt = 0;
 
+const defaultTrustedProxyHeaders = ["x-forwarded-for", "x-real-ip"];
+
+function envFlag(name: string) {
+  const value = process.env[name]?.trim().toLowerCase();
+  return value === "true" || value === "1" || value === "yes";
+}
+
+function trustedProxyHeaders() {
+  const configured = process.env.TRUSTED_PROXY_HEADERS?.trim();
+  if (configured) {
+    const normalized = configured.toLowerCase();
+    if (["true", "1", "yes"].includes(normalized)) return defaultTrustedProxyHeaders;
+    if (["false", "0", "no"].includes(normalized)) return [];
+    return configured
+      .split(",")
+      .map((header) => header.trim().toLowerCase())
+      .filter(Boolean);
+  }
+  return envFlag("TRUST_PROXY") ? defaultTrustedProxyHeaders : [];
+}
+
+function firstHeaderIp(headerValue: string | null) {
+  return headerValue?.split(",")[0]?.trim() || "";
+}
+
+function runtimeIp(request: Request) {
+  const value = (request as Request & { ip?: string }).ip;
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
 export function getClientIp(request: Request) {
-  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return forwardedFor || request.headers.get("x-real-ip") || "unknown";
+  for (const header of trustedProxyHeaders()) {
+    const value = firstHeaderIp(request.headers.get(header));
+    if (value) return value;
+  }
+  return runtimeIp(request) || "unknown";
 }
 
 export function assertRateLimit(scope: string, key: string, options: RateLimitOptions) {

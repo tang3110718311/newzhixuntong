@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { taskApi, sceneApi, recordApi, aiApi } from "@/lib/api";
 import { taskStatusText, taskTypeText, taskFormText } from "@/lib/types";
-import { isMaterialDone, markMaterialDone, getExamCount, addExamCount } from "@/lib/sceneProgress";
+import { isMaterialDone, markMaterialDone, getExamCount } from "@/lib/sceneProgress";
 import PracticeReport from "./PracticeReport";
 
 interface TaskDetailPageProps {
@@ -22,14 +22,14 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
   const [sceneDetail, setSceneDetail] = useState<any>(null);
   // 对练报告会话（练习结束后进入报告流程）
   const [reportSessionId, setReportSessionId] = useState<string | null>(null);
-  // 本地考试次数（用于触发重渲染，实际数据存 localStorage）
+  // 本地考试次数只用于展示；可信完成状态仍以服务端场景训练计数为准。
   const [examCounts, setExamCounts] = useState<Record<string, number>>({});
 
-  /** 考试完成回调：本地记录次数并刷新 */
+  /** 考试完成回调：刷新本地展示次数 */
   const handleExamFinished = useCallback(() => {
     const ts = detail?.scenes?.[sceneIndex];
     if (!ts) return;
-    const next = addExamCount(ts.sceneId);
+    const next = getExamCount(ts.sceneId);
     setExamCounts((prev) => ({ ...prev, [ts.sceneId]: next }));
     showToast("考试已完成，成绩已记录");
   }, [detail, sceneIndex, showToast]);
@@ -251,7 +251,7 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
             const trainDone = (sc.completedTrainCount || 0) > 0;
             const required = sc.requiredTrainTimes || 1;
             const practiceDone = (sc.completedTrainCount || 0) >= required;
-            // 已做过对练的场景必然已学过资料，本地标记丢失（换设备/清缓存）时不应反向锁住
+            // 资料标记是本机阅读提示；真正完成状态只看后端 completedTrainCount。
             const materialDone = isMaterialDone(sc.sceneId) || trainDone;
             const examCount = examCounts[sc.sceneId] ?? getExamCount(sc.sceneId);
             return (

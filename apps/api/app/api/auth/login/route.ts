@@ -1,5 +1,6 @@
 import { loginSchema } from "@zxt/shared";
 import { ensureDb, loginWithPassword } from "@zxt/database";
+import { setAuthCookie } from "@/lib/auth-cookie";
 import { consumeCaptchaToken } from "@/lib/captcha";
 import { assertRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleRouteError, HttpError, ok } from "@/lib/response";
@@ -76,7 +77,9 @@ export async function POST(request: Request) {
     }
 
     clearKey(key);
-    return ok(session);
+    const response = ok(session);
+    setAuthCookie(response, session.token, session.expiresAt);
+    return response;
   } catch (error) {
     return handleRouteError(error);
   }

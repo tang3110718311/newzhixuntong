@@ -98,7 +98,7 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
     }, 500);
   };
 
-  /** 完成考试：记录本地考试次数与明细（供历史记录"查看报告"） */
+  /** 完成考试：写入本地展示次数与明细（供历史记录"查看报告"） */
   const finishExam = () => {
     if (!recorded) {
       setRecorded(true);
@@ -113,8 +113,8 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
           rounds,
           finishedAt: new Date().toISOString(),
         });
+        addExamCount(sceneId);
       }
-      addExamCount(sceneId);
       onFinished?.();
     }
     onBack();

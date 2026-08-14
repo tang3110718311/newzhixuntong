@@ -449,7 +449,6 @@ export default function PracticePage() {
       try {
         const data = await apiPost<{ aiReply: string }>(`/ai/chat`, {
           sceneId: scene.id,
-          messages: [],
           preview: true,
         });
         setOpeningPreview(data.aiReply || null);
@@ -479,10 +478,8 @@ export default function PracticePage() {
       setCoachTip(null);
       setChatFinished(false);
       setChatResult(null);
-      // 新会话生成唯一 sessionId（幂等/评分轮询用）
-      sessionIdRef.current = typeof crypto !== "undefined" && crypto.randomUUID
-        ? crypto.randomUUID()
-        : `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      // sessionId 由服务端创建，避免客户端伪造会话和成绩
+      sessionIdRef.current = "";
       // 记录进入对练的时间与展示用编号（RW + 年月日时分）
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");
@@ -522,11 +519,11 @@ export default function PracticePage() {
     async (scene: Scene, _rules: Array<{ id: string; name: string; score: number }>) => {
       setChatSending(true);
       try {
-        const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; coachTip: string | null; emotion: string; round?: number }>(`/ai/chat`, {
+        const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; coachTip: string | null; emotion: string; round?: number; sessionId?: string }>(`/ai/chat`, {
           sceneId: scene.id,
-          messages: [],
-          sessionId: sessionIdRef.current || undefined,
+          action: "start",
         });
+        if (data.sessionId) sessionIdRef.current = data.sessionId;
         const emotion = data.emotion || "default";
         const voice = ttsVoice || pickSceneVoice(scene.id);
         setChatMessages([{ role: "ai", content: data.aiReply, emotion }]);
@@ -574,17 +571,23 @@ export default function PracticePage() {
     async (text: string) => {
       const content = text.trim();
       if (!content || !selectedScene || chatSending) return;
+      if (!sessionIdRef.current) {
+        setError("对练会话尚未建立，请重新开始训练。");
+        return;
+      }
       const nextMessages: ChatMessage[] = [...chatMessages, { role: "learner", content }];
       setChatMessages(nextMessages);
       setChatInput("");
       setChatSending(true);
       setCoachTip(null);
       try {
-        const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; coachTip: string | null; emotion: string; round?: number }>(`/ai/chat`, {
+        const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; coachTip: string | null; emotion: string; round?: number; sessionId?: string }>(`/ai/chat`, {
           sceneId: selectedScene.id,
-          messages: nextMessages,
-          sessionId: sessionIdRef.current || undefined,
+          action: "message",
+          sessionId: sessionIdRef.current,
+          learnerText: content,
         });
+        if (data.sessionId) sessionIdRef.current = data.sessionId;
         const emotion = data.emotion || "default";
         const voice = ttsVoice || pickSceneVoice(selectedScene.id);
         setChatMessages([...nextMessages, { role: "ai", content: data.aiReply, emotion }]);
@@ -608,14 +611,17 @@ export default function PracticePage() {
   // ===== 结束训练（主动） =====
   const endTraining = useCallback(async () => {
     if (!selectedScene || chatSending) return;
+    if (!sessionIdRef.current) {
+      setError("对练会话尚未建立，请重新开始训练。");
+      return;
+    }
     setChatSending(true);
     setError("");
     try {
       const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; coachTip: string | null }>(`/ai/chat`, {
         sceneId: selectedScene.id,
-        messages: chatMessages,
-        finishTraining: true,
-        sessionId: sessionIdRef.current || undefined,
+        action: "end",
+        sessionId: sessionIdRef.current,
       });
       if (data.aiReply) setChatMessages((prev) => [...prev, { role: "ai", content: data.aiReply }]);
       // 等 AI 收尾话播完(语音模式)再切评分页

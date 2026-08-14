@@ -1,13 +1,14 @@
 /**
  * 场景学习进度工具（资料完成标记 / 考试次数），本地存储，key 含用户 + 场景。
  * TaskDetailPage 与 ScenarioWorkspace 共用，保证解锁逻辑一致。
+ * 这些值仅用于本机 UI 展示和流程提示；服务端可信完成状态以接口返回为准。
  */
 
 const MATERIAL_DONE_KEY = "zxt-material-done";
 const EXAM_COUNT_KEY = "zxt-exam-count";
 const EXAM_RECORDS_KEY = "zxt-exam-records";
 
-/** 一条场景考试记录（本地存储，key 含用户 + 场景） */
+/** 一条场景考试记录（本地展示记录，key 含用户 + 场景） */
 export interface ExamRoundRecord {
   round: number;
   question: string;

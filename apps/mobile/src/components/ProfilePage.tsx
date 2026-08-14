@@ -5,6 +5,36 @@ import { createPortal } from "react-dom";
 import { taskApi, recordApi, type AuthUser } from "@/lib/api";
 import type { PageKey } from "./MobileApp";
 
+const IMAGE_UPLOAD_MAX_BYTES = 2 * 1024 * 1024;
+const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const ALLOWED_IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp"]);
+const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp";
+const IMAGE_DATA_URL_PATTERN = /^data:image\/(?:jpeg|png|webp);base64,[a-z0-9+/=]+$/i;
+
+function isAllowedImageDataUrl(value: string) {
+  return IMAGE_DATA_URL_PATTERN.test(value);
+}
+
+function readStoredAvatar(): string | null {
+  if (typeof window === "undefined") return null;
+  const data = localStorage.getItem("zxtProfileAvatar");
+  if (!data) return null;
+  if (isAllowedImageDataUrl(data)) return data;
+  localStorage.removeItem("zxtProfileAvatar");
+  return null;
+}
+
+function validateImageFile(file: File): string | null {
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  if (!ALLOWED_IMAGE_MIME_TYPES.has(file.type) || !ALLOWED_IMAGE_EXTENSIONS.has(extension)) {
+    return "请选择 JPG、PNG 或 WebP 图片";
+  }
+  if (file.size > IMAGE_UPLOAD_MAX_BYTES) {
+    return "图片不能超过 2MB";
+  }
+  return null;
+}
+
 interface ProfilePageProps {
   user: AuthUser | null;
   onNavigate: (p: PageKey) => void;
@@ -50,9 +80,9 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
       });
   }, []);
 
-  // 进入/离开更换头像页时同步本地头像
+  // 头像仅作为本机展示态，不作为服务端身份凭据。
   useEffect(() => {
-    if (view === "avatar") setAvatar(localStorage.getItem("zxtProfileAvatar"));
+    if (view === "avatar") setAvatar(readStoredAvatar());
   }, [view]);
 
   const percent = taskTotal ? Math.round((taskDone / taskTotal) * 100) : 0;
@@ -69,13 +99,18 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
       const file = e.target.files?.[0];
       e.target.value = "";
       if (!file) return;
-      if (!file.type.startsWith("image/")) {
-        showToast("请选择图片文件");
+      const error = validateImageFile(file);
+      if (error) {
+        showToast(error);
         return;
       }
       const reader = new FileReader();
       reader.onload = () => {
         const data = String(reader.result);
+        if (!isAllowedImageDataUrl(data)) {
+          showToast("图片格式不受支持");
+          return;
+        }
         try {
           localStorage.setItem("zxtProfileAvatar", data);
         } catch {
@@ -92,9 +127,25 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
 
   const handleFeedbackImages = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = [...(e.target.files || [])]
-        .filter((f) => f.type.startsWith("image/"))
-        .slice(0, 3 - feedbackImages.length);
+      const selected = [...(e.target.files || [])];
+      e.target.value = "";
+      const remaining = 3 - feedbackImages.length;
+      if (remaining <= 0) {
+        showToast("最多上传 3 张图片");
+        return;
+      }
+
+      const files: File[] = [];
+      let invalidCount = 0;
+      for (const file of selected) {
+        const error = validateImageFile(file);
+        if (error) {
+          invalidCount += 1;
+          continue;
+        }
+        if (files.length < remaining) files.push(file);
+      }
+      if (invalidCount > 0) showToast("已忽略非 JPG/PNG/WebP 或超过 2MB 的图片");
       if (files.length === 0) return;
       const pending: { name: string; data: string }[] = [];
       let loaded = 0;
@@ -109,10 +160,9 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
         };
         reader.readAsDataURL(file);
       });
-      if ((e.target.files || []).length > 3 - feedbackImages.length) {
+      if (selected.length > remaining) {
         showToast("最多上传 3 张图片");
       }
-      e.target.value = "";
     },
     [feedbackImages.length, showToast]
   );
@@ -160,7 +210,7 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
             <input
               ref={fileRef}
               type="file"
-              accept="image/*"
+              accept={IMAGE_ACCEPT}
               hidden
               onChange={handleAvatarFile}
             />
@@ -306,7 +356,7 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
                 <input
                   ref={feedbackFileRef}
                   type="file"
-                  accept="image/*"
+                  accept={IMAGE_ACCEPT}
                   multiple
                   hidden
                   onChange={handleFeedbackImages}
@@ -318,7 +368,7 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
                 >
                   <span>＋</span>上传图片
                 </button>
-                <small>最多上传 3 张图片</small>
+                <small>最多上传 3 张图片，单张不超过 2MB</small>
               </div>
               <div className="feedback-preview">
                 {feedbackImages.map((img, i) => (

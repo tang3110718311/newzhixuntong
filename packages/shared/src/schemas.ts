@@ -1,5 +1,151 @@
 import { z } from "zod";
 
+type AiProviderUrlValidationEnv = {
+  nodeEnv?: string;
+  allowlist?: string;
+};
+
+type AiProviderUrlValidationResult =
+  | { ok: true; url: URL }
+  | { ok: false; message: string };
+
+function getRuntimeEnv(): AiProviderUrlValidationEnv {
+  const env = (globalThis as typeof globalThis & { process?: { env?: Record<string, string | undefined> } }).process?.env;
+  return {
+    nodeEnv: env?.NODE_ENV,
+    allowlist: env?.AI_PROVIDER_BASE_URL_ALLOWLIST,
+  };
+}
+
+function normalizeHostname(hostname: string) {
+  return hostname.replace(/^\[|\]$/g, "").replace(/\.$/, "").toLowerCase();
+}
+
+function parseAllowlist(raw?: string) {
+  return (raw || "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean)
+    .map((item) => {
+      try {
+        return normalizeHostname(new URL(item).hostname);
+      } catch {
+        return normalizeHostname(item.split("/")[0]?.split(":")[0] || item);
+      }
+    })
+    .filter(Boolean);
+}
+
+function matchesAllowlist(hostname: string, allowlist: string[]) {
+  const host = normalizeHostname(hostname);
+  return allowlist.some((entry) => {
+    if (entry.startsWith("*.")) {
+      const suffix = entry.slice(1);
+      return host.endsWith(suffix) && host.length > suffix.length;
+    }
+    return host === entry;
+  });
+}
+
+function parseIpv4(hostname: string): number[] | null {
+  const parts = hostname.split(".");
+  if (parts.length !== 4) return null;
+  const octets = parts.map((part) => Number(part));
+  if (octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return null;
+  return octets;
+}
+
+function isUnsafeIpv4(octets: number[]) {
+  const [a, b] = octets;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168)
+  );
+}
+
+function isUnsafeIpv6(hostname: string) {
+  const host = normalizeHostname(hostname);
+  if (host === "::1" || host === "0:0:0:0:0:0:0:1") return true;
+
+  const mappedIpv4 = host.match(/(?:^|:)(\d{1,3}(?:\.\d{1,3}){3})$/)?.[1];
+  if (mappedIpv4) {
+    const octets = parseIpv4(mappedIpv4);
+    if (octets && isUnsafeIpv4(octets)) return true;
+  }
+
+  const firstHextet = parseInt(host.split(":")[0] || "0", 16);
+  if (!Number.isFinite(firstHextet)) return false;
+  // fc00::/7 unique-local, fe80::/10 link-local.
+  return (firstHextet & 0xfe00) === 0xfc00 || (firstHextet & 0xffc0) === 0xfe80;
+}
+
+function isUnsafeAiProviderHost(hostname: string) {
+  const host = normalizeHostname(hostname);
+  if (!host) return true;
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host === "metadata" || host === "metadata.google.internal") return true;
+
+  const ipv4 = parseIpv4(host);
+  if (ipv4) return isUnsafeIpv4(ipv4);
+  if (host.includes(":")) return isUnsafeIpv6(host);
+  return false;
+}
+
+function isAllowedDevHttpHost(hostname: string) {
+  const host = normalizeHostname(hostname);
+  return host === "localhost" || host === "127.0.0.1";
+}
+
+export function validateAiProviderBaseUrl(
+  baseUrl: string,
+  env: AiProviderUrlValidationEnv = getRuntimeEnv(),
+): AiProviderUrlValidationResult {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return { ok: false, message: "baseUrl 必须是合法 URL。" };
+  }
+
+  if (url.username || url.password) {
+    return { ok: false, message: "baseUrl 不允许包含用户名或密码。" };
+  }
+  if (url.search || url.hash) {
+    return { ok: false, message: "baseUrl 不允许包含查询参数或片段。" };
+  }
+
+  const isProduction = env.nodeEnv === "production";
+  const host = normalizeHostname(url.hostname);
+  const isDevLocalHttp = !isProduction && url.protocol === "http:" && isAllowedDevHttpHost(host);
+  if (url.protocol !== "https:" && !isDevLocalHttp) {
+    return { ok: false, message: "baseUrl 必须使用 https；本地开发仅允许 http://localhost 或 http://127.0.0.1。" };
+  }
+
+  if (!isDevLocalHttp && isUnsafeAiProviderHost(host)) {
+    return { ok: false, message: "baseUrl 不允许指向本机、内网、链路本地或 metadata 地址。" };
+  }
+
+  const allowlist = parseAllowlist(env.allowlist);
+  if (isProduction && allowlist.length > 0 && !matchesAllowlist(host, allowlist)) {
+    return { ok: false, message: "baseUrl 域名不在 AI_PROVIDER_BASE_URL_ALLOWLIST 中。" };
+  }
+
+  // TODO: add DNS resolution/rebinding checks before outbound fetches to catch domains resolving to private ranges.
+  return { ok: true, url };
+}
+
+export const aiProviderBaseUrlSchema = z.string().trim().min(1).max(2048).superRefine((value, ctx) => {
+  const result = validateAiProviderBaseUrl(value);
+  if (!result.ok) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: result.message });
+  }
+});
+
 export const paginationQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(1000).default(20),
@@ -233,7 +379,7 @@ export const updateAiProviderSchema = z.object({
   providerType: z.enum(["llm", "stt", "tts"]).default("llm"),
   providerName: z.string().min(2).max(80),
   modelName: z.string().min(1).max(120),
-  baseUrl: z.string().url(),
+  baseUrl: aiProviderBaseUrlSchema,
   apiKey: z.string().min(8).max(300).optional(),
   status: z.enum(["enabled", "disabled"]).default("enabled"),
   isDefault: z.boolean().default(true),
@@ -360,8 +506,6 @@ export const updateKnowledgeFolderSchema = z.object({
   name: z.string().min(2).max(120).optional(),
   description: z.string().max(1000).optional(),
 });
-
-
 
 
 

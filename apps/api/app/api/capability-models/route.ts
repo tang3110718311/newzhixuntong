@@ -2,6 +2,7 @@
 import { createCapabilityModel, listCapabilityModels } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { parsePagination } from "@/lib/pagination";
+import { requireAdmin } from "@/lib/authz";
 import { getTenantContext } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId } = await requireAdmin(request);
     const body = createCapabilityModelSchema.parse(await request.json());
     const model = createCapabilityModel(tenantId, body);
     if (!model) return fail("INDUSTRY_PACKAGE_NOT_FOUND", "行业包不存在或已删除。", 404);

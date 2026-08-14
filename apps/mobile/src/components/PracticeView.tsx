@@ -63,7 +63,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const [liveText, setLiveText] = useState("");
   const [hintVisible, setHintVisible] = useState(false);
   const [score, setScore] = useState<number | null>(null);
-  // 进入本对练页面的次数（需求：对练次数=进入次数，而非对话轮数）
+  // 进入本对练页面的次数仅用于本机展示，不作为服务端可信完成状态。
   const [practiceTimes, setPracticeTimes] = useState(0);
   const chatRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -93,16 +93,14 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   useEffect(() => {
     if (!sceneId || startedRef.current) return;
     startedRef.current = true;
-    const sid = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setSessionId(sid);
     setSending(true);
     aiApi
       .chat({
         sceneId,
-        messages: [{ role: "system", content: "开始" }],
-        sessionId: sid,
+        action: "start",
       })
       .then((res) => {
+        if (res.sessionId) setSessionId(res.sessionId);
         pushAiMsgAndSpeak(res.aiReply || "你好，我是" + aiName + "，我们开始吧。");
         setRound(res.round || 0);
       })
@@ -146,19 +144,22 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
 
   const sendText = async (text: string, isVoice = false) => {
     if (!text.trim() || !sceneId) return;
+    if (!sessionId) {
+      showToast("对练会话尚未建立，请稍后再试");
+      return;
+    }
     pushMsg({ who: "user", text: text.trim(), time: now(), isVoice });
     setInput("");
     setSending(true);
     try {
-      // 完整对话历史（与 PC 端契约一致：后端依赖客户端每次发送全部消息，用于轮次计数与训练结束评分）
-      const history = messages
-        .filter((m) => m.who === "user" || m.who === "ai")
-        .map((m) => ({ role: m.who === "user" ? "learner" : "ai", content: m.text }));
       const res = await aiApi.chat({
         sceneId,
-        messages: [...history, { role: "learner", content: text.trim() }],
-        sessionId: sessionId || undefined,
+        action: "message",
+        sessionId,
+        learnerText: text.trim(),
       });
+      const activeSessionId = res.sessionId || sessionId;
+      if (res.sessionId && res.sessionId !== sessionId) setSessionId(res.sessionId);
       // 参考图顺序：用户消息 → 反馈卡 → AI 回复
       if (res.coachTip) {
         const { issues, advice } = parseCoachTip(res.coachTip);
@@ -178,7 +179,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         } else if (res.recordPending) {
           setTimeout(() => {
             recordApi
-              .bySession(sessionId || "")
+              .bySession(activeSessionId)
               .then((rec: any) => {
                 if (rec?.score != null) setScore(rec.score);
               })
@@ -186,7 +187,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
           }, 2500);
         }
         showToast("对练完成，正在生成报告…");
-        setTimeout(() => onReport(sessionId || ""), 700);
+        setTimeout(() => onReport(activeSessionId), 700);
       }
     } catch (e: any) {
       pushMsg({ who: "ai", text: "（回复失败：" + (e.message || "网络错误") + "）" });

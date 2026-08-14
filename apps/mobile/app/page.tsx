@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import MobileApp from "@/components/MobileApp";
-import { getToken } from "@/lib/api";
+import { hasStoredAuth } from "@/lib/api";
 
 export default function HomePage() {
   const [ready, setReady] = useState(false);
@@ -14,5 +14,5 @@ export default function HomePage() {
 
   if (!ready) return null;
 
-  return <MobileApp initialToken={getToken()} />;
+  return <MobileApp initialAuthenticated={hasStoredAuth()} />;
 }

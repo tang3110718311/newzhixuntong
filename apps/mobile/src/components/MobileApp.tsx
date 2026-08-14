@@ -10,16 +10,16 @@ import AbilityPage from "./AbilityPage";
 import ProfilePage from "./ProfilePage";
 import TabBar from "./TabBar";
 import Toast from "./Toast";
-import { authApi, setAuth, clearAuth, getToken, type AuthUser } from "@/lib/api";
+import { authApi, setAuth, clearAuth, type AuthUser } from "@/lib/api";
 
 export type PageKey = "home" | "tasks" | "taskDetail" | "exams" | "ability" | "profile";
 
 interface MobileAppProps {
-  initialToken: string | null;
+  initialAuthenticated: boolean;
 }
 
-export default function MobileApp({ initialToken }: MobileAppProps) {
-  const [loggedIn, setLoggedIn] = useState<boolean>(!!initialToken);
+export default function MobileApp({ initialAuthenticated }: MobileAppProps) {
+  const [loggedIn, setLoggedIn] = useState<boolean>(initialAuthenticated);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [page, setPage] = useState<PageKey>("home");
   const [taskDetailId, setTaskDetailId] = useState<string | null>(null);
@@ -70,9 +70,11 @@ export default function MobileApp({ initialToken }: MobileAppProps) {
       authApi
         .me()
         .then((data) => setUser(data.user))
-        .catch(() => {
-          const t = getToken();
-          if (!t) setLoggedIn(false);
+        .catch((error: { status?: number }) => {
+          if (error?.status === 401 || error?.status === 403) {
+            clearAuth();
+            setLoggedIn(false);
+          }
         });
     }
   }, [loggedIn]);

@@ -1,8 +1,22 @@
 // 移动端 API 封装层 —— 对接 zxt-next 后端接口
-// 认证：Authorization: Bearer <token>（登录接口返回 token，存 localStorage）
+// 认证：优先使用服务端 HttpOnly Cookie；旧会话 Bearer token 仅作兼容兜底。
+function isInsecureHttpApiBase(value: string) {
+  return /^http:\/\//i.test(value);
+}
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
+function resolveApiBase() {
+  const configured =
+    process.env.NEXT_PUBLIC_MOBILE_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "";
+  if (configured) {
+    if (process.env.NODE_ENV === "production" && isInsecureHttpApiBase(configured)) return "/api";
+    return configured;
+  }
+  return process.env.NODE_ENV === "production" ? "/api" : "http://localhost:4000/api";
+}
+
+export const API_BASE = resolveApiBase();
 
 const TOKEN_KEY = "zxt-mobile-auth";
 
@@ -22,6 +36,7 @@ export interface AuthUser {
 }
 
 export interface LoginResult {
+  // TODO(auth-cookie): remove this Bearer token from the mobile contract after all clients use HttpOnly cookies.
   token: string;
   expiresAt: string;
   user: AuthUser;
@@ -29,10 +44,26 @@ export interface LoginResult {
 
 export interface CaptchaChallenge {
   captchaId: string;
-  targetX: number;
+  backgroundImage?: string;
   expiresIn: number;
   pieceSize: number;
   trackMax: number;
+}
+
+export function hasStoredAuth(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = localStorage.getItem(TOKEN_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (parsed.expiresAt && new Date(parsed.expiresAt).getTime() < Date.now()) {
+      localStorage.removeItem(TOKEN_KEY);
+      return false;
+    }
+    return Boolean(parsed.user || parsed.token);
+  } catch {
+    return false;
+  }
 }
 
 export function getToken(): string | null {
@@ -45,7 +76,7 @@ export function getToken(): string | null {
       localStorage.removeItem(TOKEN_KEY);
       return null;
     }
-    return parsed.token;
+    return typeof parsed.token === "string" ? parsed.token : null;
   } catch {
     return null;
   }
@@ -53,7 +84,7 @@ export function getToken(): string | null {
 
 export function setAuth(data: LoginResult) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(TOKEN_KEY, JSON.stringify(data));
+  localStorage.setItem(TOKEN_KEY, JSON.stringify({ expiresAt: data.expiresAt, user: data.user }));
 }
 
 export function clearAuth() {
@@ -74,6 +105,7 @@ async function request<T>(
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
+    credentials: "include",
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   let json: any = null;
@@ -226,9 +258,10 @@ export const dashboardApi = {
 export const aiApi = {
   chat: (body: {
     sceneId: string;
-    messages: { role: string; content: string }[];
-    finishTraining?: boolean;
+    action: "start" | "message" | "end";
     sessionId?: string;
+    learnerText?: string;
+    preview?: boolean;
   }) =>
     request<any>("/ai/chat", { method: "POST", body }),
   stt: (audioBase64: string, format = "webm") =>
