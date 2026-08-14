@@ -159,6 +159,8 @@ const MIGRATION_SQL: string[] = [
     id text primary key,
     tenant_id text not null,
     exam_id text not null,
+    task_id text,
+    scene_id text,
     user_id text,
     score integer,
     total_score integer not null default 100,
@@ -259,6 +261,8 @@ function applyMigrations() {
   ensureColumn("tasks", "answer_form", "text not null default 'voice'");
   ensureColumn("scenes", "create_mode", "text not null default 'ai_practice'");
   ensureColumn("scene_roles", "language_style", "text not null default ''");
+  ensureColumn("exam_attempts", "task_id", "text");
+  ensureColumn("exam_attempts", "scene_id", "text");
   ensureColumn("training_records", "session_id", "text");
   ensureColumn("training_records", "suggestions", "text not null default '[]'");
   ensureColumn("training_records", "summary_json", "text");

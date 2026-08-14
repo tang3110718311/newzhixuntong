@@ -12,10 +12,15 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId, user } = await getTenantContext(request);
     const url = new URL(request.url);
     const examId = url.searchParams.get("examId") || undefined;
-    return ok(listExamAttempts(tenantId, examId));
+    const taskId = url.searchParams.get("taskId") || undefined;
+    const sceneId = url.searchParams.get("sceneId") || undefined;
+    // 非管理员只看自己；管理员可通过 filterUserId 指定学员
+    const isAdmin = user?.roleCode === "tenant_admin";
+    const userId = url.searchParams.get("filterUserId") || (!isAdmin && user ? user.id : undefined);
+    return ok(listExamAttempts(tenantId, { examId, taskId, sceneId, userId }));
   } catch (error) {
     return handleRouteError(error);
   }
@@ -25,7 +30,12 @@ export async function POST(request: Request) {
   try {
     const { tenantId, user } = await getTenantContext(request);
     const body = createExamAttemptSchema.parse(await request.json());
-    const detail = createExamAttempt(tenantId, { examId: body.examId, userId: body.userId ?? user?.id ?? null });
+    const detail = createExamAttempt(tenantId, {
+      examId: body.examId,
+      userId: body.userId ?? user?.id ?? null,
+      taskId: body.taskId ?? null,
+      sceneId: body.sceneId ?? null,
+    });
     if (!detail) return fail("EXAM_NOT_FOUND", "考试不存在或已删除。", 404);
     return ok(detail, undefined, 201);
   } catch (error) {

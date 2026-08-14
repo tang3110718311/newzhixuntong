@@ -72,6 +72,22 @@ type TrainingRecord = {
   createdAt: string;
 };
 
+type ExamAttempt = {
+  id: string;
+  examId: string;
+  examName: string;
+  taskId: string | null;
+  sceneId: string | null;
+  userId: string | null;
+  userName: string | null;
+  score: number | null;
+  totalScore: number;
+  status: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+};
+
 type SceneLearnStage = "study" | "practice" | "exam";
 type SceneState = Record<SceneLearnStage, boolean>;
 
@@ -91,7 +107,8 @@ function emptySceneState(): SceneState {
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const raw = typeof window !== "undefined" ? window.localStorage.getItem(AUTH_STORAGE_KEY) : null;
-  const token = raw ? (JSON.parse(raw) as { token: string }).token : "";
+  const session = raw ? (JSON.parse(raw) as { token: string; user?: { id: string; name: string } }) : null;
+  const token = session?.token || "";
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     cache: "no-store",
@@ -104,6 +121,18 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const payload = (await response.json()) as ApiResponse<T>;
   if (!payload.success) throw new Error(payload.message || payload.code);
   return payload.data;
+}
+
+function currentUserId(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return "";
+    const session = JSON.parse(raw) as { user?: { id?: string } };
+    return session.user?.id || "";
+  } catch {
+    return "";
+  }
 }
 
 function formatDate(dateStr: string | null | undefined): string {
@@ -138,12 +167,12 @@ function sceneTypeLabel(type: string | null | undefined): string {
 export default function TaskDetailPage() {
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [error, setError] = useState("");
-  const [trainingRecords, setTrainingRecords] = useState<TrainingRecord[]>([]);
+  const [trainingRecordsByScene, setTrainingRecordsByScene] = useState<Record<string, TrainingRecord[]>>({});
+  const [examRecordsByScene, setExamRecordsByScene] = useState<Record<string, ExamAttempt[]>>({});
   const [selectedSceneIdx, setSelectedSceneIdx] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [recordTab, setRecordTab] = useState<"practice" | "exam">("practice");
   const [studyDone, setStudyDone] = useState<Record<string, boolean>>({});
-  const [examDone, setExamDone] = useState<Record<string, boolean>>({});
 
   const taskId = typeof window !== "undefined" ? getPathId("tasks") : "";
   const scenes = detail?.scenes || [];
@@ -156,7 +185,8 @@ export default function TaskDetailPage() {
     setError("");
     setDetail(null);
     setSelectedSceneIdx(0);
-    setTrainingRecords([]);
+    setTrainingRecordsByScene({});
+    setExamRecordsByScene({});
     apiFetch<TaskDetail>(`/tasks/${taskId}`)
       .then((d) => setDetail(d))
       .catch((err) => setError(err instanceof Error ? err.message : "加载任务详情失败"));
@@ -164,12 +194,27 @@ export default function TaskDetailPage() {
 
   useEffect(() => {
     if (!currentScene || !detail) return;
+    const userId = currentUserId();
+    const sceneId = currentScene.sceneId;
+    const taskQuery = detail.task.id ? `&taskId=${encodeURIComponent(detail.task.id)}` : "";
+    const userQuery = userId ? `&filterUserId=${encodeURIComponent(userId)}` : "";
     apiFetch<{ items: TrainingRecord[] }>(
-      `/training-records?taskId=${detail.task.id}&sceneId=${currentScene.sceneId}&pageSize=50`,
+      `/training-records?sceneId=${encodeURIComponent(sceneId)}${taskQuery}${userQuery}&pageSize=50`,
     )
-      .then((res) => setTrainingRecords(res.items || []))
-      .catch(() => setTrainingRecords([]));
-  }, [currentScene?.id, detail?.task.id]);
+      .then((res) =>
+        setTrainingRecordsByScene((prev) => ({ ...prev, [sceneId]: res.items || [] })),
+      )
+      .catch(() => setTrainingRecordsByScene((prev) => ({ ...prev, [sceneId]: [] })));
+    // 考试记录：按任务+场景+当前用户过滤，仅已完成（passed/failed）视为有效记录
+    apiFetch<ExamAttempt[]>(`/exam-attempts?sceneId=${encodeURIComponent(sceneId)}${taskQuery}${userQuery}`)
+      .then((res) =>
+        setExamRecordsByScene((prev) => ({
+          ...prev,
+          [sceneId]: (res || []).filter((r) => r.status === "passed" || r.status === "failed"),
+        })),
+      )
+      .catch(() => setExamRecordsByScene((prev) => ({ ...prev, [sceneId]: [] })));
+  }, [currentScene?.sceneId, detail?.task.id]);
 
   // 抽屉打开时锁定页面滚动
   useEffect(() => {
@@ -179,22 +224,24 @@ export default function TaskDetailPage() {
     };
   }, [drawerOpen]);
 
-  // 各场景学习状态（study 本地记录 / practice 对练记录 / exam 本地记录）
+  // 各场景学习状态（study 本地记录 / practice 对练记录 / exam 考试记录）
   const sceneStates = useMemo<Record<string, SceneState>>(() => {
     const map: Record<string, SceneState> = {};
     scenes.forEach((sc) => {
-      const passed = trainingRecords.filter(
-        (r) => r.status === "passed" || r.score >= (sc.passScore || 60),
+      const sceneRecords = trainingRecordsByScene[sc.sceneId] || [];
+      const completedRecords = sceneRecords.filter(
+        (r) => r.status === "completed" && r.score >= (sc.passScore || 60),
       );
       map[sc.id] = {
         study: !!studyDone[sc.id],
         practice:
-          (sc.completedTrainCount ?? 0) >= sc.requiredTrainTimes || passed.length > 0,
-        exam: !!examDone[sc.id],
+          (sc.completedTrainCount ?? 0) >= sc.requiredTrainTimes || completedRecords.length > 0,
+        // 该场景存在已完成考试记录（按任务+场景+当前用户过滤）即视为考试完成
+        exam: (examRecordsByScene[sc.sceneId] || []).length > 0,
       };
     });
     return map;
-  }, [scenes, trainingRecords, studyDone, examDone]);
+  }, [scenes, trainingRecordsByScene, studyDone, examRecordsByScene]);
 
   const totalSteps = scenes.length * 3;
   const doneSteps = scenes.reduce(
@@ -207,14 +254,12 @@ export default function TaskDetailPage() {
     scenes.length > 0 && scenes.every((sc) => STAGE_ORDER.every((k) => sceneStates[sc.id]?.[k]));
 
   const st = currentScene ? sceneStates[currentScene.id] || emptySceneState() : emptySceneState();
-  const previousDone = currentIdx === 0 || !!sceneStates[scenes[currentIdx - 1]?.id]?.exam;
 
   const sceneName = currentScene?.sceneName || "当前场景";
   const intro = currentScene?.sceneName
     ? `围绕“${sceneName}”完成情境学习，理解背景、流程和关键要求。`
     : "围绕当前业务场景完成情境学习，理解背景、流程和关键要求。";
   const goal = "结合场景信息完成有效沟通，准确回应诉求并推动事项闭环。";
-  const roleBackground = `AI 将围绕“${sceneName}”提出真实业务问题，并根据学员回应动态追问。`;
   const aiRole = "场景沟通对象";
   const studentRole = "负责沟通与问题处理的培训学员";
 
@@ -238,31 +283,33 @@ export default function TaskDetailPage() {
       startPractice();
       return;
     }
-    // exam：场景考试在管理端无独立答题路由，跳转"我的考试"列表
-    navigateTo("/?section=my-exams");
+    // exam：场景考试在管理端无独立答题路由，跳转"我的考试"列表并携带任务/场景上下文
+    const params = new URLSearchParams({
+      section: "my-exams",
+      taskId: detail.task.id,
+      sceneId: currentScene.sceneId,
+    });
+    navigateTo(`/?${params.toString()}`);
   }
 
   // ---------- 场景进度轨道 ----------
   const sceneRail = scenes.map((sc, i) => {
     const scSt = sceneStates[sc.id] || emptySceneState();
     const complete = scSt.exam;
-    const unlocked = i === 0 || !!sceneStates[scenes[i - 1]?.id]?.exam;
     const current = i === currentIdx;
     const cls = [
       current ? "current" : "",
       complete ? "done" : "",
       complete && scenes.length === 1 ? "single-complete" : "",
-      !unlocked ? "locked" : "",
     ]
       .filter(Boolean)
       .join(" ");
-    const statusText = complete ? "已完成" : current ? "进行中" : unlocked ? "待开始" : "未解锁";
+    const statusText = complete ? "已完成" : current ? "进行中" : "待开始";
     return (
       <Fragment key={sc.id}>
         <button
           className={`task-scene-tab ${cls}`}
           type="button"
-          disabled={!unlocked}
           onClick={() => setSelectedSceneIdx(i)}
         >
           <span className="task-scene-tab-status">{statusText}</span>
@@ -280,9 +327,18 @@ export default function TaskDetailPage() {
   // ---------- 场景学习步骤 ----------
   const steps = STAGE_ORDER.map((key) => {
     const isDone = st[key];
-    const unlocked = previousDone && (key === "exam" ? st.practice : true);
+    // 场景内顺序：资料学习/对练可直接开始，考试需先完成对练
+    const unlocked = key === "exam" ? st.practice : true;
     const active = !isDone && unlocked;
     const meta = STAGE_META[key];
+    // 完成后：按钮变蓝（默认 btn），对练/考试文案带"再次"
+    const ctaLabel = isDone
+      ? key === "practice"
+        ? "再次对练"
+        : key === "exam"
+          ? "再次考试"
+          : meta.cta
+      : meta.cta;
     return (
       <div className={`task-step-row ${isDone ? "done" : active ? "active" : ""}`} key={key}>
         <span className="task-step-index">
@@ -294,12 +350,12 @@ export default function TaskDetailPage() {
         </div>
         <div className="task-step-action">
           <button
-            className={`btn ${isDone ? "gray" : ""}`}
+            className={`btn ${isDone ? "" : "gray"}`}
             type="button"
             disabled={!unlocked}
             onClick={() => handleStageAction(key)}
           >
-            {meta.cta}
+            {ctaLabel}
           </button>
         </div>
       </div>
@@ -307,7 +363,12 @@ export default function TaskDetailPage() {
   });
 
   // ---------- 场景学习记录 ----------
-  const practiceRecords = trainingRecords;
+  // 对练记录：仅显示当前场景已完成的记录（对练完成后才生成记录报告）
+  const practiceRecords = (trainingRecordsByScene[currentScene?.sceneId || ""] || []).filter(
+    (r) => r.status === "completed",
+  );
+  // 考试记录：当前场景的已完成考试记录
+  const examRecordList = examRecordsByScene[currentScene?.sceneId || ""] || [];
   const recordList =
     recordTab === "practice" ? (
       practiceRecords.length ? (
@@ -321,6 +382,14 @@ export default function TaskDetailPage() {
       ) : (
         <div className="task-record-empty">完成 AI 对练后显示对练记录</div>
       )
+    ) : examRecordList.length ? (
+      examRecordList.slice(0, 8).map((r) => (
+        <div className="task-record-row" key={r.id}>
+          <strong>{formatDate(r.finishedAt || r.createdAt)}</strong>
+          <span>{r.score ?? 0}分</span>
+          <a onClick={() => navigateTo("/?section=my-exams")}>查看报告 ›</a>
+        </div>
+      ))
     ) : (
       <div className="task-record-empty">完成场景考试后显示考试记录</div>
     );
@@ -400,7 +469,7 @@ export default function TaskDetailPage() {
         {/* 场景学习标题 */}
         <div className="task-detail-section-title">
           <h2>场景学习</h2>
-          <span>选择场景进行学习，按顺序完成</span>
+          <span>点击场景可自由选择学习，按流程完成各环节</span>
         </div>
 
         {/* 场景进度轨道 */}
@@ -427,42 +496,26 @@ export default function TaskDetailPage() {
               </div>
             </div>
 
-            {/* 场景信息（原型 .task-scene-info） */}
+            {/* 场景信息（紧凑单行：场景号 + 4 个要点） */}
             <section className="task-scene-info">
-              <div className="task-scene-info-head">
-                <span className="task-scene-info-badge">
-                  场景 {String(currentIdx + 1).padStart(2, "0")}
-                </span>
+              <span className="task-scene-info-badge">
+                场景 {String(currentIdx + 1).padStart(2, "0")}
+              </span>
+              <div className="task-info-block">
+                <label>场景介绍</label>
+                <p title={intro}>{intro}</p>
               </div>
-              <div className="task-scene-info-grid">
-                <div className="task-info-block">
-                  <label>场景介绍</label>
-                  <p>{intro}</p>
-                </div>
-                <div className="task-info-block">
-                  <label>对话目标</label>
-                  <p>{goal}</p>
-                </div>
+              <div className="task-info-block">
+                <label>对话目标</label>
+                <p title={goal}>{goal}</p>
               </div>
-              <div className="task-role-box">
-                <div className="task-role-head">
-                  <strong>AI 角色扮演</strong>
-                  <span>对话中将按以下设定进行互动</span>
-                </div>
-                <div className="task-role-grid">
-                  <div className="task-role-field">
-                    <label>角色背景</label>
-                    <p>{roleBackground}</p>
-                  </div>
-                  <div className="task-role-field">
-                    <label>AI 身份</label>
-                    <p>{aiRole}</p>
-                  </div>
-                  <div className="task-role-field">
-                    <label>学员身份</label>
-                    <p>{studentRole}</p>
-                  </div>
-                </div>
+              <div className="task-info-block">
+                <label>AI 身份</label>
+                <p title={aiRole}>{aiRole}</p>
+              </div>
+              <div className="task-info-block">
+                <label>学员身份</label>
+                <p title={studentRole}>{studentRole}</p>
               </div>
             </section>
 

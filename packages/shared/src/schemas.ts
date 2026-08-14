@@ -292,6 +292,8 @@ export const updateExamSchema = z.object({
 export const createExamAttemptSchema = z.object({
   examId: z.string().min(1),
   userId: z.string().optional().nullable(),
+  taskId: z.string().optional().nullable(),
+  sceneId: z.string().optional().nullable(),
 });
 
 export const submitExamAttemptSchema = z.object({

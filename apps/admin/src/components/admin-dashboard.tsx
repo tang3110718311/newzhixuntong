@@ -712,6 +712,8 @@ function toDateTimeLocal(value?: string | null) {
 
 export function AdminDashboard() {
   const [activeSection, setActiveSection] = useState<ActiveSection>("overview");
+  // 考试上下文：从任务详情"开始考试"跳转带入 taskId/sceneId，读取后立即清除 URL 参数避免误关联
+  const [examContext, setExamContext] = useState<{ taskId: string; sceneId: string }>({ taskId: "", sceneId: "" });
   // 登录态三态：authResolved 为 false 时统一渲染加载占位（SSR 首帧与 hydrate 首帧一致，避免整页跳转后闪现登录页）
   const [auth, setAuth] = useState<AuthSession | null>(null);
   const [authResolved, setAuthResolved] = useState(false);
@@ -1128,7 +1130,11 @@ export function AdminDashboard() {
     try {
       const attempt = await apiFetch<ExamAttempt>("/exam-attempts", {
         method: "POST",
-        body: JSON.stringify({ examId: exam.id }),
+        body: JSON.stringify({
+          examId: exam.id,
+          taskId: examContext.taskId || null,
+          sceneId: examContext.sceneId || null,
+        }),
       });
       setCurrentAttemptId(attempt.id);
       const detail = await apiFetch<ExamDetail>(`/exams?id=${exam.id}`);
@@ -1779,6 +1785,17 @@ export function AdminDashboard() {
     const sectionParam = new URLSearchParams(window.location.search).get("section");
     if (sectionParam && VALID_SECTIONS.has(sectionParam)) {
       setActiveSection(sectionParam as ActiveSection);
+    }
+    // 从任务详情"开始考试"跳转带入的 taskId/sceneId：读取后立即从 URL 清除，避免后续考试误关联
+    const qp = new URLSearchParams(window.location.search);
+    const taskId = qp.get("taskId") || "";
+    const sceneId = qp.get("sceneId") || "";
+    if (taskId || sceneId) {
+      setExamContext({ taskId, sceneId });
+      qp.delete("taskId");
+      qp.delete("sceneId");
+      const qs = qp.toString();
+      window.history.replaceState(null, "", qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
     }
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
