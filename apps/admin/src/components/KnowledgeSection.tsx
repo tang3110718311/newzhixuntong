@@ -4,7 +4,7 @@
 
 import { Plus, Folder, Eye, Trash2, ChevronUp } from "lucide-react";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
-import { DataTable, Field, type AuthSession, type TrainingRecord } from "./dashboard-shared";
+import { Field, type AuthSession, type TrainingRecord } from "./dashboard-shared";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
@@ -302,6 +302,14 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
     setFilterFolder("all");
   }
 
+  function handleHeaderAddFile() {
+    if (!expandedFolder) {
+      setMessage("请先点击文件夹「查看」，进入文件夹详情后再添加文件。");
+      return;
+    }
+    fileInputRef.current?.click();
+  }
+
   // 文件详情面板的文件列表（真实 API 数据 + 搜索过滤）
   const filteredFiles = fileSearchText
     ? files.filter((f) => f.name.toLowerCase().includes(fileSearchText.toLowerCase()))
@@ -317,6 +325,9 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
               <p className="page-desc">按文件夹管理企业培训资料；每个文件夹可包含多个视频、PDF、Word、Excel、PPT 文件。</p>
             </div>
             <div className="toolbar">
+              <button className="btn" type="button" onClick={handleHeaderAddFile}>
+                <Plus size={16} /> {expandedFolder ? "添加文件" : "添加文件（需进入文件夹）"}
+              </button>
               <button className="btn primary" type="button" onClick={openCreate}><Plus size={16} /> 新建文件夹</button>
             </div>
           </div>
@@ -362,7 +373,7 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
           </div>
 
           {/* ── 文件夹列表 ── */}
-          <div className="card section">
+          <div className="card section knowledge-list">
             <div className="section-head compact">
               <div>
                 <h2 className="section-title">文件夹列表</h2>
@@ -371,29 +382,51 @@ export function KnowledgeSection({ auth, records, completedRecordCount, pendingA
             {loading ? (
               <div className="empty">正在加载文件夹数据…</div>
             ) : (
-              <div style={{ display: "grid", gap: 10 }}>
-                {paged.map((folder) => (
-                  <div className="zrow" key={folder.id}>
-                    <span style={{ display: "grid", width: 40, height: 40, placeItems: "center", borderRadius: 10, background: "#fdf3e0", color: "#d9901a", flexShrink: 0 }}>
-                      <Folder size={20} />
-                    </span>
-                    <div className="zrow-main">
-                      <strong style={{ fontSize: 14.5, color: "#17233b" }}>{folder.name}</strong>
-                      {folder.description ? <div style={{ fontSize: 12.5, color: "#8b98aa", margin: "2px 0 4px" }}>{folder.description}</div> : null}
-                      <div className="zrow-meta">
-                        <span>{folder.fileCount} 个文件</span>
-                        <span>{formatSize(folder.totalSize)}</span>
-                        <span>{folder.creatorName || "—"}</span>
-                        <span>{formatTime(folder.updatedAt)}</span>
-                      </div>
-                    </div>
-                    <div className="zops">
-                      <button type="button" onClick={() => handleView(folder)}><Eye size={14} /> 查看</button>
-                      <button className="zops-danger" type="button" onClick={() => setConfirmTarget({ type: "folder", id: folder.id, name: folder.name })}><Trash2 size={14} /> 删除</button>
-                    </div>
-                  </div>
-                ))}
-                {!filtered.length && <div className="empty" style={{ padding: "28px 0" }}>暂无文件夹，请点击「新建文件夹」创建。</div>}
+              <div className="table-wrap">
+                <table className="data-table knowledge-table">
+                  <thead>
+                    <tr>
+                      <th>文件夹名称</th>
+                      <th>文件夹说明</th>
+                      <th>文件数量</th>
+                      <th>占用空间</th>
+                      <th>创建人</th>
+                      <th>更新时间</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paged.map((folder) => (
+                      <tr key={folder.id}>
+                        <td>
+                          <div className="knowledge-folder-name">
+                            <span className="knowledge-icon folder"><Folder size={18} /></span>
+                            <div>
+                              <b>{folder.name}</b>
+                              <small>文件夹 ID：{folder.id}</small>
+                            </div>
+                          </div>
+                        </td>
+                        <td>{folder.description || <span className="muted-text">未填写说明</span>}</td>
+                        <td><span className="knowledge-folder-meta">{folder.fileCount} 个文件</span></td>
+                        <td>{formatSize(folder.totalSize)}</td>
+                        <td>{folder.creatorName || "—"}</td>
+                        <td>{formatTime(folder.updatedAt)}</td>
+                        <td>
+                          <div className="table-ops">
+                            <button type="button" onClick={() => handleView(folder)}><Eye size={14} /> 查看</button>
+                            <button className="del" type="button" onClick={() => setConfirmTarget({ type: "folder", id: folder.id, name: folder.name })}><Trash2 size={14} /> 删除</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {!filtered.length && (
+                      <tr className="empty-row">
+                        <td colSpan={7}>暂无文件夹，请点击「新建文件夹」创建。</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             )}
 

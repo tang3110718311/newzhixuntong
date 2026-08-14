@@ -3442,6 +3442,114 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* 企业知识库文件夹列表：按原型改回横向表格 */
+.knowledge-list {
+  overflow: hidden;
+}
+.knowledge-list .section-head {
+  margin: 0;
+  padding: 22px 24px 10px;
+}
+.knowledge-list .table-wrap {
+  padding: 0 22px;
+}
+.knowledge-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.knowledge-table th {
+  height: 46px;
+  padding: 0 12px;
+  background: #f6f9fd;
+  color: #7589a4;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+.knowledge-table td {
+  height: 64px;
+  padding: 10px 12px;
+  border-top: 1px solid #ebf0f7;
+  border-bottom: 0;
+  color: #526983;
+  vertical-align: middle;
+}
+.knowledge-table th:first-child,
+.knowledge-table td:first-child {
+  padding-left: 0;
+  width: 26%;
+}
+.knowledge-table th:nth-child(2) {
+  width: 28%;
+}
+.knowledge-folder-name {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+.knowledge-folder-name b {
+  display: block;
+  color: #263f60;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.knowledge-folder-name small {
+  display: block;
+  margin-top: 4px;
+  color: #8b9aae;
+  font-size: 11px;
+  line-height: 1.2;
+}
+.knowledge-icon {
+  width: 31px;
+  height: 31px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  background: #fff3dc;
+  color: #e0a13d;
+}
+.knowledge-folder-meta {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 12px;
+  background: #edf4ff;
+  color: #3978e9;
+  font-size: 12px;
+}
+.knowledge-table .table-ops {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.knowledge-table .table-ops button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: #3978e9;
+  font: 600 13px inherit;
+  padding: 0;
+  cursor: pointer;
+}
+.knowledge-table .table-ops button.del {
+  color: #df6871;
+}
+.knowledge-table .table-ops button:hover {
+  color: #215cc8;
+}
+.knowledge-table .table-ops button.del:hover {
+  color: #c94c58;
+}
+
 /* 知识库文件卡片列表（替代 DataTable，更清爽） */
 .file-cards {
   display: flex;
