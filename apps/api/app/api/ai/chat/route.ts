@@ -35,6 +35,24 @@ const chatRequestSchema = z.object({
 
 type ChatMessage = { role: "system" | "ai" | "learner"; content: string; emotion?: string; createdAt?: string };
 
+/**
+ * 固定开场白（方案 B 核心）：同一场景每次进入文本完全一致 → 可命中 TTS 落盘缓存，
+ * 同时省去 start 时 LLM 生成开场白的 2-2.5s 延迟。
+ * 文本完全由场景固定配置（角色身份 + 场景描述首句/目标）模板化生成，不依赖 LLM 输出。
+ */
+function buildFixedOpening(sceneDetail: NonNullable<ReturnType<typeof getSceneDetail>>): { text: string; emotion: string } {
+  const { scene, roles } = sceneDetail;
+  const aiRole = roles.find((r) => r.roleType === "ai");
+  const identity = aiRole?.identity || "客户";
+  // 场景描述首句作为客户诉求背景（固定配置 → 文本稳定）
+  const descFirst = (scene.description || "").split(/[，。；;！？!?]/)[0].trim();
+  const complaint = descFirst && descFirst.length > 3
+    ? descFirst
+    : (aiRole?.goal || "我这边有个问题需要处理");
+  const text = `你好，我是${identity}。${complaint}，麻烦你尽快帮我处理一下，好吗？`;
+  return { text, emotion: "anxious" };
+}
+
 function buildSystemPrompt(sceneDetail: ReturnType<typeof getSceneDetail>): string {
   if (!sceneDetail) throw new Error("场景不存在");
   const { scene, roles, rule, scoringRules } = sceneDetail;
@@ -201,6 +219,38 @@ export async function POST(request: Request) {
       }
       sessionId = session.id;
       sessionStartedAt = session.startedAt;
+      // 固定开场白（方案 B）：文本由场景配置模板化生成，同场景每次进入一致 → 命中 TTS 缓存
+      const opening = buildFixedOpening(sceneDetail);
+      const openingHistory: ChatMessage[] = [
+        { role: "ai", content: opening.text, emotion: opening.emotion, createdAt: new Date().toISOString() },
+      ];
+      updateAiTrainingSession(tenantId, sessionId, {
+        history: toStoredHistory(openingHistory),
+        status: "in_progress",
+        offTopicCount: 0,
+        roundCount: 0,
+      });
+      logAiCall({
+        tenantId,
+        providerType: "llm",
+        modelName: "fixed-opening",
+        bizType: "chat",
+        durationMs: Date.now() - started,
+        success: true,
+        traceId,
+      });
+      return ok({
+        aiReply: opening.text,
+        isFinished: false,
+        trainingRecord: null,
+        recordPending: false,
+        coachTip: null,
+        emotion: opening.emotion,
+        round: 0,
+        remindCount: 0,
+        perTurnScores: [],
+        sessionId: session.id,
+      }, traceId);
     } else {
       if (!body.sessionId) {
         return fail("SESSION_REQUIRED", "请先开始对练并获取 sessionId。", 400, traceId);

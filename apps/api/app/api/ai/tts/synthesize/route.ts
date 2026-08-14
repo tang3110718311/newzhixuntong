@@ -1,5 +1,6 @@
 import { execFile } from "child_process";
-import { unlinkSync, writeFileSync } from "fs";
+import { createHash } from "crypto";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 import { promisify } from "util";
 import { z } from "zod";
@@ -22,10 +23,12 @@ const ALLOWED_EMOTIONS = [
   "cheerful", "calm", "serious", "polite", "default",
 ];
 
-// ---- TTS 结果内存 LRU 缓存 ----
+// ---- TTS 缓存：内存 LRU + 落盘持久化 ----
 // edge-tts 云端整段合成耗时约 4-7s，同一文本（开场白、高频问答）二次请求直接命中秒回。
-// 注意：dev 热更新/重启会重置该缓存，不影响功能正确性。
-const TTS_CACHE_MAX = 120; // 最多缓存 120 条（每条约几十 KB base64，总量可控）
+// 内存缓存 dev 热更新/重启会重置，因此同时落盘（apps/api/.tts-cache/），重启后仍可命中。
+const TTS_CACHE_MAX = 120; // 内存最多缓存 120 条（每条约几十 KB base64，总量可控）
+const TTS_DISK_DIR = join(process.cwd(), ".tts-cache"); // 落盘缓存目录（已加入 .gitignore）
+const TTS_DISK_MAX_FILES = 500; // 磁盘文件上限，超出删除最旧文件
 type TtsCacheEntry = { audioBase64: string; format: string; engine: string };
 const ttsCache = new Map<string, TtsCacheEntry>();
 
@@ -33,20 +36,66 @@ function ttsCacheKey(text: string, voice: string, emotion: string): string {
   // 文本可能较长，直接拼 key 即可（Map 内部哈希），无需额外 hash 计算
   return `${voice}|${emotion}|${text}`;
 }
+function ttsCacheFilePath(key: string): string {
+  // 文件名用 sha256(key)，避免文件系统非法字符/超长文件名
+  const hash = createHash("sha256").update(key).digest("hex");
+  return join(TTS_DISK_DIR, `${hash}.json`);
+}
 function ttsCacheGet(key: string): TtsCacheEntry | null {
+  // 1. 内存 LRU 命中
   const hit = ttsCache.get(key);
-  if (!hit) return null;
-  // LRU：命中后刷新到队尾
-  ttsCache.delete(key);
-  ttsCache.set(key, hit);
-  return hit;
+  if (hit) {
+    // LRU：命中后刷新到队尾
+    ttsCache.delete(key);
+    ttsCache.set(key, hit);
+    return hit;
+  }
+  // 2. 磁盘持久化缓存（重启后仍可命中）：命中后回填内存
+  try {
+    const file = ttsCacheFilePath(key);
+    if (!existsSync(file)) return null;
+    const entry = JSON.parse(readFileSync(file, "utf-8")) as TtsCacheEntry;
+    if (entry && typeof entry.audioBase64 === "string" && typeof entry.format === "string") {
+      ttsCacheSet(key, entry);
+      return entry;
+    }
+  } catch {
+    /* 磁盘缓存损坏/不可读时忽略，走合成 */
+  }
+  return null;
 }
 function ttsCacheSet(key: string, entry: TtsCacheEntry) {
+  // 1. 写内存 LRU
   ttsCache.delete(key);
   ttsCache.set(key, entry);
   if (ttsCache.size > TTS_CACHE_MAX) {
     const oldest = ttsCache.keys().next().value;
     if (oldest !== undefined) ttsCache.delete(oldest);
+  }
+  // 2. 落盘（异步写入，不阻塞响应；失败不影响功能）
+  try {
+    if (!existsSync(TTS_DISK_DIR)) mkdirSync(TTS_DISK_DIR, { recursive: true });
+    const file = ttsCacheFilePath(key);
+    if (!existsSync(file)) {
+      // 磁盘文件数超限时清理最旧的，防止无限增长
+      try {
+        const files = readdirSync(TTS_DISK_DIR)
+          .filter((f) => f.endsWith(".json"))
+          .map((f) => join(TTS_DISK_DIR, f))
+          .sort((a, b) => {
+            const ta = statSync(a).mtimeMs;
+            const tb = statSync(b).mtimeMs;
+            return ta - tb;
+          });
+        while (files.length >= TTS_DISK_MAX_FILES) {
+          const oldest = files.shift();
+          if (oldest) unlinkSync(oldest);
+        }
+      } catch { /* 清理失败忽略 */ }
+      writeFileSync(file, JSON.stringify(entry), "utf-8");
+    }
+  } catch {
+    /* 磁盘写入失败忽略（内存缓存仍可用） */
   }
 }
 
