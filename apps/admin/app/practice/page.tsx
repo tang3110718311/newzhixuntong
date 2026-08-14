@@ -94,10 +94,9 @@ type HistoryDetail = {
 
 type View = "chat" | "history";
 
-// edge-tts 微软云端中文声音（统一单一音色，避免同场多次发言音色不一致）
-// 统一固定音色：云扬（edge-male-0，央视新闻联播风格的沉稳广播男声）
+// 统一固定音色：晓燕（旧版智训通 TTS 默认音色，避免同场多次发言音色不一致）
 const CHAT_TTS_VOICES = [
-  "edge-male-0",
+  "xiaoyan",
 ];
 
 function readStoredAuth(): AuthSession | null {
@@ -1683,7 +1682,7 @@ function HistoryDetailView({ detail, passScore }: { detail: HistoryDetail | null
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ text, emotion: emotion || "default", voice: "edge-male-0" }),
+        body: JSON.stringify({ text, emotion: emotion || "default", voice: "xiaoyan" }),
       });
       const payload = await response.json() as { success: boolean; data?: { audioBase64: string; format: string } };
       if (!payload.success || !payload.data?.audioBase64) throw new Error("TTS failed");
