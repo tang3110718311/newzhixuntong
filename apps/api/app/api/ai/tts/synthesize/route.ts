@@ -1,21 +1,14 @@
-import { execFile } from "child_process";
 import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
-import { promisify } from "util";
 import { z } from "zod";
 import { logAiCall } from "@zxt/database";
 import { createTraceId, fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 import { assertRateLimit, getClientIp } from "@/lib/rate-limit";
 
-const execFileAsync = promisify(execFile);
-
-const PYTHON = process.env.TTS_PYTHON_BIN || "python";
-const SYNTH_SCRIPT = join(process.cwd(), "tts_synth.py");
-const EDGE_TTS_TIMEOUT_MS = Number(process.env.EDGE_TTS_TIMEOUT_MS || 25000);
 const ZXT_TTS_TIMEOUT_MS = Number(process.env.ZXT_TTS_TIMEOUT_MS || 30000);
-// 旧版智训通语音服务(OpenAI 兼容 /v1/audio/speech,实测 171.109.109.90:10030 可用),配置后 AI 说话声音优先走自有服务
+// 智训通自有 TTS 服务（OpenAI 兼容 /v1/audio/speech，实测 171.109.109.90:10030 可用）；未配置时 TTS 不可用
 const ZXT_TTS_BASE_URL = stripTrailingSlash(process.env.ZXT_TTS_BASE_URL || "");
 
 const ALLOWED_EMOTIONS = [
@@ -24,7 +17,7 @@ const ALLOWED_EMOTIONS = [
 ];
 
 // ---- TTS 缓存：内存 LRU + 落盘持久化 ----
-// edge-tts 云端整段合成耗时约 4-7s，同一文本（开场白、高频问答）二次请求直接命中秒回。
+// 同一文本（开场白、高频问答）重复请求直接命中秒回，避免重复调用合成服务。
 // 内存缓存 dev 热更新/重启会重置，因此同时落盘（apps/api/.tts-cache/），重启后仍可命中。
 const TTS_CACHE_MAX = 120; // 内存最多缓存 120 条（每条约几十 KB base64，总量可控）
 const TTS_DISK_DIR = join(process.cwd(), ".tts-cache"); // 落盘缓存目录（已加入 .gitignore）
@@ -101,7 +94,7 @@ function ttsCacheSet(key: string, entry: TtsCacheEntry) {
 
 const ttsRequestSchema = z.object({
   text: z.string().min(1).max(2000),
-  voice: z.string().max(80).default("chattts-female-306"),
+  voice: z.string().max(80).default("xiaoyan"),
   emotion: z.enum(ALLOWED_EMOTIONS as [string, ...string[]]).default("default"),
 });
 
@@ -140,56 +133,25 @@ export async function POST(request: Request) {
       return ok({ ...cached, cached: true }, traceId);
     }
 
-    // 1. 旧版智训通语音服务(配置 ZXT_TTS_BASE_URL 时优先,失败自动回退 edge-tts)
-    if (ZXT_TTS_BASE_URL) {
-      try {
-        const legacyResult = await synthesizeWithLegacyTts({ text, voice, emotion });
-        if (!legacyResult.ok || !legacyResult.audioBase64) {
-          throw new Error(legacyResult.error || "zxt-legacy-tts returned empty audio");
-        }
-        logAiCall({ tenantId, providerType: "tts", modelName: "zxt-legacy-tts", bizType: "tts_synthesize", durationMs: Date.now() - started, success: true, traceId });
-        const result = {
-          audioBase64: legacyResult.audioBase64,
-          format: legacyResult.format || "wav",
-          engine: "zxt-legacy-tts",
-        };
-        ttsCacheSet(cacheKey, result);
-        return ok(result, traceId);
-      } catch (legacyError) {
-        // 旧版服务不可用时降级到 edge-tts,不影响主流程
-      }
+    // 仅使用智训通自有 TTS 服务（OpenAI 兼容 /v1/audio/speech）
+    if (!ZXT_TTS_BASE_URL) {
+      return fail("TTS_NOT_CONFIGURED", "未配置 TTS 服务地址（ZXT_TTS_BASE_URL），语音合成不可用。", 503, traceId);
     }
-
-    // 2. 主引擎：edge-tts（微软云端，自然男女声、情绪丰富、不占本地算力）
-    // edge-tts 偶发返回空音频/抖动（分句并发时更易触发），失败自动重试 1 次（退避 400ms）
     try {
-      let edgeResult: TtsEngineResult | null = null;
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          edgeResult = await synthesizeWithEdgeTts({
-            text,
-            voice: toEdgeVoice(voice),
-            emotion,
-          });
-        } catch {
-          edgeResult = null;
-        }
-        if (edgeResult && edgeResult.ok && edgeResult.audioBase64) break;
-        if (attempt === 0) await new Promise((r) => setTimeout(r, 400));
+      const legacyResult = await synthesizeWithLegacyTts({ text, voice, emotion });
+      if (!legacyResult.ok || !legacyResult.audioBase64) {
+        throw new Error(legacyResult.error || "zxt-legacy-tts returned empty audio");
       }
-      if (!edgeResult || !edgeResult.ok || !edgeResult.audioBase64) {
-        throw new Error(edgeResult?.error || "edge-tts returned empty audio");
-      }
-      logAiCall({ tenantId, providerType: "tts", modelName: "edge-tts", bizType: "tts_synthesize", durationMs: Date.now() - started, success: true, traceId });
+      logAiCall({ tenantId, providerType: "tts", modelName: "zxt-legacy-tts", bizType: "tts_synthesize", durationMs: Date.now() - started, success: true, traceId });
       const result = {
-        audioBase64: edgeResult.audioBase64,
-        format: edgeResult.format || "mp3",
-        engine: "edge-tts",
+        audioBase64: legacyResult.audioBase64,
+        format: legacyResult.format || "wav",
+        engine: "zxt-legacy-tts",
       };
       ttsCacheSet(cacheKey, result);
       return ok(result, traceId);
-    } catch (edgeError) {
-      return fail("TTS_FAILED", `语音合成失败：${errorMessage(edgeError) || "unknown"}`, 502, traceId);
+    } catch (legacyError) {
+      return fail("TTS_FAILED", `语音合成失败：${errorMessage(legacyError) || "unknown"}`, 502, traceId);
     }
   } catch (error) {
     return handleRouteError(error, traceId);
@@ -201,8 +163,8 @@ const LEGACY_DEFAULT_VOICE = "xiaoyan";
 function toLegacyVoice(voice: string): string {
   const v = (voice || "").trim();
   if (!v) return LEGACY_DEFAULT_VOICE;
-  // 新版音色名映射到旧版默认音色;其余(如 xiaoyan 等旧版音色)原样透传
-  if (v.startsWith("chattts-") || v.startsWith("edge-") || v.includes("Neural")) {
+  // 新版 chattts/Neural 音色名映射到旧版默认音色；旧版音色（如 xiaoyan）原样透传
+  if (v.startsWith("chattts-") || v.includes("Neural")) {
     return LEGACY_DEFAULT_VOICE;
   }
   return v;
@@ -233,48 +195,6 @@ async function synthesizeWithLegacyTts(payload: TtsPayload): Promise<TtsEngineRe
   } finally {
     clearTimeout(timer);
   }
-}
-
-async function synthesizeWithEdgeTts(payload: TtsPayload): Promise<TtsEngineResult | null> {
-  const payloadPath = join(process.cwd(), `tts-req-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
-  writeJson(payloadPath, payload);
-  try {
-    const { stdout } = await execFileAsync(
-      PYTHON,
-      [SYNTH_SCRIPT, payloadPath],
-      { timeout: EDGE_TTS_TIMEOUT_MS, cwd: process.cwd() },
-    );
-    return safeParse(stdout);
-  } finally {
-    try { unlinkSync(payloadPath); } catch { /* ignore */ }
-  }
-}
-
-function writeJson(p: string, obj: unknown) {
-  writeFileSync(p, JSON.stringify(obj), "utf-8");
-}
-
-function safeParse(s: string): TtsEngineResult | null {
-  try { return JSON.parse(s.trim()); } catch { return null; }
-}
-
-// 前端 voice 名 -> edge-tts 中文声音名
-// 注：云希(Yunxi)虽口语化，但平静/开心情绪下合成失败率高，故男声统一用云扬(所有情绪稳定)
-const EDGE_VOICE_MAP: Record<string, string> = {
-  // 女声（自然亲切）
-  "edge-female-0": "zh-CN-XiaoyiNeural",   // 晓伊：沉稳女声
-  "edge-female-1": "zh-CN-XiaoxiaoNeural", // 晓晓：清亮女声
-  // 男声（沉稳、稳定）
-  "edge-male-0": "zh-CN-YunyangNeural",    // 云扬：沉稳男声（所有情绪合成稳定）
-  "edge-male-1": "zh-CN-YunjianNeural",    // 云健：刚毅男声
-};
-
-function toEdgeVoice(voice: string): string {
-  const mapped = EDGE_VOICE_MAP[voice];
-  if (mapped) return mapped;
-  const normalized = (voice || "").toLowerCase();
-  if (normalized.includes("male") && !normalized.includes("female")) return "zh-CN-YunyangNeural";
-  return "zh-CN-XiaoyiNeural";
 }
 
 function stripTrailingSlash(value: string) {

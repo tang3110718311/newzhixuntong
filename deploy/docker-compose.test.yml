@@ -22,7 +22,6 @@ services:
     environment:
       NODE_ENV: production
       SQLITE_DB_PATH: /app/storage/sqlite/dev.db
-      TTS_PYTHON_BIN: python3
     volumes:
       - /data/zxt-next/storage:/app/storage
       - /data/zxt-next/logs:/app/.logs
