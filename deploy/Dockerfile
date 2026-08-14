@@ -11,6 +11,7 @@ RUN apt-get update \
 COPY package.json package-lock.json ./
 COPY apps/admin/package.json apps/admin/package.json
 COPY apps/api/package.json apps/api/package.json
+COPY apps/mobile/package.json apps/mobile/package.json
 COPY packages/ai-provider/package.json packages/ai-provider/package.json
 COPY packages/database/package.json packages/database/package.json
 COPY packages/shared/package.json packages/shared/package.json
@@ -45,4 +46,4 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages edge-tts==7.2.
 
 COPY --from=builder /app /app
 
-EXPOSE 3000 4000
+EXPOSE 3000 3100 4000
