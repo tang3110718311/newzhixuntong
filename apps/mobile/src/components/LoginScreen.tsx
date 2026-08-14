@@ -10,7 +10,7 @@ interface LoginScreenProps {
 
 function safeCaptchaImageUrl(value?: string): string | null {
   const image = (value || "").trim();
-  if (/^data:image\/(?:jpeg|png|webp);base64,[a-z0-9+/=]+$/i.test(image)) return image;
+  if (/^data:image\/(?:jpeg|png|webp|svg\+xml);base64,[a-z0-9+/=]+$/i.test(image)) return image;
   if (image.startsWith("/") && !image.startsWith("//") && !/[\s"'()\\]/.test(image)) return image;
   return null;
 }
