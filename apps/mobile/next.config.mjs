@@ -1,8 +1,12 @@
 /** @type {import("next").NextConfig} */
+const basePath = process.env.NEXT_BASE_PATH || "";
+
 // API 完整地址（含 /api 路径，供 api.ts 使用）
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
-// CSP connect-src 需要裸 origin（不含路径），否则带 path 的 host-source 无法匹配子路径请求
-const API_ORIGIN = API_BASE.replace(/\/+$/, "").replace(/\/api$/, "") || API_BASE;
+// CSP connect-src 需要裸 origin（不含路径）。同域相对路径走 'self'，避免在 https 页面调用 http IP。
+const API_ORIGIN = API_BASE.startsWith("/")
+  ? "'self'"
+  : API_BASE.replace(/\/+$/, "").replace(/\/api$/, "") || API_BASE;
 
 const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
@@ -18,6 +22,7 @@ const securityHeaders = [
 
 const nextConfig = {
   transpilePackages: ["@zxt/shared"],
+  basePath,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
