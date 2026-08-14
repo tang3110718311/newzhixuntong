@@ -1969,6 +1969,21 @@ export function AdminDashboard() {
     const matchesKeyword = !keyword || `${task.name} ${task.code || ""}`.toLowerCase().includes(keyword);
     return matchesStatus && matchesKeyword;
   });
+  // 资料学习记录（任务详情页写入 localStorage：Record<taskId, Record<场景实例ID, boolean>>）
+  // 用于判断任务状态：任务下任一场景查看过资料 → 继续学习；否则 → 开始学习
+  const sceneStudyMap = (() => {
+    if (typeof window === "undefined") return {} as Record<string, Record<string, boolean>>;
+    try {
+      const raw = window.localStorage.getItem("zxt-admin-scene-study");
+      return raw ? (JSON.parse(raw) as Record<string, Record<string, boolean>>) : {};
+    } catch {
+      return {} as Record<string, Record<string, boolean>>;
+    }
+  })();
+  const taskHasViewedMaterial = (taskId: string) => {
+    const record = sceneStudyMap[taskId];
+    return !!record && Object.values(record).some(Boolean);
+  };
   // 我的考试统计（原型 .summary-grid 4 卡）
   const examStats = {
     total: examAttempts.length > 0 ? examAttempts.length : 5,
@@ -3249,7 +3264,8 @@ export function AdminDashboard() {
                     const categoryGradients = ["linear-gradient(135deg,#f3a75c,#e87072)", "linear-gradient(135deg,#6a9bef,#6b70e8)", "linear-gradient(135deg,#9b82ed,#657de9)", "linear-gradient(135deg,#60c8a1,#4e9cd8)"];
                     const categoryLabels = ["安全\n培训", "客户\n沟通", "业务\n对练", "入职\n课程"];
                     const progress = isCompleted ? 100 : (task.progressPercent ?? (isCompleted ? 100 : 0));
-                    const actionLabel = isCompleted ? "查看记录" : progress > 0 ? "继续学习" : "开始学习";
+                    // 任务状态：已完成→查看记录；任务下已有场景查看过资料→继续学习；否则（未查看任何资料）→开始学习
+                    const actionLabel = isCompleted ? "查看记录" : taskHasViewedMaterial(task.id) ? "继续学习" : "开始学习";
                     return (
                       <article className="task" key={task.id}>
                         <div className="taskicon" style={{ background: categoryGradients[idx % 4] }}>{categoryLabels[idx % 4]}</div>
@@ -3262,7 +3278,7 @@ export function AdminDashboard() {
                           </div>
                         </div>
                         <div className="action">
-                          {isCompleted ? <span className="tag green">已完成</span> : isOverdue ? <span className="overdue">已逾期</span> : <span className="tag blue">进行中</span>}
+                          {isCompleted ? <span className="tag green">已完成</span> : isOverdue ? <span className="overdue">已逾期</span> : taskHasViewedMaterial(task.id) ? <span className="tag blue">进行中</span> : <span className="tag">待开始</span>}
                           <a onClick={() => { navigateTo("/tasks/" + task.id); }}>{actionLabel}　›</a>
                         </div>
                       </article>

@@ -2597,10 +2597,17 @@
   cursor: not-allowed;
   background: #f3f6fa;
   color: #a8b4c3;
+  border-color: #f3f6fa;
 }
 .task-detail-page .task-step-action .btn.gray {
   background: #eef3fb;
   color: #657a96;
+  border-color: #eef3fb;
+}
+.task-detail-page .task-step-action .btn.white {
+  background: #fff;
+  color: #2f74eb;
+  border: 1px solid #2f74eb;
 }
 .task-detail-page .task-next-tip {
   margin-top: 14px;

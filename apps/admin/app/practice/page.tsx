@@ -472,6 +472,13 @@ export default function PracticePage() {
         sceneVoiceSceneIdRef.current = null;
       }
       pickSceneVoice(scene.id);
+      // 新会话开始前：停止上一会话遗留的评分轮询，清空结束过渡状态
+      if (pollTimerRef.current) {
+        window.clearTimeout(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+      endingSettledRef.current = false;
+      endingStateRef.current = null;
       setSelectedScene(scene);
       setChatMessages([]);
       setChatInput("");
@@ -832,6 +839,11 @@ export default function PracticePage() {
       if (!ok) return;
     }
     stopAudio();
+    // 离开对话视图：停止上一会话的评分轮询，避免串场更新新会话状态
+    if (pollTimerRef.current) {
+      window.clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
     // 如果从任务详情页跳来，返回任务详情页
     const storedTaskId = window.sessionStorage.getItem("zxt-practice-taskId");
     if (storedTaskId) {

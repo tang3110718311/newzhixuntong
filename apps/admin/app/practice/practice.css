@@ -2608,7 +2608,9 @@
   border: 1px solid rgb(214, 226, 242);
   border-radius: 10px;
   background: rgb(249, 252, 255);
-  font: 13px/1.7 inherit;
+  font-size: 13px;
+  line-height: 1.7;
+  font-family: inherit;
   color: rgb(60, 88, 120);
   resize: vertical;
   outline: none;
@@ -2758,4 +2760,54 @@
 }
 .practice-page .practice-main .pc-chat-ending {
   padding: 24px 0 32px;
+}
+
+/* ================= 窄视口降级方案 =================
+   三列原型布局最小需求 1140px（258 + minmax560 + 286 + 2×18）。
+   <1160px 时降为两列（左+中），右栏实时评分整行下移；
+   <900px 时降为单列，评分维度改单列堆叠。 */
+@media (max-width: 1160px) {
+  .practice-page .practice-layout {
+    grid-template-columns: 230px minmax(0, 1fr);
+  }
+  .practice-page .practice-score.card {
+    grid-column: 1 / -1;
+    min-height: 0;
+  }
+  .practice-page .practice-score-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .practice-page .practice-top {
+    flex-direction: column;
+  }
+  .practice-page .practice-top-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .practice-page .practice-layout {
+    grid-template-columns: 1fr;
+  }
+  .practice-page .practice-score.card {
+    grid-column: auto;
+  }
+  .practice-page .practice-score-list {
+    grid-template-columns: 1fr;
+  }
+  .practice-page .practice-messages {
+    height: 360px;
+  }
+  .practice-page .practice-msg-body {
+    max-width: 86%;
+  }
+  .practice-page .practice-chat-head {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .practice-page .practice-head-right {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
