@@ -37,9 +37,10 @@ node scripts/start-local.mjs
 >
 > 构建脚本用法：
 > ```powershell
-> node scripts/build.mjs        # 构建 api + admin
+> node scripts/build.mjs        # 构建 api + admin + mobile
 > node scripts/build.mjs api    # 只构建 api
 > node scripts/build.mjs admin  # 只构建 admin
+> node scripts/build.mjs mobile # 只构建 mobile
 > npm run build                 # 等价 build.mjs all
 > ```
 

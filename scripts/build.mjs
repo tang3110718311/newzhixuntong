@@ -5,7 +5,8 @@ import { resolve } from "node:path";
 //   node scripts/build.mjs          # 等价 all
 //   node scripts/build.mjs api      # 只构建 api
 //   node scripts/build.mjs admin    # 只构建 admin
-//   node scripts/build.mjs all      # 构建 api + admin
+//   node scripts/build.mjs mobile   # 只构建 mobile
+//   node scripts/build.mjs all      # 构建 api + admin + mobile
 //
 // 自动做的事：
 //   1. 临时关闭 CodeBuddy 的 safe-delete 保护（仅作用于本脚本启动的子进程），
@@ -28,15 +29,20 @@ const WORKSPACES = {
     cwd: resolve(root, "apps/admin"),
     port: 3000,
   },
+  mobile: {
+    name: "@zxt/mobile",
+    cwd: resolve(root, "apps/mobile"),
+    port: 3100,
+  },
 };
 
 const arg = (process.argv[2] || "all").toLowerCase();
-const targets = arg === "all" ? ["api", "admin"] : [arg];
+const targets = arg === "all" ? ["api", "admin", "mobile"] : [arg];
 
 function buildOne(key) {
   const ws = WORKSPACES[key];
   if (!ws) {
-    console.error(`未知构建目标: ${key}（可选 api / admin / all）`);
+    console.error(`未知构建目标: ${key}（可选 api / admin / mobile / all）`);
     process.exit(1);
   }
   console.log(`\n===== 构建 ${ws.name} =====`);
