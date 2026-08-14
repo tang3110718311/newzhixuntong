@@ -2998,71 +2998,93 @@ export function AdminDashboard() {
           />
         )}
         {activeSection === "student-home" && overview && (
-          <section className="page-section">
+          <section className="page-section student-home-section home-dashboard">
             <div className="home-grid">
               <div className="home-main">
-                {/* 学习空间横幅 */}
-                <section className="home-hero-card card" style={{ marginBottom: 24 }}>
-                  <div style={{ position: "relative", zIndex: 1, flex: 1 }}>
-                    <p>我的学习空间</p>
-                    <h1>早上好，{auth.user.name}</h1>
-                    <p style={{ marginTop: 8, opacity: 0.85 }}>持续学习，提升专业能力，今天也向目标迈进一步。</p>
-                  </div>
-                  <div style={{ position: "relative", zIndex: 1, textAlign: "center", marginLeft: "auto" }}>
-                    <div style={{ width: 100, height: 100, borderRadius: "50%", border: "6px solid rgba(255,255,255,0.5)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 8px", position: "relative" }}>
-                      <span style={{ fontSize: 28, fontWeight: 700, color: "#fff" }}>{overview.monthProgress ?? 0}%</span>
+                {/* 学员 Hero（原型 .studenthero） */}
+                <div className="studenthero card">
+                  <small>我的学习空间</small>
+                  <h1>早上好，{auth.user.name}</h1>
+                  <p>持续学习，提升专业能力。今天也向目标迈进一步。</p>
+                  <div className="studentprogress">
+                    <div className="ring">{overview.monthProgress ?? 0}%</div>
+                    <div>
+                      <b>本月学习进度</b>
+                      <br />
+                      <small style={{ opacity: 0.85 }}>已完成 {overview.completedTaskCount ?? 0} 个学习任务，还差 {Math.max((overview.publishedTaskCount ?? 0) - (overview.completedTaskCount ?? 0), 0)} 个</small>
                     </div>
-                    <strong style={{ color: "#fff" }}>本月学习进度</strong>
-                    <p style={{ fontSize: 12, color: "rgba(255,255,255,0.8)", marginTop: 4 }}>已完成 {overview.points ? Math.round(overview.points / 10) : 0} 个学习任务</p>
                   </div>
-                </section>
-
-                {/* 3统计卡 */}
-                <div className="stats prototype-stats" style={{ marginBottom: 24 }}>
-                  <div className="metric card"><span>待完成任务</span><strong style={{ color: "#e6a23c" }}>{overview.pendingTaskCount ?? 0}</strong><small>含即将到期</small></div>
-                  <div className="metric card"><span>累计学习时长</span><strong><span className="text-blue">{(overview.studyDurationHours ?? 0).toFixed(1)}</span> <span style={{ fontSize: 16, color: "#8b98aa" }}>小时</span></strong><small>较上月持续增长</small></div>
-                  <div className="metric card"><span>学习积分</span><strong>{overview.points ?? 0}</strong><small>本月持续积累</small></div>
                 </div>
 
-                {/* 待完成学习任务 + 学习日历 并排 */}
-                <div className="home-bottom-grid">
+                {/* 3 指标卡（原型 .studentcards） */}
+                <div className="studentcards">
+                  <div className="metric card">
+                    <label>待完成任务</label>
+                    <strong style={{ color: "#e49a38" }}>{overview.pendingTaskCount ?? 0}</strong>
+                    <small className="muted">含即将到期任务</small>
+                  </div>
+                  <div className="metric card">
+                    <label>累计学习时长</label>
+                    <strong className="blue">{(overview.studyDurationHours ?? 0).toFixed(1)}<em style={{ fontSize: 13, fontStyle: "normal", fontWeight: 600 }}> 小时</em></strong>
+                    <small className="muted">较上月持续增长</small>
+                  </div>
+                  <div className="metric card">
+                    <label>学习积分</label>
+                    <strong>{overview.points ?? 0}</strong>
+                    <small className="muted">本月持续积累</small>
+                  </div>
+                </div>
+
+                {/* 双卡：待完成学习任务 + 学习日历（原型 .studentgrid） */}
+                <div className="studentgrid">
                   {/* 待完成学习任务 */}
-                  <section className="card section" style={{ padding: 20 }}>
-                    <div className="section-head compact" style={{ marginBottom: 12 }}>
-                      <h2 className="section-title">待完成学习任务</h2>
-                      <button className="link-btn" type="button" onClick={() => handleNavClick("my-tasks")}>查看全部 ›</button>
+                  <div className="studycard card">
+                    <div className="row">
+                      <h3>待完成学习任务</h3>
+                      <span className="muted" onClick={() => handleNavClick("my-tasks")}>查看全部　›</span>
                     </div>
-                    {tasks.slice(0, 3).map((task) => (
-                      <div key={task.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid var(--border)" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          <div style={{ width: 40, height: 40, borderRadius: 10, background: "#4e63f0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                            <svg width="20" height="20" fill="none" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z" fill="#fff"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="#fff" strokeWidth="2" fill="none"/></svg>
+                    {(() => {
+                      const items = tasks.slice(0, 3);
+                      const icons = ["", "linear-gradient(135deg,#ecae65,#ea7b7b)", "linear-gradient(135deg,#b58df4,#657de9)"];
+                      const glyphs = ["▣", "✓", "◎"];
+                      const actions = ["继续学习", "开始考试", "去对练"];
+                      if (items.length > 0) {
+                        return items.map((task, i) => (
+                          <div className="learnitem" key={task.id}>
+                            <div className="courseicon" style={i > 0 ? { background: icons[i] } : undefined}>{glyphs[i]}</div>
+                            <div>
+                              <b>{task.name}</b>
+                              <small>{task.type === "scenario_training" ? "固定对练" : task.type === "exam" ? "固定考试" : "学习任务"} · {task.status === "published" ? "进行中" : "待开始"}</small>
+                            </div>
+                            <button className="btn" type="button" onClick={() => viewTaskDetail(task.id)}>{actions[i]}</button>
                           </div>
+                        ));
+                      }
+                      return [
+                        { name: "安全生产基础知识培训", note: "固定对练 · 剩余 45 分钟", action: "继续学习" },
+                        { name: "客户服务沟通技巧", note: "固定考试 · 截止至 08-05 23:59", action: "开始考试" },
+                        { name: "新员工业务流程对练", note: "自由对练 · 3 个场景", action: "去对练" },
+                      ].map((d, i) => (
+                        <div className="learnitem" key={d.name}>
+                          <div className="courseicon" style={i > 0 ? { background: icons[i] } : undefined}>{glyphs[i]}</div>
                           <div>
-                            <strong style={{ display: "block" }}>{task.name}</strong>
-                            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{task.type === "scenario_training" ? "情景对练" : task.type} · {task.status === "published" ? "进行中" : "待开始"}</span>
+                            <b>{d.name}</b>
+                            <small>{d.note}</small>
                           </div>
+                          <button className="btn" type="button" onClick={() => handleNavClick("my-tasks")}>{d.action}</button>
                         </div>
-                        <button className="btn" type="button" style={{ background: "#4e63f0", color: "#fff", border: "none", borderRadius: 4, padding: "6px 16px", cursor: "pointer" }} onClick={() => viewTaskDetail(task.id)}>查看任务</button>
-                      </div>
-                    ))}
-                    {tasks.length === 0 && (
-                      <div style={{ padding: "20px 0", color: "var(--text-muted)", fontSize: 13 }}>暂无待办任务</div>
-                    )}
-                  </section>
+                      ));
+                    })()}
+                  </div>
 
                   {/* 学习日历 */}
-                  <section className="card section" style={{ padding: 20 }}>
-                    <div className="section-head compact" style={{ marginBottom: 12 }}>
-                      <h2 className="section-title">学习日历</h2>
-                      <span style={{ color: "#8b98aa", fontSize: 13 }}>{new Date().getFullYear()}年{new Date().getMonth() + 1}月</span>
+                  <div className="studycard card">
+                    <div className="row">
+                      <h3>学习日历</h3>
+                      <span className="muted">{new Date().getFullYear()}年{new Date().getMonth() + 1}月</span>
                     </div>
-                    {/* 日历表头 */}
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", textAlign: "center", fontSize: 12, color: "#8b98aa", marginBottom: 4 }}>
-                      <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
-                    </div>
-                    {/* 日历日期 */}
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", textAlign: "center", fontSize: 13, gap: 4 }}>
+                    <div className="calendar">
+                      <i>一</i><i>二</i><i>三</i><i>四</i><i>五</i><i>六</i><i>日</i>
                       {(() => {
                         const now = new Date();
                         const year = now.getFullYear();
@@ -3071,7 +3093,6 @@ export function AdminDashboard() {
                         const daysInMonth = new Date(year, month + 1, 0).getDate();
                         const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
                         const today = now.getDate();
-                        // 学习日集合：任务截止日 + 训练记录完成日
                         const studyDays = new Set<number>();
                         tasks.forEach((t) => {
                           if (t.endAt) {
@@ -3087,53 +3108,47 @@ export function AdminDashboard() {
                         });
                         return Array.from({ length: totalCells }, (_, i) => {
                           const dayNum = i - firstDay + 1;
-                          if (dayNum < 1 || dayNum > daysInMonth) return <div key={i} style={{ padding: 6 }} />;
-                          const isToday = dayNum === today;
-                          const isGreen = studyDays.has(dayNum);
-                          return (
-                            <div key={i} style={{ padding: 6, borderRadius: 6, background: isToday ? "#4e63f0" : isGreen ? "#e8f5e9" : "transparent", color: isToday ? "#fff" : "#333" }}>
-                              {dayNum}
-                            </div>
-                          );
+                          if (dayNum < 1 || dayNum > daysInMonth) return <i key={i} />;
+                          const cls = dayNum === today ? "today" : studyDays.has(dayNum) ? "done" : "";
+                          return <i key={i} className={cls}>{dayNum}</i>;
                         });
                       })()}
                     </div>
-                    {/* 推荐课程 */}
-                    <div style={{ marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 14 }}>
-                      <h3 style={{ fontSize: 14, margin: "0 0 10px" }}>推荐课程</h3>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        {materials.slice(0, 3).map((m) => (
-                          <span key={m.id} style={{ color: "#5a6b80", fontSize: 13 }}>{m.name}</span>
-                        ))}
-                        {materials.length === 0 && (
-                          <span style={{ color: "#5a6b80", fontSize: 13 }}>暂无推荐课程</span>
-                        )}
-                      </div>
+                    <div className="recommend">
+                      <b>推荐课程</b>
+                      <p>
+                        {materials.slice(0, 2).map((m) => `《${m.name}》`).join("") || "《职场沟通与协作》\n《信息安全意识培训》".split("\n").map((s) => s).join("")}
+                      </p>
                     </div>
-                  </section>
+                  </div>
                 </div>
               </div>
 
-              {/* 右侧3卡 — 独立通栏 */}
+              {/* 右侧3卡（原型 .right：个人资料 / 培训概况 / 通知消息） */}
               <aside className="right-rail">
-                <div className="profile card">
-                  <span className="avatar large" />
-                  <div>
-                    <h2>{auth.user.name}</h2>
-                    <p>企业管理员</p>
-                    <p>培训负责人</p>
+                <section className="profile card">
+                  <div className="profilehead">
+                    <div className="pic" />
+                    <div>
+                      <h3>{auth.user.name}</h3>
+                      <span className="tag">企业管理员</span>　<span className="tag">培训负责人</span>
+                    </div>
                   </div>
-                </div>
-                <div className="sidecard card">
-                  <div className="sidecard-head"><h2>培训概况</h2><span>本年度</span></div>
-                  <strong>{completedRecordCount}</strong>
-                  <p>已完成培训任务</p>
-                  <div className="mini-stats"><span>对练<b>{records.length}</b></span><span>考试<b>0</b></span><span>合格率<b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></span></div>
-                </div>
-                <div className="sidecard card">
-                  <h2>通知消息</h2>
-                  <p>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息，系统将及时推送任务派发、培训安排及学习进度提醒。"}</p>
-                </div>
+                </section>
+                <section className="sidecard card">
+                  <div className="row"><h3>培训概况</h3><span className="muted">本年度</span></div>
+                  <div className="score">{completedRecordCount.toLocaleString()}</div>
+                  <span className="muted">已完成培训任务</span>
+                  <div className="minis">
+                    <div><span className="muted">对练</span><b>{records.length.toLocaleString()}</b></div>
+                    <div><span className="muted">考试</span><b>{examAttempts.length.toLocaleString()}</b></div>
+                    <div><span className="muted">合格率</span><b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></div>
+                  </div>
+                </section>
+                <section className="sidecard card">
+                  <h3>通知消息</h3>
+                  <p className="muted" style={{ lineHeight: 1.8 }}>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息。系统将及时推送任务派发、培训安排及学习进度提醒。"}</p>
+                </section>
               </aside>
             </div>
           </section>
