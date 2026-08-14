@@ -1740,6 +1740,10 @@
 .student-home-section {
   display: block;
 }
+/* studentcards/studentgrid 自带 margin，去除容器 gap 避免 14px+18px 叠加（原型仅 18px） */
+.student-home-section .home-main {
+  gap: 0;
+}
 
 /* ---------- 学员 Hero（渐变横幅） ---------- */
 .studenthero {
