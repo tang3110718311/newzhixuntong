@@ -1020,7 +1020,7 @@ export default function PracticePage() {
         </nav>
       )}
 
-      <main className="practice-main">
+      <main className={`practice-main${view === "chat" && selectedScene ? " practice-shell-chat" : ""}`}>
         {view === "chat" && !selectedScene && (
           <div className="pc-empty" style={{ padding: "60px 0", textAlign: "center", color: "#86909c" }}>
             正在加载场景…

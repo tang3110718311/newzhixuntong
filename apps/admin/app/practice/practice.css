@@ -2171,6 +2171,15 @@
 }
 
 /* ---- 三列主体布局 ---- */
+/* chat 原型视图：外层 main.practice-main 默认 max-width:1100px + padding 24px，
+   会把内层 .practice-layout 压到 1052px，三列最小需求 1140px 导致右栏溢出被裁剪，
+   此处放行宽度（仅限包含 .practice-page 的 chat 视图外壳） */
+.practice-main.practice-shell-chat {
+  max-width: none;
+  width: 100%;
+  padding: 20px 0 40px;
+  margin: 0;
+}
 .practice-page .practice-layout {
   display: grid;
   grid-template-columns: 258px minmax(560px, 1fr) 286px;
