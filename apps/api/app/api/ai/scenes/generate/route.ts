@@ -3,6 +3,7 @@ import { generateSceneSchema } from "@zxt/shared";
 import { createGeneratedScene, getDefaultAiProvider, getIndustryPackage, listKnowledgeSummaries, logAiCall } from "@zxt/database";
 import { createTraceId, fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
+import { assertRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,6 +16,8 @@ export async function POST(request: Request) {
   try {
     const { tenantId, user: ctxUser } = await getTenantContext(request);
     tenantIdForLog = tenantId;
+    assertRateLimit("ai:scene-generation:tenant", tenantId, { limit: 20, windowMs: 60_000, message: "AI 创建场景请求过于频繁，请稍后再试。" });
+    assertRateLimit("ai:scene-generation:ip", getClientIp(request), { limit: 40, windowMs: 60_000, message: "AI 创建场景请求过于频繁，请稍后再试。" });
     const body = generateSceneSchema.parse(await request.json());
     const config = getDefaultAiProvider(tenantId);
 

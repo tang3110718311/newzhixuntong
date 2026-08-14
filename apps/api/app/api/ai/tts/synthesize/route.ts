@@ -6,6 +6,7 @@ import { z } from "zod";
 import { logAiCall } from "@zxt/database";
 import { createTraceId, fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
+import { assertRateLimit, getClientIp } from "@/lib/rate-limit";
 
 const execFileAsync = promisify(execFile);
 
@@ -50,6 +51,8 @@ export async function POST(request: Request) {
   const started = Date.now();
   try {
     const { tenantId } = await getTenantContext(request);
+    assertRateLimit("ai:tts:tenant", tenantId, { limit: 90, windowMs: 60_000, message: "语音合成请求过于频繁，请稍后再试。" });
+    assertRateLimit("ai:tts:ip", getClientIp(request), { limit: 120, windowMs: 60_000, message: "语音合成请求过于频繁，请稍后再试。" });
     const { text, voice, emotion } = ttsRequestSchema.parse(await request.json());
 
     // 0. 旧版智训通语音服务(配置 ZXT_TTS_BASE_URL 时优先,失败自动回退 edge-tts)

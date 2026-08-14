@@ -420,7 +420,14 @@ const AUTH_STORAGE_KEY = "zxt-admin-auth";
 const initialLoginForm = {
   mobile: "",
   password: "",
-  code: "",
+};
+
+type CaptchaChallenge = {
+  captchaId: string;
+  targetX: number;
+  expiresIn: number;
+  pieceSize: number;
+  trackMax: number;
 };
 
 function readStoredAuth(): AuthSession | null {
@@ -697,7 +704,7 @@ export function AdminDashboard() {
   const [auth, setAuth] = useState<AuthSession | null>(null);
   const [authResolved, setAuthResolved] = useState(false);
   const [loginForm, setLoginForm] = useState(initialLoginForm);
-  const [codeCountdown, setCodeCountdown] = useState(0);
+  const [showLoginCaptcha, setShowLoginCaptcha] = useState(false);
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [industries, setIndustries] = useState<IndustryPackage[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -912,8 +919,7 @@ export function AdminDashboard() {
     }
   }
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitLogin(captchaToken: string) {
     setSubmitting(true);
     setMessage("");
     setError("");
@@ -922,7 +928,7 @@ export function AdminDashboard() {
         method: "POST",
         cache: "no-store",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(loginForm),
+        body: JSON.stringify({ ...loginForm, captchaToken }),
       });
       const payload = (await response.json()) as ApiResponse<AuthSession>;
       if (!payload.success) throw new Error(payload.message || payload.code);
@@ -937,30 +943,15 @@ export function AdminDashboard() {
     }
   }
 
-  async function handleSendCode() {
-    const mobile = loginForm.mobile.trim();
-    if (!mobile) { setError("请输入手机号后再获取验证码。"); return; }
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setError("");
-    try {
-      const response = await fetch(`${API_BASE}/auth/send-code`, {
-        method: "POST",
-        cache: "no-store",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mobile }),
-      });
-      const payload = (await response.json()) as ApiResponse<{ expiresIn: number }>;
-      if (!payload.success) throw new Error(payload.message || "发送失败");
-      setMessage(`验证码已发送至 ${mobile}（本地环境验证码 666666）`);
-      setCodeCountdown(60);
-      const timer = window.setInterval(() => {
-        setCodeCountdown((prev) => {
-          if (prev <= 1) { window.clearInterval(timer); return 0; }
-          return prev - 1;
-        });
-      }, 1000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "验证码发送失败");
+    setMessage("");
+    if (!loginForm.mobile.trim() || !loginForm.password) {
+      setError("请输入账号和密码。");
+      return;
     }
+    setShowLoginCaptcha(true);
   }
 
   async function handleLogout() {
@@ -1836,15 +1827,21 @@ export function AdminDashboard() {
                 <input value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} type={showPassword ? "text" : "password"} maxLength={32} placeholder="请输入密码" autoComplete="current-password" required />
                 <button type="button" className="password-toggle" onClick={() => setShowPassword(!showPassword)} aria-label="显示密码">◉</button>
               </label>
-              <label className="login-field login-code"><i className="field-icon">✉</i>
-                <input value={loginForm.code} onChange={(e) => setLoginForm({ ...loginForm, code: e.target.value })} type="text" maxLength={8} placeholder="请输入验证码" required />
-                <button type="button" disabled={!!codeCountdown || submitting} onClick={handleSendCode}>{codeCountdown > 0 ? `${codeCountdown}s 后重发` : "获取验证码"}</button>
-              </label>
               {error ? <div className="login-tip" role="alert">{error}</div> : null}
               <div className="login-links"><a onClick={(e) => e.preventDefault()}>忘记密码?</a></div>
               <button className="login-submit" type="submit" disabled={submitting}>{submitting ? "登录中..." : "登录"}</button>
               <label className="login-agreement"><input type="checkbox" defaultChecked /><span>阅读并接受 <a>《服务条款》</a> 和 <a>《隐私政策》</a></span></label>
             </form>
+            {showLoginCaptcha ? (
+              <LoginCaptchaModal
+                apiBase={API_BASE}
+                onClose={() => setShowLoginCaptcha(false)}
+                onPass={(captchaToken) => {
+                  setShowLoginCaptcha(false);
+                  void submitLogin(captchaToken);
+                }}
+              />
+            ) : null}
           </section>
         </div>
         <div className="login-foot">© 2026 智训通 · 企业培训与人才发展平台</div>
@@ -4035,8 +4032,135 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function LoginCaptchaModal({
+  apiBase,
+  onClose,
+  onPass,
+}: {
+  apiBase: string;
+  onClose: () => void;
+  onPass: (captchaToken: string) => void;
+}) {
+  const [challenge, setChallenge] = useState<CaptchaChallenge | null>(null);
+  const [pos, setPos] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const startX = useRef(0);
+  const lastPos = useRef(0);
 
+  async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(`${apiBase}${path}`, {
+      ...init,
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers || {}),
+      },
+    });
+    const payload = (await response.json()) as ApiResponse<T>;
+    if (!payload.success) throw new Error(payload.message || payload.code);
+    return payload.data;
+  }
 
+  async function loadChallenge() {
+    setLoading(true);
+    setError("");
+    setDone(false);
+    setPos(0);
+    lastPos.current = 0;
+    try {
+      const next = await requestJson<CaptchaChallenge>("/auth/captcha");
+      setChallenge(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "图形验证码加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadChallenge();
+  }, []);
+
+  function handleDown(event: React.PointerEvent) {
+    if (done || loading || !challenge) return;
+    startX.current = event.clientX - lastPos.current;
+    setDragging(true);
+    (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
+  }
+
+  function handleMove(event: React.PointerEvent) {
+    if (!dragging || done || !challenge) return;
+    const nextPos = Math.max(0, Math.min(event.clientX - startX.current, challenge.trackMax));
+    lastPos.current = nextPos;
+    setPos(nextPos);
+  }
+
+  async function handleUp() {
+    if (!dragging || done || !challenge) return;
+    setDragging(false);
+    const finalPos = Math.round(lastPos.current);
+    if (Math.abs(finalPos - challenge.targetX) > 16) {
+      setError("拼图未对齐，请再试一次");
+      setPos(0);
+      lastPos.current = 0;
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await requestJson<{ captchaToken: string; expiresIn: number }>("/auth/captcha", {
+        method: "POST",
+        body: JSON.stringify({ captchaId: challenge.captchaId, positionX: finalPos }),
+      });
+      setDone(true);
+      setError("");
+      window.setTimeout(() => onPass(result.captchaToken), 300);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "图形验证码校验失败");
+      await loadChallenge();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="login-captcha-mask" role="dialog" aria-modal="true" aria-label="图形验证码">
+      <div className="login-captcha-panel">
+        <div className="login-captcha-head">
+          <div>
+            <h3>安全验证</h3>
+            <p>拖动滑块，将拼图放入缺口后自动登录。</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="关闭">×</button>
+        </div>
+        <div className="login-captcha-image">
+          <div className="login-captcha-piece" style={{ left: `${12 + pos}px` }} />
+          {challenge ? <div className="login-captcha-target" style={{ left: `${12 + challenge.targetX}px` }} /> : null}
+        </div>
+        <div className={`login-captcha-track ${done ? "done" : ""}`}>
+          <span>{done ? "验证通过" : error || (loading ? "加载中..." : "拖动滑块完成验证")}</span>
+          <div
+            className="login-captcha-handle"
+            style={{ left: `${pos}px` }}
+            onPointerDown={handleDown}
+            onPointerMove={handleMove}
+            onPointerUp={handleUp}
+            onPointerCancel={handleUp}
+            aria-label="拖动滑块"
+          >
+            ›
+          </div>
+        </div>
+        <button className="login-captcha-refresh" type="button" onClick={() => void loadChallenge()} disabled={loading}>
+          刷新验证码
+        </button>
+      </div>
+    </div>
+  );
+}
 
 
 

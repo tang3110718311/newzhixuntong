@@ -27,6 +27,14 @@ export interface LoginResult {
   user: AuthUser;
 }
 
+export interface CaptchaChallenge {
+  captchaId: string;
+  targetX: number;
+  expiresIn: number;
+  pieceSize: number;
+  trackMax: number;
+}
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
@@ -88,16 +96,20 @@ async function request<T>(
 
 // ============ 认证 ============
 export const authApi = {
-  login: (mobile: string, password: string, code: string) =>
+  login: (mobile: string, password: string, captchaToken: string) =>
     request<LoginResult>("/auth/login", {
       method: "POST",
-      body: { mobile, password, code },
+      body: { mobile, password, captchaToken },
       auth: false,
     }),
-  sendCode: (mobile: string) =>
-    request<{ mobile: string; expiresIn: number; hint: string }>("/auth/send-code", {
+  captcha: () =>
+    request<CaptchaChallenge>("/auth/captcha", {
+      auth: false,
+    }),
+  verifyCaptcha: (captchaId: string, positionX: number) =>
+    request<{ captchaToken: string; expiresIn: number }>("/auth/captcha", {
       method: "POST",
-      body: { mobile },
+      body: { captchaId, positionX },
       auth: false,
     }),
   me: () => request<{ tenant: any; user: AuthUser }>("/auth/me"),

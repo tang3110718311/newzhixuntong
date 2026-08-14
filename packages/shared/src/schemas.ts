@@ -48,7 +48,12 @@ export const createUserSchema = z.object({
 export const loginSchema = z.object({
   mobile: z.string().min(6).max(30),
   password: z.string().min(8).max(128),
-  code: z.string().min(4).max(10),
+  captchaToken: z.string().min(16).max(120),
+});
+
+export const captchaVerifySchema = z.object({
+  captchaId: z.string().uuid(),
+  positionX: z.coerce.number().min(0).max(320),
 });
 
 export const sendCodeSchema = z.object({
@@ -355,7 +360,6 @@ export const updateKnowledgeFolderSchema = z.object({
   name: z.string().min(2).max(120).optional(),
   description: z.string().max(1000).optional(),
 });
-
 
 
 

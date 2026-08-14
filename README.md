@@ -129,9 +129,7 @@ npm.cmd --workspace @zxt/admin run typecheck
 ## 本轮新增能力：管理端登录与会话
 
 - 后端新增 `POST /api/auth/login`、`GET /api/auth/me`、`POST /api/auth/logout`，登录成功后发放 7 天有效期 Bearer Token。
-- 业务 API 默认要求 `Authorization: Bearer <token>`，不再依赖管理端硬编码 `X-Tenant-Code`；开发调试可通过 `ALLOW_DEV_TENANT_HEADER=true` 临时恢复租户头访问。
+- 业务 API 默认要求 `Authorization: Bearer <token>`，不再依赖管理端硬编码 `X-Tenant-Code`；仅本机开发调试可通过 `ALLOW_DEV_TENANT_HEADER=true` 临时恢复租户头访问，服务端只接受 localhost/127.0.0.1 或 `DEV_TENANT_HEADER_HOSTS` 白名单主机。
 - SQLite 初始化和 Prisma 种子脚本会给本地管理员写入密码哈希，支持真实账号登录。
 - 管理端新增登录页、会话本地保存、退出登录和当前用户展示。
-- 本地默认账号：租户 `zxt-demo`，手机号 `13800000000`，密码 `Zxt@2026`；可用 `ZXT_SEED_ADMIN_PASSWORD` 覆盖初始化密码。
-
-> AI生成
+- 本地默认账号：租户 `zxt-demo`，手机号 `13800000000`，密码 `Zxt@2026`；可用 `ZXT_SEED_ADMIN_PASSWORD` 覆盖初始化密码；登录前需完成一次图形滑块验证码，后端会发放一次性 `captchaToken`。

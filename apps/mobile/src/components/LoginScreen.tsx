@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { authApi } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { authApi, type CaptchaChallenge } from "@/lib/api";
 
 interface LoginScreenProps {
-  onLoginSuccess: (mobile: string, password: string, code: string) => Promise<any>;
+  onLoginSuccess: (mobile: string, password: string, captchaToken: string) => Promise<any>;
   showToast: (msg: string) => void;
 }
 
@@ -27,11 +27,11 @@ export default function LoginScreen({ onLoginSuccess, showToast }: LoginScreenPr
     setShowCaptcha(true);
   };
 
-  const handleCaptchaPass = async () => {
+  const handleCaptchaPass = async (captchaToken: string) => {
     setShowCaptcha(false);
     setLoading(true);
     try {
-      await onLoginSuccess(phone, password, "666666");
+      await onLoginSuccess(phone, password, captchaToken);
     } catch (e: any) {
       setError(e.message || "登录失败");
     } finally {
@@ -123,42 +123,77 @@ export default function LoginScreen({ onLoginSuccess, showToast }: LoginScreenPr
   );
 }
 
-// ===== 滑块验证码 =====
-function CaptchaModal({ onClose, onPass }: { onClose: () => void; onPass: () => void }) {
+function CaptchaModal({ onClose, onPass }: { onClose: () => void; onPass: (captchaToken: string) => void }) {
+  const [challenge, setChallenge] = useState<CaptchaChallenge | null>(null);
   const [pos, setPos] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [done, setDone] = useState(false);
-  const trackRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
   const startX = useRef(0);
-  const TARGET = 236; // 目标缺口位置
-  const TOLERANCE = 12;
+  const lastPos = useRef(0);
+
+  async function loadChallenge() {
+    setLoading(true);
+    setError("");
+    setDone(false);
+    setPos(0);
+    lastPos.current = 0;
+    try {
+      const next = await authApi.captcha();
+      setChallenge(next);
+    } catch (e: any) {
+      setError(e.message || "图形验证码加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadChallenge();
+  }, []);
 
   const handleDown = (e: React.PointerEvent) => {
-    if (done) return;
-    startX.current = e.clientX;
+    if (done || loading || !challenge) return;
+    startX.current = e.clientX - lastPos.current;
     setDragging(true);
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
   };
 
   const handleMove = (e: React.PointerEvent) => {
-    if (!dragging || done) return;
-    const dx = e.clientX - startX.current;
-    setPos(Math.max(0, Math.min(dx, 260)));
+    if (!dragging || done || !challenge) return;
+    const nextPos = Math.max(0, Math.min(e.clientX - startX.current, challenge.trackMax));
+    lastPos.current = nextPos;
+    setPos(nextPos);
   };
 
-  const handleUp = () => {
-    if (!dragging || done) return;
+  const handleUp = async () => {
+    if (!dragging || done || !challenge) return;
     setDragging(false);
-    if (Math.abs(pos - TARGET) <= TOLERANCE) {
-      setDone(true);
-      setTimeout(onPass, 350);
-    } else {
+    const finalPos = Math.round(lastPos.current);
+    if (Math.abs(finalPos - challenge.targetX) > 16) {
+      setError("拼图未对齐，请再试一次");
       setPos(0);
+      lastPos.current = 0;
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await authApi.verifyCaptcha(challenge.captchaId, finalPos);
+      setDone(true);
+      setError("");
+      window.setTimeout(() => onPass(result.captchaToken), 350);
+    } catch (e: any) {
+      setError(e.message || "图形验证码校验失败");
+      await loadChallenge();
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="captcha-modal show" role="dialog" aria-modal="true" aria-label="拖动验证码">
+    <div className="captcha-modal show" role="dialog" aria-modal="true" aria-label="拖动图形验证码">
       <div className="captcha-panel">
         <div className="captcha-panel-head">
           <h3>安全验证</h3>
@@ -169,17 +204,17 @@ function CaptchaModal({ onClose, onPass }: { onClose: () => void; onPass: () => 
         <p className="captcha-panel-sub">请拖动滑块，将拼图放入缺口</p>
         <div className="captcha-box">
           <div className="captcha-title">
-            <span>{done ? "验证通过" : "拖动完成验证"}</span>
-            <button className="captcha-refresh" type="button" onClick={() => setPos(0)}>
+            <span>{done ? "验证通过" : loading ? "加载中…" : "拖动完成验证"}</span>
+            <button className="captcha-refresh" type="button" onClick={() => void loadChallenge()} disabled={loading}>
               刷新
             </button>
           </div>
           <div className="captcha-image" id="captchaImage">
             <div className="captcha-piece" style={{ left: `${12 + pos}px` }} />
-            <div className="captcha-target" />
+            {challenge ? <div className="captcha-target" style={{ left: `${12 + challenge.targetX}px` }} /> : null}
           </div>
-          <div className={`captcha-track ${done ? "done" : ""}`} ref={trackRef}>
-            <span id="captchaHint">{done ? "✓ 验证通过" : "拖动滑块完成拼图"}</span>
+          <div className={`captcha-track ${done ? "done" : ""}`}>
+            <span id="captchaHint">{done ? "✓ 验证通过" : error || "拖动滑块完成拼图"}</span>
             <div
               className="captcha-handle"
               id="captchaHandle"

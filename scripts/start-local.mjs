@@ -13,6 +13,7 @@ const PORTS = {
   api: 4000,
   admin: 3000,
 };
+const forceRestart = process.argv.includes("--restart") || process.argv.includes("restart");
 
 function findListeningPids(port) {
   if (process.platform !== "win32") return [];
@@ -100,7 +101,7 @@ async function waitForHttp(name, url, child, timeoutMs = 20000) {
       throw new Error(`${name} exited early with code ${child.exitCode}`);
     }
     try {
-      const response = await fetch(url, { cache: "no-store" });
+      const response = await fetchWithTimeout(url, 1500);
       if (response.ok) return;
       lastError = `HTTP ${response.status}`;
     } catch (error) {
@@ -109,6 +110,43 @@ async function waitForHttp(name, url, child, timeoutMs = 20000) {
     await new Promise((resolveWait) => setTimeout(resolveWait, 500));
   }
   throw new Error(`${name} did not become ready at ${url}: ${lastError}`);
+}
+
+async function fetchWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { cache: "no-store", signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function isHttpReady(url) {
+  try {
+    const response = await fetchWithTimeout(url, 1200);
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function currentLocalServices() {
+  const apiPids = findListeningPids(PORTS.api);
+  const adminPids = findListeningPids(PORTS.admin);
+  const apiReady = apiPids.length > 0 && await isHttpReady("http://localhost:4000/api/health");
+  const adminReady = adminPids.length > 0 && await isHttpReady("http://localhost:3000");
+  if (!apiReady || !adminReady) return null;
+  return {
+    api: apiPids[0],
+    admin: adminPids[0],
+    reused: true,
+    startedAt: new Date().toISOString(),
+    urls: {
+      admin: "http://localhost:3000",
+      api: "http://localhost:4000/api",
+    },
+  };
 }
 
 function stopChildren(children) {
@@ -121,6 +159,17 @@ function stopChildren(children) {
   }
 }
 
+if (!forceRestart) {
+  const existing = await currentLocalServices();
+  if (existing) {
+    writeFileSync(pidFile, JSON.stringify(existing, null, 2));
+    console.log("Local services are already running. Reusing existing processes.");
+    console.log(JSON.stringify(existing, null, 2));
+    process.exit(0);
+  }
+}
+
+console.log(forceRestart ? "Restarting local services..." : "Starting local services...");
 await cleanupOldPidFile();
 await stopPortListeners();
 
@@ -145,6 +194,7 @@ try {
   };
   writeFileSync(pidFile, JSON.stringify(pids, null, 2));
   console.log(JSON.stringify(pids, null, 2));
+  process.exit(0);
 } catch (error) {
   stopChildren([api, admin]);
   console.error(error instanceof Error ? error.message : error);

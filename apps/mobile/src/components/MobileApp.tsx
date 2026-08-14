@@ -31,8 +31,8 @@ export default function MobileApp({ initialToken }: MobileAppProps) {
   }, []);
 
   const handleLoginSuccess = useCallback(
-    async (mobile: string, password: string, code: string) => {
-      const data = await authApi.login(mobile, password, code);
+    async (mobile: string, password: string, captchaToken: string) => {
+      const data = await authApi.login(mobile, password, captchaToken);
       setAuth(data);
       setUser(data.user);
       setLoggedIn(true);

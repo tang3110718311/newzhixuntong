@@ -2,9 +2,12 @@ import { getDefaultAiProvider, getSceneDetail, logAiCall } from "@zxt/database";
 import { z } from "zod";
 import { createTraceId, fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
+import { assertRateLimit, getClientIp } from "@/lib/rate-limit";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+const SCRIPT_CHECK_TIMEOUT_MS = Number(process.env.SCRIPT_CHECK_TIMEOUT_MS || 30_000);
 
 const scriptCheckMessageSchema = z.object({
   role: z.enum(["ai", "learner"]),
@@ -33,6 +36,8 @@ export async function POST(request: Request) {
   try {
     const { tenantId, user } = await getTenantContext(request);
     tenantIdForLog = tenantId;
+    assertRateLimit("ai:script-check:tenant", tenantId, { limit: 60, windowMs: 60_000, message: "话术检核请求过于频繁，请稍后再试。" });
+    assertRateLimit("ai:script-check:ip", getClientIp(request), { limit: 90, windowMs: 60_000, message: "话术检核请求过于频繁，请稍后再试。" });
     const body = scriptCheckRequestSchema.parse(await request.json());
 
     const config = getDefaultAiProvider(tenantId);
@@ -84,7 +89,7 @@ export async function POST(request: Request) {
     ];
 
     const endpoint = normalizeUrl(config.baseUrl);
-    const response = await fetch(endpoint, {
+    const response = await fetchWithTimeout(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -96,7 +101,7 @@ export async function POST(request: Request) {
         max_tokens: 600,
         messages: apiMessages,
       }),
-    });
+    }, SCRIPT_CHECK_TIMEOUT_MS);
 
     if (!response.ok) {
       const errorText = await response.text();
