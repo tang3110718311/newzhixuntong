@@ -51,6 +51,9 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
   const [avatar, setAvatar] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // 账号信息弹窗状态
+  const [accountOpen, setAccountOpen] = useState(false);
+
   // 问题反馈弹窗状态
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackTitle, setFeedbackTitle] = useState("");
@@ -93,6 +96,11 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
       : user?.roleCode === "trainer"
       ? "内训师"
       : "学员";
+
+  // 账号信息展示（登录账号优先邮箱，手机号中间四位脱敏）
+  const loginAccount = user?.email || user?.mobile || "—";
+  const maskMobile = (m: string | null | undefined) =>
+    m && m.length >= 7 ? `${m.slice(0, 3)}****${m.slice(-4)}` : m || "—";
 
   const handleAvatarFile = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -296,7 +304,7 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
         </div>
       </div>
       <div className="menu-card">
-        <div className="menu-row" onClick={() => showToast("账号信息")}>
+        <div className="menu-row" onClick={() => setAccountOpen(true)}>
           <span className="mi">◎</span>
           <span>账号信息</span>
           <span className="arrow">›</span>
@@ -390,6 +398,69 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
                 </button>
                 <button className="primary" onClick={submitFeedback}>
                   提交反馈
+                </button>
+              </div>
+            </div>
+          </div>,
+          appRoot
+        )}
+      {appRoot &&
+        createPortal(
+          <div
+            className={`account-mask ${accountOpen ? "show" : ""}`}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setAccountOpen(false);
+            }}
+          >
+            <div className="account-modal">
+              <div className="account-head">
+                <div>
+                  <h3>账号信息</h3>
+                  <p>完善个人资料，便于企业内身份识别</p>
+                </div>
+                <button
+                  type="button"
+                  className="account-close"
+                  onClick={() => setAccountOpen(false)}
+                  aria-label="关闭"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="account-fields">
+                <div className="account-field">
+                  <label>姓名</label>
+                  <div className="account-value">{user?.name || "—"}</div>
+                </div>
+                <div className="account-field">
+                  <label>登录账号</label>
+                  <div className="account-value">{loginAccount}</div>
+                </div>
+                <div className="account-field">
+                  <label>手机号码</label>
+                  <div className="account-value">{maskMobile(user?.mobile)}</div>
+                </div>
+                <div className="account-field">
+                  <label>所属部门</label>
+                  <div className="account-value">{user?.orgName || "未分配部门"}</div>
+                </div>
+                <div className="account-field">
+                  <label>员工编号</label>
+                  <div className="account-value">{user?.id?.slice(0, 8) || "ZXT-0000"}</div>
+                </div>
+              </div>
+              <div className="account-modal-actions">
+                <button className="secondary" onClick={() => setAccountOpen(false)}>
+                  取消
+                </button>
+                <button
+                  className="primary"
+                  onClick={() => {
+                    setAccountOpen(false);
+                    showToast("资料已是最新");
+                  }}
+                >
+                  保存信息
                 </button>
               </div>
             </div>

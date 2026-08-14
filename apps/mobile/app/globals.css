@@ -1309,3 +1309,18 @@ button.hello:active{opacity:.7}
 .tenant-btn.cancel{background:#f2f5f9;color:#6d7d93}
 .tenant-btn.confirm{background:linear-gradient(100deg,#367ff1,#36bfd4);color:#fff;box-shadow:0 6px 14px rgba(54,127,241,.28)}
 .tenant-btn.confirm:active{opacity:.88}
+
+/* ===== 账号信息弹窗（对齐原型 accountModal）===== */
+.account-mask{position:fixed;z-index:45;inset:0;background:rgba(20,34,57,.48);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:0 22px}
+.account-mask.show{display:flex}
+.account-modal{width:100%;max-width:370px;border-radius:22px;background:#fff;padding:24px 20px 20px;box-shadow:0 18px 48px rgba(31,74,126,.22);animation:accountIn .22s ease}
+@keyframes accountIn{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+.account-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:18px}
+.account-head h3{margin:0;color:#1f3557;font-size:18px;font-weight:800}
+.account-head p{margin:6px 0 0;color:#8a99ae;font-size:12px}
+.account-close{flex:none;width:28px;height:28px;border:0;border-radius:50%;background:#f1f5fa;color:#7890aa;font-size:20px;line-height:1;cursor:pointer}
+.account-fields{display:grid;gap:13px}
+.account-field label{display:block;color:#8a99ae;font-size:12px;margin:0 0 6px 2px}
+.account-value{width:100%;border:1px solid #e5ebf4;border-radius:11px;background:#fff;padding:11px 12px;font-size:13px;color:#243858;min-height:42px;display:flex;align-items:center;word-break:break-all}
+.account-modal-actions{display:flex;gap:9px;margin-top:20px}
+.account-modal-actions button{flex:1;height:42px;border:0;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer}
