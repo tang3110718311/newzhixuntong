@@ -198,7 +198,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
             : null;
         pushMsg({ who: "feedback", text: res.coachTip, issues, advice, score: turnTotal });
       }
-      if (res.aiReply) pushAiMsgAndSpeak(res.aiReply);
+      const speakPromise = res.aiReply ? pushAiMsgAndSpeak(res.aiReply) : null;
       setRound(res.round || 0);
       if (res.isFinished) {
         // 优先使用同步返回的训练记录得分；异步评分时稍后轮询一次
@@ -215,7 +215,16 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
           }, 2500);
         }
         showToast("对练完成，正在生成报告…");
-        setTimeout(() => onReport(activeSessionId), 700);
+        // 等 AI 收尾话 TTS 播完再进入报告页；最长等待 30s，避免 TTS 异常导致永久阻塞
+        if (speakPromise) {
+          try {
+            await Promise.race([
+              speakPromise,
+              new Promise((resolve) => setTimeout(resolve, 30000)),
+            ]);
+          } catch { /* 等待失败不影响进入报告页 */ }
+        }
+        onReport(activeSessionId);
       }
     } catch (e: any) {
       pushMsg({ who: "ai", text: "（回复失败：" + (e.message || "网络错误") + "）" });
@@ -275,10 +284,19 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     setSpeakMsgId(null);
   }, []);
   const speakText = useCallback(
-    async (text: string, msgId?: string) => {
+    async (text: string, msgId?: string): Promise<void> => {
+      // 播完信号：自然播完 / 出错 / 被 stopAiSpeak 或新音频抢占时 resolve，供对练结束等关键节点等待
+      const playEndResolvers: Array<() => void> = [];
+      const playEndPromise = new Promise<void>((resolve: () => void) => {
+        playEndResolvers.push(resolve);
+      });
+      const resolvePlayEnd = () => playEndResolvers.forEach((r) => r());
       try {
         const tts = await aiApi.tts(text);
-        if (!tts?.audioBase64) return;
+        if (!tts?.audioBase64) {
+          resolvePlayEnd();
+          return;
+        }
         const bin = atob(tts.audioBase64);
         const bytes = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -307,6 +325,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
             setSpeakMsgId(null);
             URL.revokeObjectURL(url);
           }
+          resolvePlayEnd();
         };
         audio.addEventListener("ended", handleEnd);
         audio.addEventListener("error", handleEnd);
@@ -317,10 +336,14 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         // 播放被用户手势/其它调用中断也视为结束
         audio.addEventListener("pause", () => {
           if (audioRef.current === audio && audio.ended) handleEnd();
+          else resolvePlayEnd();
         });
         await audio.play();
+        // 等待自然播完（或被 stopAiSpeak / 新音频抢占打断）
+        await playEndPromise;
       } catch {
         /* TTS 播放失败不阻断主流程，同时清除播报状态 */
+        resolvePlayEnd();
         stopAiSpeak();
       }
     },
@@ -328,11 +351,12 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   );
 
   const pushAiMsgAndSpeak = useCallback(
-    (text: string) => {
+    (text: string): Promise<void> => {
       // 防御性剥离模型可能残留的 [COACH_TIP:...]/【COACH_TIP:...】标记（后端已剥离，此处兜底）
       const cleaned = text.replace(/[\[【]\s*COACH_TIP\s*[:：][\s\S]*?[\]】]/g, "").trim();
       const msgId = pushMsg({ who: "ai", text: cleaned, time: now() });
-      speakText(cleaned, msgId);
+      // 返回播完 promise，供对练结束等场景等待收尾话播完
+      return speakText(cleaned, msgId);
     },
     [pushMsg, speakText]
   );
