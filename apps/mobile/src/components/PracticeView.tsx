@@ -79,6 +79,10 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const liveTextRef = useRef("");
   const submittingRef = useRef(false);
   const voiceTextSentRef = useRef(false);
+  // 分段实时转写（Web Speech 不可用时的兜底：每 3s 把新增录音分片送后端 STT）
+  const liveSttTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sttBusyRef = useRef(false);
+  const sttChunkIndexRef = useRef(0);
 
   const sceneName = scene?.scene?.name || "场景对练";
   const aiRole = scene?.roles?.find((r: any) => r.roleType === "ai");
@@ -135,6 +139,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         recogRef.current?.stop();
       } catch { /* ignore */ }
       if (silenceTimerRef.current) clearInterval(silenceTimerRef.current);
+      if (liveSttTimerRef.current) clearInterval(liveSttTimerRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
@@ -279,6 +284,10 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       clearInterval(silenceTimerRef.current);
       silenceTimerRef.current = null;
     }
+    if (liveSttTimerRef.current) {
+      clearInterval(liveSttTimerRef.current);
+      liveSttTimerRef.current = null;
+    }
   };
 
   /** 停止录音器与麦克风流 */
@@ -326,6 +335,37 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       };
       rec.start();
       mediaRecorderRef.current = rec;
+
+      // 分段实时转写兜底：Web Speech 不可用时，每 3s 将新增录音分片送后端 STT，
+      // 把识别结果增量显示在聆听面板（边说边显示）。
+      sttChunkIndexRef.current = 0;
+      sttBusyRef.current = false;
+      liveSttTimerRef.current = setInterval(async () => {
+        if (sttBusyRef.current || submittingRef.current) return;
+        const recNow = mediaRecorderRef.current;
+        if (!recNow || recNow.state !== "recording") return;
+        const chunks = chunksRef.current;
+        if (chunks.length <= sttChunkIndexRef.current) return;
+        sttBusyRef.current = true;
+        try {
+          const newChunks = chunks.slice(sttChunkIndexRef.current);
+          sttChunkIndexRef.current = chunks.length;
+          const blob = new Blob(newChunks, { type: recNow.mimeType || "audio/webm" });
+          const pcmBase64 = await blobToPcmBase64(blob);
+          const stt = await aiApi.stt(pcmBase64, "pcm");
+          const seg = (stt.text || "").trim();
+          if (seg) {
+            const prev = liveTextRef.current.trim();
+            // 增量拼接：若新识别结果已包含在旧文本尾部则跳过，否则追加
+            const next = prev ? (seg.startsWith(prev) ? seg : prev + seg) : seg;
+            liveTextRef.current = next;
+            setLiveText(next);
+          }
+        } catch {
+          /* 单次分段识别失败跳过，最终整段 STT 兜底 */
+        }
+        sttBusyRef.current = false;
+      }, 3000);
 
       // 音量分析（波形 + 静音自动提交判定）
       const ctx = getAudioCtx();
