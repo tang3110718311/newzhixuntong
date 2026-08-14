@@ -295,6 +295,9 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const startRecording = async () => {
     if (!sceneId || submittingRef.current) return;
     try {
+      // 重置上次录音残留的实时识别文字，避免旧缓存显示/静音自动提交误用
+      liveTextRef.current = "";
+      setLiveText("");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       // MediaRecorder（无实时识别能力时的 STT 回退录音）
@@ -408,6 +411,9 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     } else {
       stopRecorderAndStream(); // onstop 中走 STT
     }
+    // 发送/提交后清空实时识别文字缓存，避免下一次录音残留
+    setLiveText("");
+    liveTextRef.current = "";
     // 允许再次开始录音
     setTimeout(() => {
       submittingRef.current = false;
