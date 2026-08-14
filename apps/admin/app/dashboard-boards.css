@@ -2587,6 +2587,12 @@
 .task-detail-page .task-step-action .btn {
   padding: 7px 12px;
   font-size: 12px;
+  background: #2f74eb;
+  color: #fff;
+  border-color: #2f74eb;
+}
+.task-detail-page .task-step-action .btn:hover {
+  filter: brightness(0.96);
 }
 .task-detail-page .task-step-action .btn:disabled {
   cursor: not-allowed;
