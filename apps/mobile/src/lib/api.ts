@@ -146,6 +146,25 @@ export const authApi = {
     }),
   me: () => request<{ tenant: any; user: AuthUser }>("/auth/me"),
   logout: () => request<null>("/auth/logout", { method: "POST" }),
+  switchTenant: (tenantCode: string) =>
+    request<LoginResult>("/auth/switch-tenant", {
+      method: "POST",
+      body: { tenantCode },
+    }),
+};
+
+// ============ 企业（租户） ============
+export interface TenantRow {
+  id: string;
+  name: string;
+  code: string;
+  status: string;
+}
+
+export const tenantApi = {
+  /** 当前用户可切换的企业列表 */
+  mine: () =>
+    request<{ items: TenantRow[]; current: string }>("/tenants/mine"),
 };
 
 // ============ 任务 ============

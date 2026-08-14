@@ -223,6 +223,10 @@ export const sendCodeSchema = z.object({
   mobile: z.string().min(6).max(30),
 });
 
+export const switchTenantSchema = z.object({
+  tenantCode: z.string().min(1).max(60),
+});
+
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(8).max(128),
   newPassword: z.string().min(8).max(128),

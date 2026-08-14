@@ -11,7 +11,6 @@ import ProfilePage from "./ProfilePage";
 import TabBar from "./TabBar";
 import Toast from "./Toast";
 import { authApi, setAuth, clearAuth, type AuthUser } from "@/lib/api";
-
 export type PageKey = "home" | "tasks" | "taskDetail" | "exams" | "ability" | "profile";
 
 interface MobileAppProps {
@@ -54,6 +53,23 @@ export default function MobileApp({ initialAuthenticated }: MobileAppProps) {
     setPage("home");
   }, []);
 
+  // 切换企业：后端基于手机号在目标租户建新会话；本地更新认证后整页刷新，
+  // 让各页面按新租户重新拉取数据（HomePage 等 useEffect 依赖 []，仅刷新可彻底更新）
+  const handleSwitchTenant = useCallback(
+    async (tenantCode: string): Promise<boolean> => {
+      try {
+        const data = await authApi.switchTenant(tenantCode);
+        setAuth(data);
+        window.location.reload();
+        return true;
+      } catch (e: any) {
+        showToast(e?.message || "切换企业失败");
+        return false;
+      }
+    },
+    [showToast]
+  );
+
   const openTaskDetail = useCallback((taskId: string) => {
     setTaskDetailId(taskId);
     setPage("taskDetail");
@@ -92,7 +108,7 @@ export default function MobileApp({ initialAuthenticated }: MobileAppProps) {
     <div className="app" id="mainApp">
       <div className="content">
         <section id="home" className={`page ${page === "home" ? "active" : ""}`}>
-          <HomePage user={user} onNavigate={setPage} onOpenTask={openTaskDetail} showToast={showToast} />
+          <HomePage user={user} onNavigate={setPage} onOpenTask={openTaskDetail} showToast={showToast} onSwitchTenant={handleSwitchTenant} />
         </section>
         <section id="tasks" className={`page ${page === "tasks" ? "active" : ""}`}>
           <TasksPage onNavigate={setPage} onOpenTask={openTaskDetail} showToast={showToast} />

@@ -384,7 +384,7 @@ export function getTenantByCode(code: string) {
 }
 type AuthUserWithPassword = AuthUserRow & { passwordHash: string };
 
-function selectAuthUserWhere(whereSql: string, params: unknown[]) {
+function selectAuthUserWhere(whereSql: string, params: unknown[], orderSql = "") {
   return get<AuthUserWithPassword>(
     `select u.id, u.tenant_id as tenantId, t.code as tenantCode, t.name as tenantName,
             u.name, u.mobile, u.email, u.role_code as roleCode, u.status, u.org_id as orgId, o.name as orgName,
@@ -392,7 +392,7 @@ function selectAuthUserWhere(whereSql: string, params: unknown[]) {
      from users u
      inner join tenants t on t.id = u.tenant_id and t.deleted_at is null and t.status = 'active'
      left join organizations o on o.id = u.org_id and o.tenant_id = u.tenant_id
-     where ${whereSql} and u.deleted_at is null limit 1`,
+     where ${whereSql} and u.deleted_at is null ${orderSql} limit 1`,
     params,
   );
 }
@@ -402,11 +402,20 @@ function stripPassword(row: AuthUserWithPassword): AuthUserRow {
   return user;
 }
 
-export function loginWithPassword(input: { mobile: string; password: string; userAgent?: string; ip?: string }): AuthSessionRow | undefined {
-  // 按手机号匹配激活租户下的用户（同一手机号多租户时取最近登录的租户；登录后可选租户）
-  const user = selectAuthUserWhere("u.mobile = ?", [input.mobile]);
-  if (!user || user.status !== "active" || !user.passwordHash || !verifyPassword(input.password, user.passwordHash)) return undefined;
+/** 按手机号匹配激活租户下的用户；同一手机号可存在于多个租户（支持登录/切换企业） */
+function findAuthUserByMobile(mobile: string, tenantCode?: string): AuthUserWithPassword | undefined {
+  if (tenantCode) {
+    return selectAuthUserWhere("u.mobile = ? and t.code = ?", [mobile, tenantCode]);
+  }
+  // 未指定租户时取最近登录的租户（同手机号多租户时按最近登录排序）
+  return selectAuthUserWhere(
+    "u.mobile = ?",
+    [mobile],
+    "order by u.last_login_at desc, u.updated_at desc",
+  );
+}
 
+function createSessionForUser(user: AuthUserWithPassword, input: { userAgent?: string; ip?: string }): AuthSessionRow {
   const token = randomBytes(32).toString("base64url");
   const tokenHash = hashSessionToken(token);
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -417,6 +426,32 @@ export function loginWithPassword(input: { mobile: string; password: string; use
   );
   run("update users set last_login_at = datetime('now'), updated_at = datetime('now') where tenant_id = ? and id = ?", [user.tenantId, user.id]);
   return { token, expiresAt, user: stripPassword(user) };
+}
+
+export function loginWithPassword(input: { mobile: string; password: string; tenantCode?: string; userAgent?: string; ip?: string }): AuthSessionRow | undefined {
+  // 按手机号匹配激活租户下的用户（同一手机号多租户时取最近登录的租户；登录后可选租户）
+  const user = findAuthUserByMobile(input.mobile, input.tenantCode);
+  if (!user || user.status !== "active" || !user.passwordHash || !verifyPassword(input.password, user.passwordHash)) return undefined;
+  return createSessionForUser(user, input);
+}
+
+/** 查询同一手机号可登录的所有激活租户（切换企业列表） */
+export function listTenantsByMobile(mobile: string) {
+  return all<{ id: string; name: string; code: string; status: string }>(
+    `select distinct t.id, t.name, t.code, t.status
+     from users u
+     inner join tenants t on t.id = u.tenant_id and t.deleted_at is null and t.status = 'active'
+     where u.mobile = ? and u.deleted_at is null and u.status = 'active'
+     order by t.name, t.code`,
+    [mobile],
+  );
+}
+
+/** 切换企业：直接为当前手机号在目标租户下创建新会话（免重复输密码） */
+export function switchTenantSession(input: { mobile: string; tenantCode: string; userAgent?: string; ip?: string }): AuthSessionRow | undefined {
+  const user = findAuthUserByMobile(input.mobile, input.tenantCode);
+  if (!user || user.status !== "active") return undefined;
+  return createSessionForUser(user, input);
 }
 
 export function getUserBySessionToken(token: string): AuthUserRow | undefined {

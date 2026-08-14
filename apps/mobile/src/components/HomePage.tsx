@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { taskApi, examApi, attemptApi, type AuthUser, type TaskRow, type ExamRow } from "@/lib/api";
+import { taskApi, examApi, attemptApi, tenantApi, type AuthUser, type TaskRow, type ExamRow, type TenantRow } from "@/lib/api";
 import { statusClass, taskStatusText, taskTypeText } from "@/lib/types";
 import type { PageKey } from "./MobileApp";
 
@@ -10,14 +10,21 @@ interface HomePageProps {
   onNavigate: (p: PageKey) => void;
   onOpenTask: (taskId: string) => void;
   showToast: (msg: string) => void;
+  onSwitchTenant: (tenantCode: string) => Promise<boolean>;
 }
 
-export default function HomePage({ user, onNavigate, onOpenTask, showToast }: HomePageProps) {
+export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSwitchTenant }: HomePageProps) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [exams, setExams] = useState<ExamRow[]>([]);
   const [attempts, setAttempts] = useState<Record<string, any>>({});
   const [recentTab, setRecentTab] = useState<"tasks" | "exams">("tasks");
   const [loading, setLoading] = useState(true);
+  // 切换企业弹窗
+  const [showTenantModal, setShowTenantModal] = useState(false);
+  const [tenants, setTenants] = useState<TenantRow[]>([]);
+  const [selectedCode, setSelectedCode] = useState("");
+  const [tenantOpen, setTenantOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -39,6 +46,34 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast }: Ho
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 打开切换企业弹窗时拉取可切换列表
+  const openTenantModal = async () => {
+    setShowTenantModal(true);
+    setTenantOpen(false);
+    if (tenants.length > 0) return;
+    try {
+      const data = await tenantApi.mine();
+      setTenants(data.items || []);
+      setSelectedCode((data.items || []).find((t) => t.id === data.current)?.code || (data.items || [])[0]?.code || "");
+    } catch {
+      showToast("获取企业列表失败");
+    }
+  };
+
+  const confirmSwitchTenant = async () => {
+    if (!selectedCode || selectedCode === user?.tenantCode) {
+      setShowTenantModal(false);
+      return;
+    }
+    setSwitching(true);
+    try {
+      const okFlag = await onSwitchTenant(selectedCode);
+      if (okFlag) setShowTenantModal(false);
+    } finally {
+      setSwitching(false);
+    }
+  };
 
   const done = tasks.filter((t) => t.status === "completed").length;
   const total = tasks.length;
@@ -78,7 +113,7 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast }: Ho
         <div className="brand">
           <span className="brand-mark"></span>智训通
         </div>
-        <button className="hello" onClick={() => showToast("暂无可切换的企业")}>
+        <button className="hello" onClick={openTenantModal}>
           {user?.tenantName || "智训通"}
           <i className="hello-arrow">▾</i>
         </button>
@@ -220,6 +255,55 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast }: Ho
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* 切换企业弹窗 */}
+      {showTenantModal && (
+        <div className="tenant-mask" onClick={() => !switching && setShowTenantModal(false)}>
+          <div className="tenant-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="tenant-modal-title">切换企业</h3>
+            <div className="tenant-select-wrap">
+              <button
+                type="button"
+                className="tenant-select"
+                onClick={() => !switching && setTenantOpen((v) => !v)}
+                disabled={switching}
+              >
+                <span className="tenant-select-text">
+                  {tenants.find((t) => t.code === selectedCode)?.name ||
+                    (tenants.length === 0 ? "加载中…" : "请选择企业")}
+                </span>
+                <i className={`tenant-select-arrow${tenantOpen ? " open" : ""}`}>▾</i>
+              </button>
+              {tenantOpen && (
+                <div className="tenant-option-list">
+                  {tenants.length === 0 && <div className="tenant-option empty">加载中…</div>}
+                  {tenants.map((t) => (
+                    <div
+                      key={t.id}
+                      className={`tenant-option${t.code === selectedCode ? " active" : ""}`}
+                      onClick={() => {
+                        setSelectedCode(t.code);
+                        setTenantOpen(false);
+                      }}
+                    >
+                      <span className="tenant-option-name">{t.name}</span>
+                      {t.code === selectedCode && <i className="tenant-option-check">✓</i>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="tenant-modal-actions">
+              <button className="tenant-btn cancel" onClick={() => setShowTenantModal(false)} disabled={switching}>
+                取消
+              </button>
+              <button className="tenant-btn confirm" onClick={confirmSwitchTenant} disabled={switching}>
+                {switching ? "切换中…" : "确认切换"}
+              </button>
+            </div>
           </div>
         </div>
       )}
