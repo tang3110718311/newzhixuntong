@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import type { ApiResponse, AuthSession, DashboardOverview, PageResult } from "@zxt/shared";
 import {
   AlertCircle,
+  Ban,
   Briefcase,
   Building2,
   CheckCircle2,
@@ -13,6 +14,8 @@ import {
   LogOut,
   Menu,
   Paperclip,
+  Pencil,
+  Play,
   Plus,
   RefreshCcw,
   Save,
@@ -380,6 +383,8 @@ type TenantSettings = {
     aiTokenLimit: number;
     sttSeconds: number;
     ttsCharacters: number;
+    userLimit: number;
+    storageMb: number;
   };
 };
 
@@ -505,6 +510,7 @@ const initialUserForm = {
   roleCode: "learner",
   orgId: "",
   initialPassword: "Zxt@2026",
+  status: "active" as "active" | "disabled",
 };
 
 const initialMaterialForm = {
@@ -534,6 +540,8 @@ const initialTenantForm = {
     aiTokenLimit: 100000,
     sttSeconds: 3600,
     ttsCharacters: 100000,
+    userLimit: 100,
+    storageMb: 1024,
   },
 };
 
@@ -800,6 +808,14 @@ export function AdminDashboard() {
   const [showIndustryCreate, setShowIndustryCreate] = useState(false);
   const [showOrgCreate, setShowOrgCreate] = useState(false);
   const [showUserCreate, setShowUserCreate] = useState(false);
+  const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [orgToDelete, setOrgToDelete] = useState<Organization | null>(null);
+  const [viewOrgMembers, setViewOrgMembers] = useState<Organization | null>(null);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [userRoleFilter, setUserRoleFilter] = useState("all");
+  const [resetPwdUser, setResetPwdUser] = useState<User | null>(null);
+  const [resetPwdForm, setResetPwdForm] = useState({ newPassword: "Zxt@2026" });
   const [showMaterialCreate, setShowMaterialCreate] = useState(false);
   const [showRecordCreate, setShowRecordCreate] = useState(false);
   const [taskFilter, setTaskFilter] = useState({ status: "all", type: "all", keyword: "" });
@@ -1411,6 +1427,87 @@ export function AdminDashboard() {
     });
   }
 
+  async function handleUpdateUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingUser) return;
+    await submitAction("人员信息已更新。", async () => {
+      await apiFetch<User>(`/users/${editingUser.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: userForm.name,
+          mobile: userForm.mobile,
+          email: userForm.email,
+          roleCode: userForm.roleCode,
+          orgId: userForm.orgId || null,
+          status: userForm.status,
+        }),
+      });
+      setEditingUser(null);
+      setUserForm(initialUserForm);
+    });
+  }
+
+  async function confirmDeleteUser() {
+    if (!userToDelete) return;
+    const target = userToDelete;
+    setUserToDelete(null);
+    await submitAction(`人员「${target.name}」已删除。`, async () => {
+      await apiFetch<{ id: string }>(`/users/${target.id}`, { method: "DELETE" });
+    });
+  }
+
+  async function handleResetPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!resetPwdUser) return;
+    const target = resetPwdUser;
+    await submitAction(`已重置「${target.name}」的密码，初始密码为 ${resetPwdForm.newPassword}。`, async () => {
+      await apiFetch<{ id: string }>(`/users/${target.id}/reset-password`, {
+        method: "POST",
+        body: JSON.stringify({ newPassword: resetPwdForm.newPassword }),
+      });
+      setResetPwdUser(null);
+      setResetPwdForm({ newPassword: "Zxt@2026" });
+    });
+  }
+
+  async function toggleUserStatus(user: User) {
+    const nextStatus = user.status === "disabled" ? "active" : "disabled";
+    await submitAction(`已将「${user.name}」${nextStatus === "active" ? "启用" : "停用"}。`, async () => {
+      await apiFetch<User>(`/users/${user.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ status: nextStatus }),
+      });
+    });
+  }
+
+  async function handleUpdateOrganization(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingOrg) return;
+    await submitAction("组织信息已更新。", async () => {
+      await apiFetch<Organization>(`/organizations/${editingOrg.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: orgForm.name,
+          code: orgForm.code || editingOrg.code,
+          type: orgForm.type,
+          parentId: orgForm.parentId || null,
+          sortOrder: orgForm.sortOrder,
+        }),
+      });
+      setEditingOrg(null);
+      setOrgForm(initialOrgForm);
+    });
+  }
+
+  async function confirmDeleteOrg() {
+    if (!orgToDelete) return;
+    const target = orgToDelete;
+    setOrgToDelete(null);
+    await submitAction(`组织「${target.name}」已删除。`, async () => {
+      await apiFetch<{ id: string }>(`/organizations/${target.id}`, { method: "DELETE" });
+    });
+  }
+
   async function handleCreateTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await submitAction(taskForm.publishNow ? "任务已创建并发布。" : "任务已创建为草稿。", async () => {
@@ -1878,6 +1975,26 @@ export function AdminDashboard() {
       </div>
     );
   }
+  // 从后端菜单表加载启停状态：status=disabled 的菜单 code 从导航中隐藏（菜单管理可实时生效）
+  const [disabledMenuCodes, setDisabledMenuCodes] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const token = getStoredAuthToken();
+    if (!token) return;
+    const headers: Record<string, string> = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+    fetch(`${API_BASE}/menus?pageSize=100`, { headers, cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json?.success && Array.isArray(json.data?.items)) {
+          const disabled = new Set<string>();
+          for (const menu of json.data.items as Array<{ code: string; status: string }>) {
+            if (menu.status === "disabled") disabled.add(menu.code);
+          }
+          setDisabledMenuCodes(disabled);
+        }
+      })
+      .catch(() => { /* 菜单加载失败时保持默认导航 */ });
+  }, []);
+
   const navItems: NavItem[] = [
     { id: "home", key: "overview", label: "首页", icon: <IcoHome /> },
     { id: "student-home", key: "student-home", label: "学员首页", icon: <IcoStudent /> },
@@ -1908,12 +2025,18 @@ export function AdminDashboard() {
       ],
     },
   ];
+  const filteredNavItems: NavItem[] = navItems
+    .filter((item) => !disabledMenuCodes.has(item.key))
+    .map((item) =>
+      item.children ? { ...item, children: item.children.filter((child) => !disabledMenuCodes.has(child.key)) } : item,
+    )
+    .filter((item) => !item.children || item.children.length > 0);
   const currentNavItem = (() => {
-    for (const item of navItems) {
+    for (const item of filteredNavItems) {
       if (item.key === activeSection) return item;
       if (item.children?.some((c) => c.key === activeSection)) return item;
     }
-    return navItems[0];
+    return filteredNavItems[0];
   })();
   const currentNavLabel = currentNavItem?.label || "首页";
   const currentNavChild = currentNavItem?.children?.find((c) => c.key === activeSection);
@@ -2013,7 +2136,7 @@ export function AdminDashboard() {
           </div>
         </div>
         <nav className="nav">
-          {navItems.map((item) => {
+          {filteredNavItems.map((item) => {
             if (item.children && item.group) {
               const open = openNavGroups[item.group];
               const hasActiveChild = item.children.some((c) => c.key === activeSection);
@@ -2284,6 +2407,20 @@ export function AdminDashboard() {
             />
 
             <ConfirmDialog
+              open={!!userToDelete}
+              message={userToDelete ? `确定删除人员「${userToDelete.name}」吗？删除后不可恢复，请谨慎操作。` : ""}
+              onCancel={() => setUserToDelete(null)}
+              onConfirm={confirmDeleteUser}
+            />
+
+            <ConfirmDialog
+              open={!!orgToDelete}
+              message={orgToDelete ? `确定删除组织「${orgToDelete.name}」吗？删除后不可恢复，请谨慎操作。` : ""}
+              onCancel={() => setOrgToDelete(null)}
+              onConfirm={confirmDeleteOrg}
+            />
+
+            <ConfirmDialog
               open={showBatchDeleteConfirm}
               message={`确定删除选中的 ${selectedSceneIds.length} 个场景吗？删除后不可恢复，请谨慎操作。`}
               onCancel={() => setShowBatchDeleteConfirm(false)}
@@ -2538,17 +2675,58 @@ export function AdminDashboard() {
 
             <div className="card section">
               <DataTable headers={["组织名称", "编码", "类型", "上级组织", "人数", "排序", "操作"]}>
-                {organizations.map((org) => (
-                  <tr key={org.id}>
-                    <td><strong>{org.name}</strong></td>
-                    <td className="muted-text">{org.code}</td>
-                    <td>{organizationTypeLabel(org.type)}</td>
-                    <td>{org.parentName || "-"}</td>
-                    <td>{org.userCount}</td>
-                    <td>{org.sortOrder}</td>
-                    <td><button className="link-btn" type="button">编辑</button></td>
-                  </tr>
-                ))}
+                {(() => {
+                  const byParent = new Map<string | null, Organization[]>();
+                  for (const org of organizations) {
+                    const key = org.parentId || null;
+                    if (!byParent.has(key)) byParent.set(key, []);
+                    byParent.get(key)!.push(org);
+                  }
+                  const rows: Array<{ org: Organization; depth: number }> = [];
+                  const walk = (parentKey: string | null, depth: number) => {
+                    const children = (byParent.get(parentKey) || []).sort((a, b) => a.sortOrder - b.sortOrder);
+                    for (const child of children) {
+                      rows.push({ org: child, depth });
+                      walk(child.id, depth + 1);
+                    }
+                  };
+                  walk(null, 0);
+                  return rows.map(({ org, depth }) => (
+                    <tr key={org.id}>
+                      <td>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: depth * 22 }}>
+                          {depth > 0 ? <span className="muted-text" style={{ fontSize: 12 }}>└</span> : null}
+                          <strong>{org.name}</strong>
+                        </span>
+                      </td>
+                      <td className="muted-text">{org.code}</td>
+                      <td>{organizationTypeLabel(org.type)}</td>
+                      <td>{org.parentName || "-"}</td>
+                      <td>{org.userCount}</td>
+                      <td>{org.sortOrder}</td>
+                      <td>
+                        <button className="link-btn" type="button" onClick={() => setViewOrgMembers(org)}><Users size={14} /> 成员</button>
+                        <button
+                          className="link-btn"
+                          type="button"
+                          onClick={() => {
+                            setEditingOrg(org);
+                            setOrgForm({
+                              name: org.name,
+                              code: org.code,
+                              type: org.type,
+                              parentId: org.parentId || "",
+                              sortOrder: org.sortOrder,
+                            });
+                          }}
+                        >
+                          <Pencil size={14} /> 编辑
+                        </button>
+                        <button className="link-btn danger" type="button" onClick={() => setOrgToDelete(org)}><Trash2 size={14} /> 删除</button>
+                      </td>
+                    </tr>
+                  ));
+                })()}
               </DataTable>
               {!organizations.length && <div className="empty">暂无组织</div>}
             </div>
@@ -2575,6 +2753,59 @@ export function AdminDashboard() {
                       </div>
                     </div>
                   </form>
+                </div>
+              </div>
+            )}
+
+            {editingOrg && (
+              <div className="modal-overlay" onClick={() => setEditingOrg(null)}>
+                <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+                  <div className="section-head">
+                    <div>
+                      <h2 className="section-title">编辑组织</h2>
+                      <p className="section-note">调整组织名称、归属关系或排序。</p>
+                    </div>
+                  </div>
+                  <form onSubmit={handleUpdateOrganization}>
+                    <div className="form-card" style={{ display: "grid", gap: 14 }}>
+                      <Field label="组织名称"><input value={orgForm.name} onChange={(e) => setOrgForm({ ...orgForm, name: e.target.value })} placeholder="如：客户服务部" required /></Field>
+                      <Field label="组织编码"><input value={orgForm.code} onChange={(e) => setOrgForm({ ...orgForm, code: e.target.value })} placeholder="留空自动生成" /></Field>
+                      <Field label="组织类型"><select value={orgForm.type} onChange={(e) => setOrgForm({ ...orgForm, type: e.target.value })}><option value="department">部门</option><option value="company">公司</option><option value="team">班组</option><option value="external">外部组织</option></select></Field>
+                      <Field label="上级组织"><select value={orgForm.parentId} onChange={(e) => setOrgForm({ ...orgForm, parentId: e.target.value })}><option value="">无上级组织</option>{organizations.filter((item) => item.id !== editingOrg.id).map((org) => <option value={org.id} key={org.id}>{org.name}</option>)}</select></Field>
+                      <Field label="排序"><input type="number" min="0" value={orgForm.sortOrder} onChange={(e) => setOrgForm({ ...orgForm, sortOrder: Number(e.target.value) })} /></Field>
+                      <div className="wizard-footer" style={{ justifyContent: "flex-end", gap: 12 }}>
+                        <button className="btn" type="button" onClick={() => setEditingOrg(null)}>取消</button>
+                        <button className="btn primary" disabled={submitting || !orgForm.name} type="submit">保存修改</button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {viewOrgMembers && (
+              <div className="modal-overlay" onClick={() => setViewOrgMembers(null)}>
+                <div className="modal-card modal-wide" onClick={(e) => e.stopPropagation()}>
+                  <div className="section-head">
+                    <div>
+                      <h2 className="section-title">「{viewOrgMembers.name}」成员管理</h2>
+                      <p className="section-note">该组织下共 {users.filter((u) => u.orgId === viewOrgMembers.id).length} 人，可在「用户管理」中调整归属。</p>
+                    </div>
+                    <button className="btn" type="button" onClick={() => setViewOrgMembers(null)}>关闭</button>
+                  </div>
+                  <div className="card" style={{ maxHeight: 420, overflowY: "auto" }}>
+                    <DataTable headers={["姓名", "手机号", "角色", "状态"]}>
+                      {users.filter((u) => u.orgId === viewOrgMembers.id).map((user) => (
+                        <tr key={user.id}>
+                          <td><strong>{user.name}</strong></td>
+                          <td className="muted-text">{user.mobile}</td>
+                          <td>{user.roleCode === "learner" ? "学员" : user.roleCode === "trainer" ? "内训师" : "管理员"}</td>
+                          <td>{statusBadge(user.status)}</td>
+                        </tr>
+                      ))}
+                    </DataTable>
+                    {!users.some((u) => u.orgId === viewOrgMembers.id) && <div className="empty">该组织暂无成员</div>}
+                  </div>
                 </div>
               </div>
             )}
@@ -2623,9 +2854,26 @@ export function AdminDashboard() {
               <div className="metric card"><span>活跃</span><strong className="text-green">{users.filter((u) => u.status === "active").length}</strong><small>正常状态</small></div>
             </div>
 
+            <div className="filter-bar card">
+              <div className="filter-row">
+                <label className="filter-label">角色筛选</label>
+                <select
+                  className="filter-input"
+                  style={{ width: 180 }}
+                  value={userRoleFilter}
+                  onChange={(e) => setUserRoleFilter(e.target.value)}
+                >
+                  <option value="all">全部角色</option>
+                  <option value="learner">学员</option>
+                  <option value="trainer">内训师</option>
+                  <option value="tenant_admin">管理员</option>
+                </select>
+              </div>
+            </div>
+
             <div className="card section">
               <DataTable headers={["姓名", "手机号", "邮箱", "角色", "组织", "状态", "操作"]}>
-                {users.map((user) => (
+                {users.filter((u) => userRoleFilter === "all" || u.roleCode === userRoleFilter).map((user) => (
                   <tr key={user.id}>
                     <td><strong>{user.name}</strong></td>
                     <td className="muted-text">{user.mobile}</td>
@@ -2633,7 +2881,31 @@ export function AdminDashboard() {
                     <td>{user.roleCode === "learner" ? "学员" : user.roleCode === "trainer" ? "内训师" : "管理员"}</td>
                     <td>{user.orgName || "未分配"}</td>
                     <td>{statusBadge(user.status)}</td>
-                    <td><button className="link-btn" type="button">编辑</button></td>
+                    <td>
+                      <button
+                        className="link-btn"
+                        type="button"
+                        onClick={() => {
+                          setEditingUser(user);
+                          setUserForm({
+                            name: user.name,
+                            mobile: user.mobile,
+                            email: user.email || "",
+                            roleCode: (user.roleCode === "tenant_admin" || user.roleCode === "trainer" || user.roleCode === "learner" ? user.roleCode : "learner"),
+                            orgId: user.orgId || "",
+                            initialPassword: "Zxt@2026",
+                            status: (user.status === "disabled" ? "disabled" : "active") as "active" | "disabled",
+                          });
+                        }}
+                      >
+                        <Pencil size={14} /> 编辑
+                      </button>
+                      <button className="link-btn" type="button" onClick={() => { setResetPwdUser(user); setResetPwdForm({ newPassword: "Zxt@2026" }); }}><KeyRound size={14} /> 重置密码</button>
+                      <button className="link-btn" type="button" onClick={() => toggleUserStatus(user)}>
+                        {user.status === "disabled" ? <><Play size={14} /> 启用</> : <><Ban size={14} /> 停用</>}
+                      </button>
+                      <button className="link-btn danger" type="button" onClick={() => setUserToDelete(user)}><Trash2 size={14} /> 删除</button>
+                    </td>
                   </tr>
                 ))}
               </DataTable>
@@ -2660,6 +2932,70 @@ export function AdminDashboard() {
                       <div className="wizard-footer" style={{ justifyContent: "flex-end", gap: 12 }}>
                         <button className="btn" type="button" onClick={() => setShowUserCreate(false)}>取消</button>
                         <button className="btn primary" disabled={submitting} type="submit"><Plus size={16} /> 保存人员</button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {editingUser && (
+              <div className="modal-overlay" onClick={() => setEditingUser(null)}>
+                <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+                  <div className="section-head">
+                    <div>
+                      <h2 className="section-title">编辑人员</h2>
+                      <p className="section-note">更新人员基本信息和所属组织，密码不在此处修改。</p>
+                    </div>
+                  </div>
+                  <form onSubmit={handleUpdateUser}>
+                    <div className="form-card" style={{ display: "grid", gap: 14 }}>
+                      <Field label="姓名"><input value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value })} placeholder="如：李明" required /></Field>
+                      <Field label="手机号"><input value={userForm.mobile} onChange={(e) => setUserForm({ ...userForm, mobile: e.target.value })} placeholder="用于登录或唯一识别" required /></Field>
+                      <Field label="邮箱"><input value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} placeholder="选填" /></Field>
+                      <Field label="所属组织"><select value={userForm.orgId} onChange={(e) => setUserForm({ ...userForm, orgId: e.target.value })}><option value="">未分配</option>{organizations.map((org) => <option value={org.id} key={org.id}>{org.name}</option>)}</select></Field>
+                      <Field label="角色"><select value={userForm.roleCode} onChange={(e) => setUserForm({ ...userForm, roleCode: e.target.value })}><option value="learner">学员</option><option value="trainer">内训师</option><option value="tenant_admin">管理员</option></select></Field>
+                      <Field label="状态">
+                        <select value={userForm.status} onChange={(e) => setUserForm({ ...userForm, status: e.target.value as "active" | "disabled" })}>
+                          <option value="active">有效</option>
+                          <option value="disabled">停用</option>
+                        </select>
+                      </Field>
+                      <div className="wizard-footer" style={{ justifyContent: "flex-end", gap: 12 }}>
+                        <button className="btn" type="button" onClick={() => setEditingUser(null)}>取消</button>
+                        <button className="btn primary" disabled={submitting} type="submit">保存修改</button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {resetPwdUser && (
+              <div className="modal-overlay" onClick={() => setResetPwdUser(null)}>
+                <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+                  <div className="section-head">
+                    <div>
+                      <h2 className="section-title">重置密码</h2>
+                      <p className="section-note">为「{resetPwdUser.name}」设置新密码，保存后该用户需用新密码登录。</p>
+                    </div>
+                  </div>
+                  <form onSubmit={handleResetPassword}>
+                    <div className="form-card" style={{ display: "grid", gap: 14 }}>
+                      <Field label="新密码">
+                        <input
+                          value={resetPwdForm.newPassword}
+                          onChange={(e) => setResetPwdForm({ ...resetPwdForm, newPassword: e.target.value })}
+                          type="text"
+                          minLength={8}
+                          required
+                        />
+                      </Field>
+                      <div className="wizard-footer" style={{ justifyContent: "flex-end", gap: 12 }}>
+                        <button className="btn" type="button" onClick={() => setResetPwdUser(null)}>取消</button>
+                        <button className="btn primary" disabled={submitting || resetPwdForm.newPassword.length < 8} type="submit">
+                          <KeyRound size={14} /> 确认重置
+                        </button>
                       </div>
                     </div>
                   </form>
@@ -3767,7 +4103,7 @@ export function AdminDashboard() {
           <section className="page-section">
             <div className="home-grid">
               <div className="home-main">
-                <SysMenusSection navItems={navItems} />
+                <SysMenusSection />
               </div>
               <aside className="right-rail">
                 <div className="profile card">
@@ -3842,6 +4178,13 @@ export function AdminDashboard() {
                     <p className="section-note">本地 SQLite 保存租户套餐、到期时间和资源额度。</p>
                   </div>
                 </div>
+                {(() => {
+                  if (!tenantForm.expireAt) return null;
+                  const days = Math.ceil((new Date(tenantForm.expireAt).getTime() - Date.now()) / 86400000);
+                  if (days < 0) return <div className="notice error">租户已到期 {Math.abs(days)} 天，请尽快续费，否则功能将受限。</div>;
+                  if (days <= 30) return <div className="notice">租户将在 {days} 天后到期，请提前安排续费。</div>;
+                  return null;
+                })()}
                 <Field label="租户名称"><input value={tenantForm.name} onChange={(e) => setTenantForm({ ...tenantForm, name: e.target.value })} required /></Field>
                 <Field label="套餐版本"><select value={tenantForm.planCode} onChange={(e) => setTenantForm({ ...tenantForm, planCode: e.target.value })}><option value="trial">试用版</option><option value="standard">标准版</option><option value="professional">专业版</option><option value="enterprise">企业版</option></select></Field>
                 <Field label="到期时间"><input type="datetime-local" value={tenantForm.expireAt} onChange={(e) => setTenantForm({ ...tenantForm, expireAt: e.target.value })} /></Field>
@@ -3852,6 +4195,10 @@ export function AdminDashboard() {
                 <div className="score-editor-grid">
                   <Field label="STT 秒数"><input type="number" min="0" value={tenantForm.resourceQuota.sttSeconds} onChange={(e) => setTenantForm({ ...tenantForm, resourceQuota: { ...tenantForm.resourceQuota, sttSeconds: Number(e.target.value) } })} /></Field>
                   <Field label="TTS 字符"><input type="number" min="0" value={tenantForm.resourceQuota.ttsCharacters} onChange={(e) => setTenantForm({ ...tenantForm, resourceQuota: { ...tenantForm.resourceQuota, ttsCharacters: Number(e.target.value) } })} /></Field>
+                </div>
+                <div className="score-editor-grid">
+                  <Field label="用户数上限"><input type="number" min="0" value={tenantForm.resourceQuota.userLimit} onChange={(e) => setTenantForm({ ...tenantForm, resourceQuota: { ...tenantForm.resourceQuota, userLimit: Number(e.target.value) } })} /></Field>
+                  <Field label="存储空间 (MB)"><input type="number" min="0" value={tenantForm.resourceQuota.storageMb} onChange={(e) => setTenantForm({ ...tenantForm, resourceQuota: { ...tenantForm.resourceQuota, storageMb: Number(e.target.value) } })} /></Field>
                 </div>
                 <button className="btn primary full" disabled={submitting || !tenantForm.name} type="submit"><Save size={16} /> 保存租户配置</button>
               </form>
@@ -3866,6 +4213,8 @@ export function AdminDashboard() {
                   <div className="todo"><div><strong>租户编码</strong><span>zxt-demo</span></div>{statusBadge("active")}</div>
                   <div className="todo"><div><strong>套餐版本</strong><span>{tenantForm.planCode}</span></div>{statusBadge("active")}</div>
                   <div className="todo"><div><strong>场景额度</strong><span>{tenantForm.resourceQuota.sceneLimit}</span></div>{statusBadge("active")}</div>
+                  <div className="todo"><div><strong>用户数上限</strong><span>{tenantForm.resourceQuota.userLimit}</span></div>{statusBadge("active")}</div>
+                  <div className="todo"><div><strong>存储空间</strong><span>{(tenantForm.resourceQuota.storageMb / 1024).toFixed(1)} GB</span></div>{statusBadge("active")}</div>
                 </div>
               </div>
             </div>

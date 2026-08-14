@@ -10,7 +10,15 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
     const { tenantId } = await requireAdmin(request);
-    return ok(listUsers(tenantId, parsePagination(request)));
+    const url = new URL(request.url);
+    const pagination = parsePagination(request);
+    return ok(
+      listUsers(tenantId, {
+        ...pagination,
+        status: url.searchParams.get("status") || "",
+        roleCode: url.searchParams.get("roleCode") || "",
+      }),
+    );
   } catch (error) {
     return handleRouteError(error);
   }

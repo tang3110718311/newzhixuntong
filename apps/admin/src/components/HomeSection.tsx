@@ -73,6 +73,22 @@ async function apiFetch<T>(path: string): Promise<T> {
   return payload.data;
 }
 
+function downloadJson(filename: string, data: unknown) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function reportDate() {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+}
+
 // 场景 -> 技能标签（用于学员视图"训练轨迹"）
 const SCENE_LABEL: Record<string, string> = {
   scene_complaint: "客户异议处理",
@@ -259,7 +275,7 @@ function DeductionCardCo() {
           <h3>高频失分问题</h3>
           <p className="co-sub">AI 根据组织训练与考试结果归因</p>
         </div>
-        <button type="button" className="co-link inline" style={{ margin: 0 }}>查看全部问题 →</button>
+        <button type="button" className="co-link inline" style={{ margin: 0 }} onClick={() => navigateTo("/?section=statistics-learner")}>查看全部问题 →</button>
       </div>
       {DEDUCTION_TOP3.map((d, i) => (
         <div className="co-error-row" key={d.reason}>
@@ -282,7 +298,7 @@ function DeductionCardDept() {
           <h3>高频失分问题</h3>
           <p className="sub">AI 根据团队训练与考试结果归因</p>
         </div>
-        <a className="dept-link" style={{ margin: 0 }}>查看全部问题 →</a>
+        <button type="button" className="dept-link" style={{ margin: 0 }} onClick={() => navigateTo("/?section=statistics-learner")}>查看全部问题 →</button>
       </div>
       {DEDUCTION_TOP3.map((d, i) => (
         <div className="dept-error-row" key={d.reason}>
@@ -407,6 +423,70 @@ export function HomeSection({ auth, submitting, onRefresh }: HomeProps) {
     ];
   }, [company]);
 
+  function exportReport(scope: "company" | "dept" | "learner") {
+    const exportedAt = new Date().toISOString();
+    if (scope === "company") {
+      downloadJson(`智训通-公司数据看板-${reportDate()}.json`, {
+        scope: "公司数据看板",
+        exportedAt,
+        dimension,
+        overview,
+        metrics: {
+          participationRate: company.participationRate,
+          completionRate: company.completionRate,
+          averageScore: company.avgScore,
+          weakLearnerCount: company.weakCount,
+          trainingHours: company.totalHours,
+        },
+        chain: dimension === "dispatch" ? company.chain : executeChain,
+        trend: company.trend,
+        scoreBands: company.bands,
+        members: company.members,
+        highFrequencyDeductions: DEDUCTION_TOP3,
+      });
+      return;
+    }
+    if (scope === "dept") {
+      downloadJson(`智训通-部门数据看板-${deptName}-${reportDate()}.json`, {
+        scope: "部门数据看板",
+        exportedAt,
+        department: { id: activeDeptId, name: deptName },
+        overview,
+        metrics: {
+          participationRate: dept.participationRate,
+          completionRate: dept.completionRate,
+          averageScore: dept.avgScore,
+          weakLearnerCount: dept.weakCount,
+          trainingHours: dept.totalHours,
+        },
+        chain: dimension === "dispatch" ? dept.chain : executeChain,
+        trend: dept.trend,
+        scoreBands: dept.bands,
+        members: dept.members,
+        highFrequencyDeductions: DEDUCTION_TOP3,
+      });
+      return;
+    }
+    downloadJson(`智训通-学员数据看板-${learner?.name || "未选择学员"}-${reportDate()}.json`, {
+      scope: "学员数据看板",
+      exportedAt,
+      learner: learner || null,
+      overview,
+      metrics: {
+        coverageRate: learnerCoverage,
+        completionRate: learnerCompletion,
+        averageScore: learnerAvg,
+        weakAbilityCount: learnerWeak,
+      },
+      records: learnerRecords,
+      exams: learnerExams,
+      skills: learnerSkills,
+      scoreBands: learnerBands,
+      rank: learnerRank,
+      highFrequencyDeductions: DEDUCTION_TOP3,
+    });
+  }
+
   const chainRows = (items: { label: string; value: number; pct: number }[], rowClass: string, barClass: string) =>
     items.map((it) => (
       <div className={rowClass} key={it.label}>
@@ -492,7 +572,7 @@ export function HomeSection({ auth, submitting, onRefresh }: HomeProps) {
                 <div className="co-actions">
                   <span className="co-select">公司：技服公司　⌄</span>
                   <span className="co-select co-time">近 30 天　⌄</span>
-                  <button className="btn" type="button" onClick={() => alert("看板报表已生成导出文件")}>导出报告</button>
+                  <button className="btn" type="button" onClick={() => exportReport("company")}>导出报告</button>
                 </div>
               </div>
 
@@ -578,7 +658,7 @@ export function HomeSection({ auth, submitting, onRefresh }: HomeProps) {
                     {deptOptions.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                   </select>
                   <span className="dept-select time">近 30 天　⌄</span>
-                  <button className="btn" type="button" onClick={() => alert("看板报表已生成导出文件")}>导出报告</button>
+                  <button className="btn" type="button" onClick={() => exportReport("dept")}>导出报告</button>
                 </div>
               </div>
 
@@ -664,7 +744,7 @@ export function HomeSection({ auth, submitting, onRefresh }: HomeProps) {
                     {learnerOptions.map((l) => <option key={l.id} value={l.id}>姓名：{l.name}</option>)}
                   </select>
                   <span className="learner-select time">近 30 天　⌄</span>
-                  <button className="btn" type="button" onClick={() => alert("看板报表已生成导出文件")}>导出报告</button>
+                  <button className="btn" type="button" onClick={() => exportReport("learner")}>导出报告</button>
                 </div>
               </div>
 

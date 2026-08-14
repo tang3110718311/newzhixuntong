@@ -274,6 +274,8 @@ function applyMigrations() {
   }
   ensureColumn("tasks", "description", "text not null default ''");
   ensureColumn("tasks", "answer_form", "text not null default 'voice'");
+  ensureColumn("posts", "role_code", "text");
+  ensureColumn("posts", "industry_package_id", "text");
   ensureColumn("scenes", "create_mode", "text not null default 'ai_practice'");
   ensureColumn("scene_roles", "language_style", "text not null default ''");
   ensureColumn("exam_attempts", "task_id", "text");

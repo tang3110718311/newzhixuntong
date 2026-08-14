@@ -16,12 +16,22 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId, user } = await getTenantContext(request);
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
     if (id) {
       const detail = getExamDetail(tenantId, id);
       if (!detail) return fail("EXAM_NOT_FOUND", "考试不存在或已删除。", 404);
+      if (user?.roleCode !== "tenant_admin" && user?.roleCode !== "trainer") {
+        return ok({
+          ...detail,
+          questions: detail.questions.map((question) => ({
+            ...question,
+            answer: "",
+            analysis: "",
+          })),
+        });
+      }
       return ok(detail);
     }
     return ok(listExams(tenantId));

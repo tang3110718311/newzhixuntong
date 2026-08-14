@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { dashboardApi, recordApi } from "@/lib/api";
+import { attemptApi, dashboardApi, recordApi, type ExamAttemptRow } from "@/lib/api";
 
 interface AbilityPageProps {
   showToast: (msg: string) => void;
+  onNavigate: (page: "tasks" | "exams") => void;
 }
 
 const DIM_LABELS = ["专业知识", "执行效率", "问题解决", "沟通表达", "学习应用"];
@@ -13,50 +14,34 @@ function clampScore(n: number) {
   return Math.max(0, Math.min(100, Math.round(n)));
 }
 
-export default function AbilityPage({ showToast }: AbilityPageProps) {
+export default function AbilityPage({ showToast, onNavigate }: AbilityPageProps) {
   const [board, setBoard] = useState<any>(null);
   const [records, setRecords] = useState<any[]>([]);
-  const [examRecords, setExamRecords] = useState<any[]>([]);
+  const [examRecords, setExamRecords] = useState<ExamAttemptRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    Promise.all([dashboardApi.learner(), recordApi.list({ pageSize: 100 })])
-      .then(([b, r]) => {
+  function loadData(showSuccess = false) {
+    setLoading(true);
+    Promise.all([dashboardApi.learner(), recordApi.list({ pageSize: 100 }), attemptApi.list()])
+      .then(([b, r, a]) => {
         setBoard(b);
         setRecords((r.items || []).filter((x: any) => x.status === "completed"));
-        // 本地考试记录（key: zxt-exam-records-{user}-{scene}）
-        const local: any[] = [];
-        try {
-          const uid = JSON.parse(localStorage.getItem("zxt-mobile-auth") || "{}")?.user?.id || "user";
-          Object.keys(localStorage).forEach((k) => {
-            if (k.startsWith(`zxt-exam-records-${uid}-`)) {
-              try {
-                const arr = JSON.parse(localStorage.getItem(k) || "[]");
-                if (Array.isArray(arr)) arr.forEach((x) => local.push(x));
-              } catch {
-                /* ignore */
-              }
-            }
-          });
-        } catch {
-          /* ignore */
-        }
-        setExamRecords(local);
+        setExamRecords((a || []).filter((x) => (x.status === "passed" || x.status === "failed") && x.score != null));
+        if (showSuccess) showToast("能力数据已更新");
       })
       .catch(() => showToast("能力数据加载失败"))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const d = useMemo(() => {
     const aiRows = records.filter((r: any) => r.score != null);
     const aiScores = aiRows.map((r: any) => Number(r.score) || 0);
-    const examScores =
-      examRecords.length > 0
-        ? examRecords.map((x: any) => Number(x.score) || 0)
-        : board?.examAverage && board.examAverage > 0
-          ? [Number(board.examAverage) || 0]
-          : [];
+    const examScores = examRecords.map((x) => Number(x.score) || 0);
     const aiAvg = aiScores.length ? Math.round(aiScores.reduce((a, b) => a + b, 0) / aiScores.length) : 0;
     const examAvg = examScores.length ? Math.round(examScores.reduce((a, b) => a + b, 0) / examScores.length) : 0;
 
@@ -134,7 +119,7 @@ export default function AbilityPage({ showToast }: AbilityPageProps) {
           <h1>综合能力</h1>
           <p>汇总 AI 对练报告与考试报告，形成可追踪的成长画像</p>
         </div>
-        <button className="head-action" onClick={() => showToast("能力数据已更新")}>
+        <button className="head-action" onClick={() => loadData(true)} disabled={loading}>
           ↻
         </button>
       </div>
@@ -179,7 +164,7 @@ export default function AbilityPage({ showToast }: AbilityPageProps) {
           <div className="source-track">
             <span style={{ width: `${d.aiAvg || 0}%` }}></span>
           </div>
-          <button type="button" onClick={() => showToast(d.aiRows.length ? "已打开最近对练报告" : "暂无可查看的对练报告")}>
+          <button type="button" onClick={() => d.aiRows.length ? onNavigate("tasks") : showToast("暂无可查看的对练报告")}>
             查看最近对练报告 <i>›</i>
           </button>
         </article>
@@ -195,7 +180,7 @@ export default function AbilityPage({ showToast }: AbilityPageProps) {
           <div className="source-track">
             <span style={{ width: `${d.examAvg || 0}%` }}></span>
           </div>
-          <button type="button" onClick={() => showToast(d.examScores.length ? "已打开最近考试报告" : "暂无可查看的考试报告")}>
+          <button type="button" onClick={() => d.examScores.length ? onNavigate("exams") : showToast("暂无可查看的考试报告")}>
             查看最近考试报告 <i>›</i>
           </button>
         </article>

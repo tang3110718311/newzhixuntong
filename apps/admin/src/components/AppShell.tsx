@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AuthSession } from "@zxt/shared";
 import type { NavItem, ActiveSection } from "./dashboard-shared";
 import {
@@ -139,7 +139,35 @@ export default function AppShell({
   const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>({ statistics: false, sys: false });
   const auth: AuthSession | null = getAuth();
 
-  const navItems = defaultNavItems;
+  // 从后端菜单表加载启停状态：status=disabled 的菜单 code 从导航中隐藏
+  const [disabledMenuCodes, setDisabledMenuCodes] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const token = auth?.token || "";
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    fetch(`${API_BASE}/menus?pageSize=100`, { headers, cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json?.success && Array.isArray(json.data?.items)) {
+          const disabled = new Set<string>();
+          for (const menu of json.data.items as Array<{ code: string; status: string }>) {
+            if (menu.status === "disabled") disabled.add(menu.code);
+          }
+          setDisabledMenuCodes(disabled);
+        }
+      })
+      .catch(() => { /* 菜单加载失败时保持默认导航 */ });
+  }, [auth?.token]);
+
+  const filterNavItems = (items: NavItem[]): NavItem[] =>
+    items
+      .filter((item) => !disabledMenuCodes.has(item.key))
+      .map((item) =>
+        item.children ? { ...item, children: item.children.filter((child) => !disabledMenuCodes.has(child.key)) } : item,
+      )
+      .filter((item) => !item.children || item.children.length > 0);
+
+  const navItems = filterNavItems(defaultNavItems);
 
   return (
     <div className="shell">

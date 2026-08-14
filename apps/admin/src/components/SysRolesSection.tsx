@@ -50,6 +50,50 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 const emptyForm = { name: "", code: "", permissions: "", status: "enabled", sortOrder: 0 };
 
+// 权限点清单：按模块分组，勾选分配（与 seed 中 roles 权限码保持一致）
+const PERMISSION_GROUPS: Array<{ label: string; items: Array<{ code: string; name: string }> }> = [
+  {
+    label: "基础",
+    items: [
+      { code: "dashboard:view", name: "查看工作台" },
+      { code: "statistics:view", name: "查看统计" },
+      { code: "settings:manage", name: "管理全局配置" },
+    ],
+  },
+  {
+    label: "场景与知识",
+    items: [
+      { code: "scenes:manage", name: "管理场景" },
+      { code: "knowledge:manage", name: "管理知识库" },
+      { code: "knowledge:view", name: "查看知识库" },
+      { code: "materials:manage", name: "管理素材" },
+    ],
+  },
+  {
+    label: "任务与考试",
+    items: [
+      { code: "tasks:manage", name: "管理任务" },
+      { code: "exams:manage", name: "管理考试" },
+      { code: "my-tasks:view", name: "查看我的任务" },
+      { code: "my-exams:view", name: "查看我的考试" },
+      { code: "practice:use", name: "使用对练中心" },
+    ],
+  },
+  {
+    label: "系统与用户",
+    items: [
+      { code: "users:manage", name: "管理用户" },
+      { code: "roles:manage", name: "管理角色" },
+      { code: "menus:manage", name: "管理菜单" },
+      { code: "posts:manage", name: "管理岗位" },
+      { code: "appeals:handle", name: "处理申诉" },
+      { code: "appeals:view", name: "查看申诉" },
+    ],
+  },
+];
+
+const ALL_PERMISSION_CODES = PERMISSION_GROUPS.flatMap((group) => group.items.map((item) => item.code));
+
 export function SysRolesSection() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,6 +173,22 @@ export function SysRolesSection() {
     }
   }
 
+  function togglePermission(code: string) {
+    setForm((prev) => {
+      const current = prev.permissions.split(/[，,\s]+/).map((item) => item.trim()).filter(Boolean);
+      const next = current.includes(code) ? current.filter((item) => item !== code) : [...current, code];
+      return { ...prev, permissions: next.join("，") };
+    });
+  }
+
+  function toggleAllPermissions() {
+    setForm((prev) => {
+      const current = prev.permissions.split(/[，,\s]+/).map((item) => item.trim()).filter(Boolean);
+      const allSelected = ALL_PERMISSION_CODES.every((code) => current.includes(code));
+      return { ...prev, permissions: allSelected ? "" : ALL_PERMISSION_CODES.join("，") };
+    });
+  }
+
   async function handleDelete(role: Role) {
         setError("");
     try {
@@ -184,7 +244,31 @@ export function SysRolesSection() {
             </div>
             <Field label="角色名称"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></Field>
             <Field label="角色编码"><input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} required disabled={!!editing} /></Field>
-            <Field label="权限范围（逗号分隔）"><textarea value={form.permissions} onChange={(e) => setForm({ ...form, permissions: e.target.value })} placeholder="如：dashboard:view, scenes:manage" /></Field>
+            <Field label="权限范围">
+              <div className="perm-panel">
+                <label className="perm-check">
+                  <input type="checkbox" checked={ALL_PERMISSION_CODES.every((code) => form.permissions.split(/[，,\s]+/).map((i) => i.trim()).filter(Boolean).includes(code))} onChange={toggleAllPermissions} />
+                  <strong>全选/全不选</strong>
+                </label>
+                {PERMISSION_GROUPS.map((group) => (
+                  <div className="perm-group" key={group.label}>
+                    <div className="perm-group-title">{group.label}</div>
+                    <div className="perm-grid">
+                      {group.items.map((item) => {
+                        const selected = form.permissions.split(/[，,\s]+/).map((i) => i.trim()).filter(Boolean).includes(item.code);
+                        return (
+                          <label className={`perm-check ${selected ? "checked" : ""}`} key={item.code}>
+                            <input type="checkbox" checked={selected} onChange={() => togglePermission(item.code)} />
+                            <span>{item.name}</span>
+                            <small>{item.code}</small>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Field>
             <Field label="状态">
               <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
                 <option value="enabled">启用</option>

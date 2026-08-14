@@ -4,7 +4,7 @@
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { DataTable, Field, statusBadge, type NavItem } from "./dashboard-shared";
+import { DataTable, Field, statusBadge } from "./dashboard-shared";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 
@@ -51,7 +51,15 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 const emptyForm = { name: "", code: "", parentId: "", icon: "", status: "enabled", sortOrder: 0 };
 
-export function SysMenusSection({ navItems }: { navItems: NavItem[] }) {
+// 可选图标清单（lucide 常用图标名，与导航 seed 保持一致）
+const ICON_OPTIONS = [
+  "BarChart3", "Users", "ClipboardList", "FileText", "Bot", "Database",
+  "AlertCircle", "Settings", "ShieldCheck", "Building2", "Briefcase",
+  "Landmark", "Menu", "KeyRound", "Home", "BookOpen", "MessageSquare",
+  "ScrollText", "FolderOpen", "GraduationCap", "Award", "Layers", "Star",
+];
+
+export function SysMenusSection() {
   const [menus, setMenus] = useState<Menu[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -80,8 +88,6 @@ export function SysMenusSection({ navItems }: { navItems: NavItem[] }) {
   const topMenus = menus.filter((menu) => !menu.parentId).sort((a, b) => a.sortOrder - b.sortOrder);
   const childrenOf = (parentId: string) =>
     menus.filter((menu) => menu.parentId === parentId).sort((a, b) => a.sortOrder - b.sortOrder);
-  // 若 API 有数据则渲染 API 菜单；否则回退到 navItems 展示（开发兜底）
-  const hasFallback = menus.length > 0;
 
   function openCreate() {
     setEditing(null);
@@ -148,7 +154,7 @@ export function SysMenusSection({ navItems }: { navItems: NavItem[] }) {
       <div className="card section">
         {loading ? (
           <div className="empty">正在加载菜单数据…</div>
-        ) : hasFallback ? (
+        ) : (
           <DataTable headers={["菜单名称", "层级", "图标", "排序", "状态", "操作"]}>
             {topMenus.map((menu) => (
               <tr key={menu.id}>
@@ -178,30 +184,7 @@ export function SysMenusSection({ navItems }: { navItems: NavItem[] }) {
                 </tr>
               )),
             )}
-          </DataTable>
-        ) : (
-          <DataTable headers={["菜单名称", "层级", "图标", "排序", "状态", "操作"]}>
-            {navItems.filter((item) => !item.children).map((item, index) => (
-              <tr key={item.id}>
-                <td><strong>{item.label}</strong></td>
-                <td>一级菜单</td>
-                <td className="muted-text">—</td>
-                <td>{index + 1}</td>
-                <td>{statusBadge("enabled")}</td>
-                <td><button className="link-btn" type="button">编辑</button></td>
-              </tr>
-            ))}
-            {navItems.filter((item) => item.children).map((item) => item.children!.map((child) => (
-              <tr key={child.id}>
-                <td><strong>{child.label}</strong></td>
-                <td>二级菜单</td>
-                <td className="muted-text">—</td>
-                <td>—</td>
-                <td>{statusBadge("enabled")}</td>
-                <td><button className="link-btn" type="button">编辑</button></td>
-              </tr>
-            )))}
-            {!navItems.length && <tr><td colSpan={6}><div className="empty">暂无菜单，请点击「新增菜单」创建。</div></td></tr>}
+            {!menus.length && <tr><td colSpan={6}><div className="empty">暂无菜单，请点击「新增菜单」创建。</div></td></tr>}
           </DataTable>
         )}
       </div>
@@ -223,7 +206,14 @@ export function SysMenusSection({ navItems }: { navItems: NavItem[] }) {
                 ))}
               </select>
             </Field>
-            <Field label="图标"><input value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value })} placeholder="如：BarChart3" /></Field>
+            <Field label="图标">
+              <select value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value })}>
+                <option value="">无图标</option>
+                {ICON_OPTIONS.map((icon) => (
+                  <option key={icon} value={icon}>{icon}</option>
+                ))}
+              </select>
+            </Field>
             <Field label="状态">
               <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
                 <option value="enabled">启用</option>

@@ -93,6 +93,7 @@ export function issueCaptchaChallenge() {
 
   return {
     captchaId,
+    targetX,
     backgroundImage: issueBackgroundImage(targetX),
     expiresIn,
     pieceSize,

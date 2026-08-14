@@ -3,9 +3,19 @@ import os
 import time
 import sys
 
+def require_env(name):
+    value = os.environ.get(name)
+    if not value:
+        raise SystemExit(f"Missing required environment variable: {name}")
+    return value
+
+host = require_env("DEPLOY_SSH_HOST")
+username = require_env("DEPLOY_ROOT_USER")
+password = require_env("DEPLOY_ROOT_PASSWORD")
+
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect('171.111.198.77', username='root', password=os.environ.get('JIFU_PW', 'Jifu@2024'), timeout=30)
+ssh.connect(host, username=username, password=password, timeout=30)
 cmd = """
 set -e
 cd /data/zxt-next/deploy

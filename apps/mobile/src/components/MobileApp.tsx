@@ -108,7 +108,7 @@ export default function MobileApp({ initialAuthenticated }: MobileAppProps) {
           <ExamsPage showToast={showToast} />
         </section>
         <section id="ability" className={`page ability-page ${page === "ability" ? "active" : ""}`}>
-          <AbilityPage showToast={showToast} />
+          <AbilityPage showToast={showToast} onNavigate={setPage} />
         </section>
         <section id="profile" className={`page ${page === "profile" ? "active" : ""}`}>
           <ProfilePage user={user} onNavigate={setPage} onLogout={handleLogout} showToast={showToast} />

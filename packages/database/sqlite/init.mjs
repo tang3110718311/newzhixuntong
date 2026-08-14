@@ -484,6 +484,8 @@ create table if not exists posts (
   name text not null,
   headcount integer not null default 0,
   status text not null default 'enabled',
+  role_code text,
+  industry_package_id text,
   sort_order integer not null default 0,
   created_at text not null default current_timestamp,
   updated_at text not null default current_timestamp,

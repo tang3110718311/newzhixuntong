@@ -165,6 +165,8 @@ export const updateTenantSettingsSchema = z.object({
     aiTokenLimit: z.coerce.number().int().min(0).max(100000000).default(100000),
     sttSeconds: z.coerce.number().int().min(0).max(100000000).default(3600),
     ttsCharacters: z.coerce.number().int().min(0).max(100000000).default(100000),
+    userLimit: z.coerce.number().int().min(0).max(1000000).default(100),
+    storageMb: z.coerce.number().int().min(0).max(1000000).default(1024),
   }),
 });
 export const createIndustryPackageSchema = z.object({
@@ -182,6 +184,13 @@ export const createOrganizationSchema = z.object({
   parentId: z.string().optional().nullable(),
   sortOrder: z.coerce.number().int().min(0).max(100000).default(0),
 });
+export const updateOrganizationSchema = z.object({
+  name: z.string().min(2).max(80).optional(),
+  code: z.string().min(2).max(40).optional(),
+  type: z.enum(["department", "company", "team", "external"]).optional(),
+  parentId: z.string().optional().nullable(),
+  sortOrder: z.coerce.number().int().min(0).max(100000).optional(),
+});
 export const createUserSchema = z.object({
   name: z.string().min(2).max(40),
   mobile: z.string().min(6).max(30),
@@ -189,6 +198,14 @@ export const createUserSchema = z.object({
   roleCode: z.enum(["tenant_admin", "trainer", "learner"]).default("learner"),
   orgId: z.string().optional().nullable(),
   initialPassword: z.string().min(8).max(128),
+});
+export const updateUserSchema = z.object({
+  name: z.string().min(2).max(40).optional(),
+  mobile: z.string().min(6).max(30).optional(),
+  email: z.string().email().optional().or(z.literal("")),
+  roleCode: z.enum(["tenant_admin", "trainer", "learner"]).optional(),
+  orgId: z.string().optional().nullable(),
+  status: z.enum(["active", "disabled"]).optional(),
 });
 
 export const loginSchema = z.object({
@@ -488,6 +505,8 @@ export const createPostSchema = z.object({
   name: z.string().min(2).max(80),
   headcount: z.coerce.number().int().min(0).max(100000).default(0),
   status: z.enum(["enabled", "disabled"]).default("enabled"),
+  roleCode: z.string().max(40).optional().nullable(),
+  industryPackageId: z.string().max(80).optional().nullable(),
   sortOrder: z.coerce.number().int().min(0).max(100000).default(0),
 });
 
@@ -496,6 +515,8 @@ export const updatePostSchema = z.object({
   name: z.string().min(2).max(80).optional(),
   headcount: z.coerce.number().int().min(0).max(100000).optional(),
   status: z.enum(["enabled", "disabled"]).optional(),
+  roleCode: z.string().max(40).optional().nullable(),
+  industryPackageId: z.string().max(80).optional().nullable(),
   sortOrder: z.coerce.number().int().min(0).max(100000).optional(),
 });
 

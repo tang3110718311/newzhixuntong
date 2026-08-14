@@ -1,6 +1,6 @@
 # zxt-next test deployment
 
-This directory is for the isolated test deployment on `171.111.198.77`.
+This directory is for the isolated test deployment target configured by `DEPLOY_SSH_HOST`.
 
 ## Scope
 
@@ -18,6 +18,16 @@ docker compose --env-file env.test -f docker-compose.test.yml build
 docker compose --env-file env.test -f docker-compose.test.yml up -d zxt-api zxt-admin zxt-mobile
 docker compose --env-file env.test -f docker-compose.test.yml ps
 docker compose --env-file env.test -f docker-compose.test.yml logs --tail=100 zxt-api
+```
+
+Local deploy helper scripts read connection details from environment variables:
+
+```bash
+DEPLOY_SSH_HOST=your-host
+DEPLOY_SSH_USER=deploy-user
+DEPLOY_SSH_KEY_PATH=/path/to/deploy-key
+DEPLOY_ROOT_USER=root-or-admin-user
+DEPLOY_ROOT_PASSWORD=your-secure-password
 ```
 
 ## Notes

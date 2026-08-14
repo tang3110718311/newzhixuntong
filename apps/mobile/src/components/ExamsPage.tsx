@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { examApi, attemptApi, type ExamRow } from "@/lib/api";
+import { examApi, attemptApi, type ExamAttemptRow, type ExamDetail, type ExamQuestionRow, type ExamRow } from "@/lib/api";
 import { statusClass } from "@/lib/types";
 
 interface ExamsPageProps {
@@ -12,45 +12,44 @@ const STATUS_TABS = ["全部", "待参加", "未通过", "已通过"];
 
 export default function ExamsPage({ showToast }: ExamsPageProps) {
   const [exams, setExams] = useState<ExamRow[]>([]);
-  const [attempts, setAttempts] = useState<Record<string, any>>({});
+  const [attempts, setAttempts] = useState<Record<string, ExamAttemptRow>>({});
   const [keyword, setKeyword] = useState("");
   const [statusTab, setStatusTab] = useState("");
   const [loading, setLoading] = useState(true);
-  const [isMock, setIsMock] = useState(false);
+  const [startingId, setStartingId] = useState<string | null>(null);
+  const [taking, setTaking] = useState<{
+    exam: ExamDetail;
+    attemptId: string;
+    answers: Record<string, string>;
+    submitting: boolean;
+  } | null>(null);
+  const [resultView, setResultView] = useState<{ exam: ExamRow | ExamDetail; attempt: ExamAttemptRow } | null>(null);
 
-  useEffect(() => {
+  async function loadData(showSuccess = false) {
+    setLoading(true);
     Promise.all([examApi.list(), attemptApi.list()])
       .then(([e, a]) => {
-        let list = e || [];
-        const map: Record<string, any> = {};
+        const map: Record<string, ExamAttemptRow> = {};
         (a || []).forEach((x: any) => {
-          if (!map[x.examId] || (x.finishedAt && !map[x.examId].finishedAt)) map[x.examId] = x;
+          if (!map[x.examId]) map[x.examId] = x;
         });
-        // 无数据时造示例数据供查看卡片效果（标注"示例"）
-        if (list.length === 0 && Object.keys(map).length === 0) {
-          list = [
-            { id: "mock-e1", name: "客户服务沟通技巧", code: null, bankId: null, description: "在线考试", durationMinutes: 30, passScore: 60, totalScore: 100, questionCount: 3, status: "pending", startAt: null, endAt: null, createdAt: "" },
-            { id: "mock-e2", name: "安全生产基础知识", code: null, bankId: null, description: "阶段考试", durationMinutes: 30, passScore: 60, totalScore: 100, questionCount: 2, status: "pending", startAt: null, endAt: null, createdAt: "" },
-            { id: "mock-e3", name: "新员工入职培训考试", code: null, bankId: null, description: "结业考试", durationMinutes: 30, passScore: 60, totalScore: 100, questionCount: 4, status: "pending", startAt: null, endAt: null, createdAt: "" },
-            { id: "mock-e4", name: "信息安全意识培训", code: null, bankId: null, description: "在线考试", durationMinutes: 30, passScore: 60, totalScore: 100, questionCount: 3, status: "pending", startAt: null, endAt: null, createdAt: "" },
-          ];
-          map["mock-e2"] = { status: "passed", score: 86 };
-          map["mock-e3"] = { status: "failed", score: 58 };
-          map["mock-e4"] = { status: "passed", score: 90 };
-          setIsMock(true);
-        }
-        setExams(list);
+        setExams((e || []).filter((exam) => exam.status === "published"));
         setAttempts(map);
+        if (showSuccess) showToast("考试数据已刷新");
       })
       .catch(() => showToast("考试数据加载失败"))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const examStatus = (e: ExamRow): { text: string; score: string; action: string } => {
     const att = attempts[e.id];
     if (!att) return { text: "待参加", score: "—", action: "开始考试" };
-    if (att.status === "passed") return { text: "已通过", score: `${att.score} 分`, action: "查看解析" };
+    if (att.status === "passed") return { text: "已通过", score: `${att.score} 分`, action: "查看成绩" };
     if (att.status === "failed") return { text: "未通过", score: `${att.score} 分`, action: "重新考试" };
     return { text: "进行中", score: "—", action: "继续考试" };
   };
@@ -72,18 +71,171 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exams, attempts]);
 
-  const startExam = async (e: ExamRow) => {
+  const beginTaking = async (e: ExamRow, existingAttemptId?: string) => {
+    if ((e.questionCount || 0) <= 0) {
+      showToast("该考试还没有题目，请联系管理员配置题库");
+      return;
+    }
+    setStartingId(e.id);
     try {
-      if (isMock) {
-        showToast("示例数据，接入真实考试后可开始考试");
+      const detail = await examApi.detail(e.id);
+      if (!detail.questions?.length) {
+        showToast("该考试还没有题目，请联系管理员配置题库");
         return;
       }
-      await attemptApi.start(e.id);
-      showToast(`开始考试：《${e.name}》`);
+      const attempt = existingAttemptId ? { id: existingAttemptId } : await attemptApi.start(e.id);
+      setResultView(null);
+      setTaking({ exam: detail, attemptId: attempt.id, answers: {}, submitting: false });
     } catch (err: any) {
       showToast(err.message || "开始考试失败");
+    } finally {
+      setStartingId(null);
     }
   };
+
+  const startExam = async (e: ExamRow) => {
+    const att = attempts[e.id];
+    if (att?.status === "passed") {
+      setResultView({ exam: e, attempt: att });
+      return;
+    }
+    const existingAttemptId = att?.status === "in_progress" ? att.id : undefined;
+    await beginTaking(e, existingAttemptId);
+  };
+
+  function toggleAnswer(question: ExamQuestionRow, optionKey: string) {
+    setTaking((prev) => {
+      if (!prev) return prev;
+      const current = prev.answers[question.id] || "";
+      const isMulti = question.type === "multi";
+      const nextValue = isMulti
+        ? current.includes(optionKey)
+          ? current.replace(optionKey, "").split("").sort().join("")
+          : `${current}${optionKey}`.split("").sort().join("")
+        : optionKey;
+      return { ...prev, answers: { ...prev.answers, [question.id]: nextValue } };
+    });
+  }
+
+  async function submitTaking() {
+    if (!taking) return;
+    const unanswered = taking.exam.questions.filter((q) => !taking.answers[q.id]).length;
+    if (unanswered > 0) {
+      showToast(`还有 ${unanswered} 题未作答`);
+      return;
+    }
+    setTaking((prev) => (prev ? { ...prev, submitting: true } : prev));
+    try {
+      const attempt = await attemptApi.submit(
+        taking.attemptId,
+        taking.exam.questions.map((q) => ({ questionId: q.id, answer: taking.answers[q.id] || "" })),
+      );
+      setTaking(null);
+      setResultView({ exam: taking.exam, attempt });
+      await loadData();
+      showToast("考试已提交，成绩已记录");
+    } catch (err: any) {
+      showToast(err.message || "提交考试失败");
+      setTaking((prev) => (prev ? { ...prev, submitting: false } : prev));
+    }
+  }
+
+  if (taking) {
+    const answeredCount = taking.exam.questions.filter((q) => taking.answers[q.id]).length;
+    return (
+      <div className="exam-taking-shell">
+        <div className="task-detail-head">
+          <button className="task-detail-back" type="button" onClick={() => setTaking(null)} aria-label="返回考试列表">
+            ‹
+          </button>
+          <div className="task-detail-title">
+            <h1>{taking.exam.name}</h1>
+            <p>
+              共 {taking.exam.questions.length} 题 · 满分 {taking.exam.totalScore} · 及格 {taking.exam.passScore}
+            </p>
+          </div>
+        </div>
+        <div className="exam-taking-progress">
+          <span>已答 {answeredCount}/{taking.exam.questions.length}</span>
+          <b>{taking.exam.durationMinutes} 分钟</b>
+        </div>
+        <div className="exam-taking-list">
+          {taking.exam.questions.map((question, index) => {
+            const current = taking.answers[question.id] || "";
+            const isMulti = question.type === "multi";
+            return (
+              <article className="exam-taking-card" key={question.id}>
+                <div className="exam-question-head">
+                  <span>
+                    第 {index + 1} 题 · {isMulti ? "多选题" : question.type === "judge" ? "判断题" : "单选题"} · {question.score} 分
+                  </span>
+                  {current ? <em>已作答</em> : <em className="pending">未作答</em>}
+                </div>
+                <h3>{question.stem}</h3>
+                <div className="exam-option-list">
+                  {question.options.map((option, optIndex) => {
+                    const key = String.fromCharCode(65 + optIndex);
+                    const selected = isMulti ? current.includes(key) : current === key;
+                    return (
+                      <label className={`exam-option-row ${selected ? "selected" : ""}`} key={key}>
+                        <input
+                          type={isMulti ? "checkbox" : "radio"}
+                          name={`exam-${question.id}`}
+                          checked={selected}
+                          onChange={() => toggleAnswer(question, key)}
+                        />
+                        <span>
+                          <strong>{key}.</strong> {option}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+        <div className="exam-taking-footer">
+          <button className="secondary" type="button" onClick={() => setTaking(null)} disabled={taking.submitting}>
+            退出
+          </button>
+          <button className="primary" type="button" onClick={submitTaking} disabled={taking.submitting}>
+            {taking.submitting ? "提交中…" : "交卷"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (resultView) {
+    const passed = resultView.attempt.status === "passed";
+    return (
+      <div className="exam-result-view">
+        <div className="task-detail-head">
+          <button className="task-detail-back" type="button" onClick={() => setResultView(null)} aria-label="返回考试列表">
+            ‹
+          </button>
+          <div className="task-detail-title">
+            <h1>考试成绩</h1>
+            <p>{resultView.exam.name}</p>
+          </div>
+        </div>
+        <div className={`exam-result-card ${passed ? "passed" : "failed"}`}>
+          <span>{passed ? "已通过" : "未通过"}</span>
+          <strong>{resultView.attempt.score ?? 0}</strong>
+          <p>满分 {resultView.attempt.totalScore} 分 · {resultView.attempt.finishedAt ? resultView.attempt.finishedAt.slice(0, 16).replace("T", " ") : "刚刚提交"}</p>
+        </div>
+        <div className="exam-result-actions">
+          <button className="secondary" type="button" onClick={() => setResultView(null)}>
+            返回列表
+          </button>
+          <button className="primary" type="button" onClick={() => beginTaking(resultView.exam as ExamRow)}>
+            再考一次
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -92,7 +244,7 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
           <h1>我的考试</h1>
           <p>参加待完成考试，查看历史成绩与解析</p>
         </div>
-        <button className="head-action" onClick={() => showToast("考试数据已刷新")}>
+        <button className="head-action" onClick={() => void loadData(true)} disabled={loading}>
           ↻
         </button>
       </div>
@@ -137,10 +289,7 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
       </div>
       <div className="exam-list" id="examList">
         {loading && <div className="empty">加载中…</div>}
-        {isMock && (
-          <div className="history-mock-tag exam-mock-tag">以下为示例数据，接入真实考试后自动展示</div>
-        )}
-        {!loading && filtered.length === 0 && <div className="empty">暂无相关考试</div>}
+        {!loading && filtered.length === 0 && <div className="empty">暂无真实考试，请联系管理员发布考试</div>}
         {filtered.map((e) => {
           const st = examStatus(e);
           const sc = st.text === "未通过" ? "fail" : st.text === "已通过" ? "pass" : "";
@@ -168,8 +317,8 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
                   <small>{st.text === "待参加" ? "完成后显示成绩" : "本次成绩"}</small>
                   <strong className={sc}>{st.score === "—" ? "待参加" : st.score}</strong>
                 </div>
-                <button className={`exam-btn ${btnCls}`} type="button" onClick={() => startExam(e)}>
-                  {st.action}
+                <button className={`exam-btn ${btnCls}`} type="button" onClick={() => startExam(e)} disabled={startingId === e.id}>
+                  {startingId === e.id ? "加载中…" : st.action}
                   <span>›</span>
                 </button>
               </div>

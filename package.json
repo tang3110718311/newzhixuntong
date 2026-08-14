@@ -15,6 +15,7 @@
     "build:api": "node scripts/build.mjs api",
     "build:admin": "node scripts/build.mjs admin",
     "build:mobile": "node scripts/build.mjs mobile",
+    "smoke:p1:exam": "node scripts/smoke-p1-exam.mjs",
     "lint": "npm --workspaces --if-present run lint",
     "typecheck": "npm --workspaces --if-present run typecheck",
     "db:generate": "prisma generate --schema packages/database/prisma/schema.prisma",

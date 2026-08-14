@@ -84,7 +84,7 @@ export function getToken(): string | null {
 
 export function setAuth(data: LoginResult) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(TOKEN_KEY, JSON.stringify({ expiresAt: data.expiresAt, user: data.user }));
+  localStorage.setItem(TOKEN_KEY, JSON.stringify({ expiresAt: data.expiresAt, token: data.token, user: data.user }));
 }
 
 export function clearAuth() {
@@ -212,9 +212,24 @@ export interface ExamRow {
   createdAt: string;
 }
 
+export interface ExamQuestionRow {
+  id: string;
+  bankId: string | null;
+  type: "single" | "multi" | "judge";
+  stem: string;
+  options: string[];
+  answer?: string;
+  analysis?: string;
+  score: number;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export type ExamDetail = ExamRow & { questions: ExamQuestionRow[] };
+
 export const examApi = {
   list: () => request<ExamRow[]>("/exams"),
-  detail: (id: string) => request<any>(`/exams?id=${id}`),
+  detail: (id: string) => request<ExamDetail>(`/exams?id=${id}`),
 };
 
 // ============ 考试记录 ============
@@ -222,6 +237,8 @@ export interface ExamAttemptRow {
   id: string;
   examId: string;
   examName: string;
+  taskId?: string | null;
+  sceneId?: string | null;
   userId: string | null;
   userName: string | null;
   score: number | null;

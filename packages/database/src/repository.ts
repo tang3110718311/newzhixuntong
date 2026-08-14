@@ -25,6 +25,8 @@ export type TenantSettingsRow = {
     aiTokenLimit: number;
     sttSeconds: number;
     ttsCharacters: number;
+    userLimit: number;
+    storageMb: number;
   };
 };
 
@@ -440,7 +442,7 @@ export function revokeSessionToken(token: string) {
 }
 
 function parseTenantQuota(raw?: string | null) {
-  const fallback = { sceneLimit: 50, aiTokenLimit: 100000, sttSeconds: 3600, ttsCharacters: 100000 };
+  const fallback = { sceneLimit: 50, aiTokenLimit: 100000, sttSeconds: 3600, ttsCharacters: 100000, userLimit: 100, storageMb: 1024 };
   if (!raw) return fallback;
   try {
     const parsed = JSON.parse(raw) as Partial<typeof fallback>;
@@ -473,7 +475,7 @@ export function updateTenantSettings(
     name: string;
     planCode: string;
     expireAt?: string | null;
-    resourceQuota: { sceneLimit: number; aiTokenLimit: number; sttSeconds: number; ttsCharacters: number };
+    resourceQuota: { sceneLimit: number; aiTokenLimit: number; sttSeconds: number; ttsCharacters: number; userLimit: number; storageMb: number };
   },
 ) {
   run(
@@ -650,12 +652,77 @@ export function createOrganization(
   );
   return getOrganization(tenantId, id);
 }
-export function listUsers(tenantId: string, options: { page: number; pageSize: number; keyword?: string; status?: string }) {
+
+export function updateOrganization(
+  tenantId: string,
+  id: string,
+  input: { name?: string; code?: string; type?: string; parentId?: string | null; sortOrder?: number },
+) {
+  const existing = get<OrganizationRow>(
+    `select o.id, o.parent_id as parentId, p.name as parentName, o.code, o.name, o.type, o.sort_order as sortOrder,
+            count(u.id) as userCount, o.created_at as createdAt
+     from organizations o
+     left join organizations p on p.id = o.parent_id and p.tenant_id = o.tenant_id
+     left join users u on u.org_id = o.id and u.tenant_id = o.tenant_id and u.deleted_at is null
+     where o.tenant_id = ? and o.id = ? and o.deleted_at is null
+     group by o.id limit 1`,
+    [tenantId, id],
+  );
+  if (!existing) return undefined;
+  // 校验新的上级组织存在，且不能把自己或自己的后代设为上级（避免成环）
+  const parentId = input.parentId === undefined ? existing.parentId : input.parentId || null;
+  if (parentId && parentId !== id) {
+    const parent = getOrganization(tenantId, parentId);
+    if (!parent) return undefined;
+    let cursor: string | null | undefined = parent.parentId;
+    while (cursor) {
+      if (cursor === id) return undefined;
+      const ancestor = getOrganization(tenantId, cursor);
+      cursor = ancestor?.parentId ?? null;
+    }
+  }
+  run(
+    `update organizations set name = ?, code = ?, type = ?, parent_id = ?, sort_order = ?, updated_at = datetime('now')
+     where tenant_id = ? and id = ?`,
+    [
+      input.name ?? existing.name,
+      input.code ?? existing.code,
+      input.type ?? existing.type,
+      parentId,
+      input.sortOrder ?? existing.sortOrder,
+      tenantId,
+      id,
+    ],
+  );
+  return getOrganization(tenantId, id);
+}
+
+export function deleteOrganization(tenantId: string, id: string): "ok" | "NOT_FOUND" | "HAS_CHILDREN" | "HAS_MEMBERS" {
+  const existing = getOrganization(tenantId, id);
+  if (!existing) return "NOT_FOUND";
+  const children = get<{ count: number }>(
+    `select count(*) as count from organizations where tenant_id = ? and parent_id = ? and deleted_at is null`,
+    [tenantId, id],
+  )?.count ?? 0;
+  if (children > 0) return "HAS_CHILDREN";
+  const members = get<{ count: number }>(
+    `select count(*) as count from users where tenant_id = ? and org_id = ? and deleted_at is null`,
+    [tenantId, id],
+  )?.count ?? 0;
+  if (members > 0) return "HAS_MEMBERS";
+  run(`update organizations set deleted_at = datetime('now'), updated_at = datetime('now') where tenant_id = ? and id = ?`, [tenantId, id]);
+  return "ok";
+}
+export function listUsers(tenantId: string, options: { page: number; pageSize: number; keyword?: string; status?: string; roleCode?: string }) {
   const filters = ["u.tenant_id = ?", "u.deleted_at is null"];
   const params: unknown[] = [tenantId];
   if (options.status) {
     filters.push("u.status = ?");
     params.push(options.status);
+  }
+  if (options.roleCode) {
+    filters.push("u.role_code = ?");
+    params.push(options.roleCode);
   }
   if (options.keyword) {
     filters.push("(u.name like ? or u.mobile like ? or u.role_code like ?)");
@@ -690,6 +757,61 @@ export function createUser(
      where u.tenant_id = ? and u.id = ?`,
     [tenantId, id],
   );
+}
+
+export function updateUser(
+  tenantId: string,
+  id: string,
+  input: { name?: string; mobile?: string; email?: string; roleCode?: string; orgId?: string | null; status?: string },
+) {
+  const existing = get<UserRow>(
+    `select u.id, u.name, u.mobile, u.email, u.role_code as roleCode, u.status, u.org_id as orgId, o.name as orgName
+     from users u
+     left join organizations o on o.id = u.org_id and o.tenant_id = u.tenant_id
+     where u.tenant_id = ? and u.id = ? and u.deleted_at is null limit 1`,
+    [tenantId, id],
+  );
+  if (!existing) return undefined;
+  const orgId = input.orgId === undefined ? existing.orgId : input.orgId || null;
+  run(
+    `update users set name = ?, mobile = ?, email = ?, role_code = ?, org_id = ?, status = ?, updated_at = datetime('now')
+     where tenant_id = ? and id = ?`,
+    [
+      input.name ?? existing.name,
+      input.mobile ?? existing.mobile,
+      input.email === undefined ? existing.email : input.email || null,
+      input.roleCode ?? existing.roleCode,
+      orgId,
+      input.status ?? existing.status,
+      tenantId,
+      id,
+    ],
+  );
+  return get<UserRow>(
+    `select u.id, u.name, u.mobile, u.email, u.role_code as roleCode, u.status, u.org_id as orgId, o.name as orgName
+     from users u
+     left join organizations o on o.id = u.org_id and o.tenant_id = u.tenant_id
+     where u.tenant_id = ? and u.id = ?`,
+    [tenantId, id],
+  );
+}
+
+export function deleteUser(tenantId: string, id: string) {
+  run(`update users set deleted_at = datetime('now'), updated_at = datetime('now') where tenant_id = ? and id = ?`, [tenantId, id]);
+}
+
+export function resetUserPassword(tenantId: string, id: string, newPassword: string) {
+  const existing = get<{ id: string }>(
+    `select id from users where tenant_id = ? and id = ? and deleted_at is null limit 1`,
+    [tenantId, id],
+  );
+  if (!existing) return undefined;
+  run(
+    `update users set password_hash = ?, password_must_change = 1, updated_at = datetime('now')
+     where tenant_id = ? and id = ?`,
+    [hashPassword(newPassword), tenantId, id],
+  );
+  return existing;
 }
 
 export function listIndustryPackages(tenantId: string, options: { page: number; pageSize: number; keyword?: string; status?: string }) {
@@ -1824,7 +1946,7 @@ export type ExamQuestionRow = {
   bankId: string | null;
   type: "single" | "multi" | "judge";
   stem: string;
-  options: string;
+  options: string[];
   answer: string;
   analysis: string;
   score: number;
@@ -1959,21 +2081,33 @@ export function addExamQuestion(tenantId: string, input: {
 }
 
 export function listExamQuestions(tenantId: string, bankId?: string) {
-  return all<ExamQuestionRow>(
+  const rows = all<Omit<ExamQuestionRow, "options"> & { options: string | string[] }>(
     `select id, bank_id as bankId, type, stem, options, answer, analysis, score, sort_order as sortOrder, created_at as createdAt
      from exam_questions
      where tenant_id = ? and deleted_at is null ${bankId ? "and bank_id = ?" : ""}
      order by sort_order asc, created_at asc`,
     bankId ? [tenantId, bankId] : [tenantId],
   );
+  return rows.map(normalizeExamQuestionRow);
 }
 
 function getExamQuestion(tenantId: string, id: string): ExamQuestionRow | undefined {
-  return get<ExamQuestionRow>(
+  const row = get<Omit<ExamQuestionRow, "options"> & { options: string | string[] }>(
     `select id, bank_id as bankId, type, stem, options, answer, analysis, score, sort_order as sortOrder, created_at as createdAt
      from exam_questions where tenant_id = ? and id = ? and deleted_at is null limit 1`,
     [tenantId, id],
   );
+  return row ? normalizeExamQuestionRow(row) : undefined;
+}
+
+function normalizeExamQuestionRow(row: Omit<ExamQuestionRow, "options"> & { options: string | string[] }): ExamQuestionRow {
+  if (Array.isArray(row.options)) return row as ExamQuestionRow;
+  try {
+    const parsed = JSON.parse(row.options || "[]");
+    return { ...row, options: Array.isArray(parsed) ? parsed.map(String) : [] };
+  } catch {
+    return { ...row, options: [] };
+  }
 }
 
 export function updateExamQuestion(tenantId: string, id: string, input: { stem?: string; options?: string[]; answer?: string; analysis?: string; score?: number }) {
@@ -1984,7 +2118,7 @@ export function updateExamQuestion(tenantId: string, id: string, input: { stem?:
      where tenant_id = ? and id = ?`,
     [
       input.stem ?? existing.stem,
-      input.options ? JSON.stringify(input.options) : existing.options,
+      JSON.stringify(input.options ?? existing.options),
       input.answer ?? existing.answer,
       input.analysis ?? existing.analysis,
       input.score ?? existing.score,
@@ -2083,7 +2217,7 @@ export function createExamAttempt(
   input: { examId: string; userId?: string | null; taskId?: string | null; sceneId?: string | null },
 ) {
   const exam = getExam(tenantId, input.examId);
-  if (!exam) return undefined;
+  if (!exam || exam.status !== "published") return undefined;
   const id = createId("att");
   run(
     `insert into exam_attempts (id, tenant_id, exam_id, task_id, scene_id, user_id, total_score, status, started_at, created_at, updated_at)
@@ -2109,7 +2243,7 @@ export function submitExamAttempt(
     `select id, exam_id as examId, status from exam_attempts where ${filters.join(" and ")} limit 1`,
     params,
   );
-  if (!attempt || attempt.status === "completed") return undefined;
+  if (!attempt || attempt.status !== "in_progress") return undefined;
   const exam = getExam(tenantId, attempt.examId);
   if (!exam) return undefined;
   const questions = listExamQuestions(tenantId, exam.bankId ?? undefined);
@@ -2405,6 +2539,10 @@ export type PostRow = {
   name: string;
   headcount: number;
   status: string;
+  roleCode: string | null;
+  roleName: string | null;
+  industryPackageId: string | null;
+  industryPackageName: string | null;
   sortOrder: number;
   createdAt: string;
 };
@@ -2426,9 +2564,13 @@ export function listPosts(tenantId: string, options: { page: number; pageSize: n
     params,
   )?.count ?? 0;
   const items = all<PostRow>(
-    `select p.id, p.org_id as orgId, o.name as orgName, p.name, p.headcount, p.status, p.sort_order as sortOrder, p.created_at as createdAt
+    `select p.id, p.org_id as orgId, o.name as orgName, p.name, p.headcount, p.status,
+            p.role_code as roleCode, r.name as roleName, p.industry_package_id as industryPackageId, ip.name as industryPackageName,
+            p.sort_order as sortOrder, p.created_at as createdAt
      from posts p
      left join organizations o on o.id = p.org_id and o.tenant_id = p.tenant_id
+     left join roles r on r.code = p.role_code and r.tenant_id = p.tenant_id
+     left join industry_packages ip on ip.id = p.industry_package_id and ip.tenant_id = p.tenant_id
      where ${where} order by p.sort_order asc, p.created_at desc limit ? offset ?`,
     [...params, options.pageSize, (options.page - 1) * options.pageSize],
   );
@@ -2437,17 +2579,21 @@ export function listPosts(tenantId: string, options: { page: number; pageSize: n
 
 export function createPost(
   tenantId: string,
-  input: { orgId?: string | null; name: string; headcount?: number; status?: string; sortOrder?: number },
+  input: { orgId?: string | null; name: string; headcount?: number; status?: string; roleCode?: string | null; industryPackageId?: string | null; sortOrder?: number },
 ) {
   const id = createId("post");
   run(
-    `insert into posts (id, tenant_id, org_id, name, headcount, status, sort_order, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-    [id, tenantId, input.orgId ?? null, input.name, input.headcount ?? 0, input.status ?? "enabled", input.sortOrder ?? 0],
+    `insert into posts (id, tenant_id, org_id, name, headcount, status, role_code, industry_package_id, sort_order, created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+    [id, tenantId, input.orgId ?? null, input.name, input.headcount ?? 0, input.status ?? "enabled", input.roleCode ?? null, input.industryPackageId ?? null, input.sortOrder ?? 0],
   );
   return get<PostRow>(
-    `select p.id, p.org_id as orgId, o.name as orgName, p.name, p.headcount, p.status, p.sort_order as sortOrder, p.created_at as createdAt
+    `select p.id, p.org_id as orgId, o.name as orgName, p.name, p.headcount, p.status,
+            p.role_code as roleCode, r.name as roleName, p.industry_package_id as industryPackageId, ip.name as industryPackageName,
+            p.sort_order as sortOrder, p.created_at as createdAt
      from posts p left join organizations o on o.id = p.org_id and o.tenant_id = p.tenant_id
+     left join roles r on r.code = p.role_code and r.tenant_id = p.tenant_id
+     left join industry_packages ip on ip.id = p.industry_package_id and ip.tenant_id = p.tenant_id
      where p.tenant_id = ? and p.id = ?`,
     [tenantId, id],
   );
@@ -2456,30 +2602,37 @@ export function createPost(
 export function updatePost(
   tenantId: string,
   id: string,
-  input: { orgId?: string | null; name?: string; headcount?: number; status?: string; sortOrder?: number },
+  input: { orgId?: string | null; name?: string; headcount?: number; status?: string; roleCode?: string | null; industryPackageId?: string | null; sortOrder?: number },
 ) {
   const existing = get<PostRow>(
-    `select p.id, p.org_id as orgId, o.name as orgName, p.name, p.headcount, p.status, p.sort_order as sortOrder
+    `select p.id, p.org_id as orgId, o.name as orgName, p.name, p.headcount, p.status,
+            p.role_code as roleCode, p.industry_package_id as industryPackageId, p.sort_order as sortOrder
      from posts p left join organizations o on o.id = p.org_id and o.tenant_id = p.tenant_id
      where p.tenant_id = ? and p.id = ? and p.deleted_at is null limit 1`,
     [tenantId, id],
   );
   if (!existing) return undefined;
   run(
-    `update posts set org_id = ?, name = ?, headcount = ?, status = ?, sort_order = ?, updated_at = datetime('now')
+    `update posts set org_id = ?, name = ?, headcount = ?, status = ?, role_code = ?, industry_package_id = ?, sort_order = ?, updated_at = datetime('now')
      where tenant_id = ? and id = ?`,
     [
       input.orgId !== undefined ? input.orgId : existing.orgId,
       input.name ?? existing.name,
       input.headcount ?? existing.headcount,
       input.status ?? existing.status,
+      input.roleCode !== undefined ? input.roleCode : existing.roleCode,
+      input.industryPackageId !== undefined ? input.industryPackageId : existing.industryPackageId,
       input.sortOrder ?? existing.sortOrder,
       tenantId, id,
     ],
   );
   return get<PostRow>(
-    `select p.id, p.org_id as orgId, o.name as orgName, p.name, p.headcount, p.status, p.sort_order as sortOrder, p.created_at as createdAt
+    `select p.id, p.org_id as orgId, o.name as orgName, p.name, p.headcount, p.status,
+            p.role_code as roleCode, r.name as roleName, p.industry_package_id as industryPackageId, ip.name as industryPackageName,
+            p.sort_order as sortOrder, p.created_at as createdAt
      from posts p left join organizations o on o.id = p.org_id and o.tenant_id = p.tenant_id
+     left join roles r on r.code = p.role_code and r.tenant_id = p.tenant_id
+     left join industry_packages ip on ip.id = p.industry_package_id and ip.tenant_id = p.tenant_id
      where p.tenant_id = ? and p.id = ?`,
     [tenantId, id],
   );
