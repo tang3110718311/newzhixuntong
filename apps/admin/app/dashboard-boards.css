@@ -2597,10 +2597,17 @@
   cursor: not-allowed;
   background: #f3f6fa;
   color: #a8b4c3;
+  border-color: #f3f6fa;
 }
 .task-detail-page .task-step-action .btn.gray {
   background: #eef3fb;
   color: #657a96;
+  border-color: #eef3fb;
+}
+.task-detail-page .task-step-action .btn.white {
+  background: #fff;
+  color: #2f74eb;
+  border: 1px solid #2f74eb;
 }
 .task-detail-page .task-next-tip {
   margin-top: 14px;
@@ -2855,3 +2862,125 @@
   .task-detail-page .task-current-head { flex-direction: column; }
   .task-detail-page .task-detail-top { flex-direction: column; }
 }
+
+
+/* ==========================================================================
+   我的考试（原型 zxt-static-pages #exams）—— 严格按原型 CSS 一比一还原
+   ========================================================================== */
+/* ---------- 模块头（原型 .module-head） ---------- */
+.my-exams-mod .module-head {
+  padding: 25px 28px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.my-exams-mod .module-head h1 {
+  margin: 0 0 7px;
+  font-size: 24px;
+}
+.my-exams-mod .module-head p { margin: 0; }
+.my-exams-mod .module-actions { display: flex; gap: 10px; }
+
+/* ---------- 4 统计卡（原型 .summary-grid / .summary-card） ---------- */
+.my-exams-mod .summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.my-exams-mod .summary-card { padding: 18px 20px; }
+.my-exams-mod .summary-card label {
+  display: block;
+  color: #8191a5;
+  font-size: 13px;
+}
+.my-exams-mod .summary-card strong {
+  display: block;
+  font-size: 28px;
+  margin: 9px 0 2px;
+}
+.my-exams-mod .summary-card strong.blue { color: #2f74eb; }
+.my-exams-mod .summary-card small.muted { color: #8191a5; font-size: 13px; }
+
+/* ---------- 筛选区（原型 .module-filter） ---------- */
+.my-exams-mod .module-filter {
+  padding: 15px 20px;
+  margin-bottom: 16px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.my-exams-mod .module-filter .field { flex: 1; }
+.my-exams-mod .field {
+  height: 38px;
+  border: 1px solid #dce6f3;
+  background: #fff;
+  border-radius: 7px;
+  padding: 0 11px;
+  color: #667b96;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  min-width: 0;
+}
+
+/* ---------- 按钮（原型 .btn / .btn.outline） ---------- */
+.my-exams-mod .btn {
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 16px;
+  background: #2f74eb;
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.my-exams-mod .btn:hover { filter: brightness(0.96); }
+.my-exams-mod .btn.outline {
+  background: #fff;
+  color: #48709e;
+  border: 1px solid #dbe5f3;
+}
+
+/* ---------- 考试表格（原型 .data-table） ---------- */
+.my-exams-mod .data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.my-exams-mod .data-table th {
+  height: 46px;
+  background: #f6f9fd;
+  color: #7589a4;
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.my-exams-mod .data-table td {
+  height: 64px;
+  border-top: 1px solid #ebf0f7;
+  color: #526983;
+  white-space: nowrap;
+}
+.my-exams-mod .data-table th:first-child,
+.my-exams-mod .data-table td:first-child { padding-left: 22px; }
+.my-exams-mod .data-table th:last-child,
+.my-exams-mod .data-table td:last-child { padding-right: 22px; }
+.my-exams-mod .data-table td strong { color: #263f60; font-weight: 600; }
+.my-exams-mod .data-table a {
+  color: #3978e9;
+  cursor: pointer;
+  margin-right: 12px;
+}
+
+/* ---------- 状态标签（原型 .tag.orange/.green/.red） ---------- */
+.my-exams-mod .tag {
+  display: inline-block;
+  padding: 4px 9px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+.my-exams-mod .tag.orange { background: #fff3e3; color: #d99636; }
+.my-exams-mod .tag.green { background: #e9f9f1; color: #31a877; }
+.my-exams-mod .tag.red { background: #fff0f0; color: #df5d67; }

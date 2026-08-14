@@ -802,6 +802,16 @@ input, select, textarea { font-family: inherit; }
 .pv-voice-wave{display:inline-flex;align-items:flex-end;gap:2.5px;margin-right:6px;vertical-align:-2px}
 .pv-voice-wave i{display:block;width:3px;border-radius:2px;background:#fff;opacity:.95}
 .pv-voice-wave i:nth-child(1){height:9px}.pv-voice-wave i:nth-child(2){height:16px}.pv-voice-wave i:nth-child(3){height:11px}.pv-voice-wave i:nth-child(4){height:15px}
+/* AI 播报中：气泡下方实时播放进度条 */
+.pv-ai-speaking{display:flex;align-items:center;gap:7px;margin-top:6px;max-width:180px}
+.pv-ai-speaking-bar{flex:1;min-width:0;height:4px;border-radius:4px;background:#e2e8f0;overflow:hidden}
+.pv-ai-speaking-bar i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,#6366f1);transition:width .2s linear}
+.pv-ai-speaking b{flex:none;font-size:10px;font-weight:600;color:#64748b;white-space:nowrap}
+/* 学员录音中：实时录音时长进度条 */
+.pv-rec-progress{display:flex;align-items:center;gap:8px;margin-top:2px}
+.pv-rec-bar{flex:1;min-width:0;height:5px;border-radius:5px;background:#e2e8f0;overflow:hidden}
+.pv-rec-bar i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#3b82f6,#6366f1);transition:width .3s linear}
+.pv-rec-progress b{flex:none;font-size:12px;font-weight:700;color:#2563eb;font-variant-numeric:tabular-nums}
 /* 反馈卡（米黄） */
 .pv-feedback-card{width:100%;box-sizing:border-box;padding:11px 13px;background:#fdf8ec;border:1px solid #f1e2bd;border-radius:12px;box-shadow:0 2px 8px rgba(155,116,48,.06)}
 .pv-feedback-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -825,6 +835,9 @@ input, select, textarea { font-family: inherit; }
 .pv-hint-card em{display:block;margin-top:6px;color:#94a3b8;font-size:11px;font-style:normal}
 .pv-record-btn{display:flex;align-items:center;justify-content:center;gap:8px;height:48px;min-height:48px;border:0;border-radius:14px;background:linear-gradient(90deg,#3b82f6,#6366f1);color:#fff;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 5px 14px rgba(79,104,238,.3)}
 .pv-record-btn:active{opacity:.9}
+/* AI 说话中：录音按钮锁定态 */
+.pv-record-btn:disabled,.pv-record-btn.speaking-lock{background:linear-gradient(90deg,#a5b4c8,#9aa5c0);color:#f1f5f9;cursor:not-allowed;box-shadow:none;opacity:1}
+.pv-record-btn.speaking-lock svg{stroke:#e2e8f0}
 .pv-listening-panel{display:flex;flex-direction:column;gap:10px;padding:13px 14px 12px;background:linear-gradient(180deg,#f8fbff,#fff);border:1px solid #e4edf8;border-radius:14px}
 .pv-listening-top{position:relative;display:flex;align-items:center;justify-content:center;min-height:24px}
 .pv-listening-top b{color:#1e293b;font-size:15px;font-weight:600}

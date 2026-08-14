@@ -7,6 +7,9 @@ import { getPathId, navigateTo } from "@/lib/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
+// 资料学习记录持久化键：存储结构 Record<taskId, Record<场景实例ID, boolean>>
+// 「我的任务」列表据此判断任务状态：任一场景查看过资料 → 继续学习；否则 → 开始学习
+const STUDY_STORAGE_KEY = "zxt-admin-scene-study";
 
 // ---------- 类型 ----------
 
@@ -103,6 +106,26 @@ function emptySceneState(): SceneState {
   return { study: false, practice: false, exam: false };
 }
 
+// ---------- 资料学习记录读写（localStorage 持久化） ----------
+
+function loadStudyMap(): Record<string, Record<string, boolean>> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(STUDY_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, Record<string, boolean>>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveStudyMap(map: Record<string, Record<string, boolean>>) {
+  try {
+    window.localStorage.setItem(STUDY_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // 忽略写入失败（如隐私模式），不影响本次会话内状态
+  }
+}
+
 // ---------- 工具函数 ----------
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -172,6 +195,8 @@ export default function TaskDetailPage() {
   const [selectedSceneIdx, setSelectedSceneIdx] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [recordTab, setRecordTab] = useState<"practice" | "exam">("practice");
+  // 资料学习完成记录：初始为空，由下方 useEffect 在挂载后从 localStorage 恢复
+  // （注意：不能在 useState 初始化函数中引用 taskId——taskId 在下方才声明，会触发 TDZ 报错）
   const [studyDone, setStudyDone] = useState<Record<string, boolean>>({});
 
   const taskId = typeof window !== "undefined" ? getPathId("tasks") : "";
@@ -187,6 +212,8 @@ export default function TaskDetailPage() {
     setSelectedSceneIdx(0);
     setTrainingRecordsByScene({});
     setExamRecordsByScene({});
+    // 任务切换时同步恢复该任务的历史资料学习记录
+    setStudyDone(loadStudyMap()[taskId] || {});
     apiFetch<TaskDetail>(`/tasks/${taskId}`)
       .then((d) => setDetail(d))
       .catch((err) => setError(err instanceof Error ? err.message : "加载任务详情失败"));
@@ -276,7 +303,14 @@ export default function TaskDetailPage() {
   function handleStageAction(stage: SceneLearnStage) {
     if (!currentScene || !detail) return;
     if (stage === "study") {
-      setStudyDone((prev) => ({ ...prev, [currentScene.id]: true }));
+      setStudyDone((prev) => {
+        const next = { ...prev, [currentScene.id]: true };
+        // 持久化到 localStorage，供「我的任务」列表判断任务状态（继续学习/开始学习）
+        const map = loadStudyMap();
+        map[detail.task.id] = next;
+        saveStudyMap(map);
+        return next;
+      });
       setDrawerOpen(true);
       return;
     }
@@ -326,14 +360,14 @@ export default function TaskDetailPage() {
   });
 
   // ---------- 场景学习步骤 ----------
-  // 链式解锁：资料学习始终可用（蓝色）；AI 对练需完成资料学习才解锁；场景考试需完成对练才解锁
+  // 链式解锁：资料学习始终可用（白色按钮）；AI 对练需完成资料学习才解锁；场景考试需完成对练才解锁
   const steps = STAGE_ORDER.map((key) => {
     const isDone = st[key];
     const unlocked =
       key === "study" ? true : key === "practice" ? st.study : st.practice;
     const active = !isDone && unlocked;
     const meta = STAGE_META[key];
-    // 完成后：按钮保持蓝色（默认 btn），文案带"再次"
+    // 完成后：文案带"再次"
     const ctaLabel = isDone
       ? key === "study"
         ? "再次学习"
@@ -352,8 +386,8 @@ export default function TaskDetailPage() {
         </div>
         <div className="task-step-action">
           <button
-            // 未解锁 = 灰色禁用；解锁/已完成 = 蓝色（默认 btn）
-            className={`btn ${unlocked ? "" : "gray"}`}
+            // 资料学习：白色可点击；对练/考试：未解锁 = 灰色禁用，解锁 = 蓝色（默认 btn）
+            className={`btn ${key === "study" ? "white" : ""} ${unlocked ? "" : "gray"}`}
             type="button"
             disabled={!unlocked}
             onClick={() => handleStageAction(key)}
