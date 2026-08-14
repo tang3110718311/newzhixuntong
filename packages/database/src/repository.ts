@@ -1496,14 +1496,18 @@ export function createTrainingRecord(tenantId: string, input: CreateTrainingReco
     }
   }
   const scene = get<{ id: string }>("select id from scenes where tenant_id = ? and id = ? and deleted_at is null limit 1", [tenantId, input.sceneId]);
-  if (!scene) return undefined;
+  if (!scene) {
+    return undefined;
+  }
   if (input.taskId) {
     const task = get<{ id: string }>("select id from tasks where tenant_id = ? and id = ? and deleted_at is null limit 1", [tenantId, input.taskId]);
     if (!task) return undefined;
   }
   if (input.userId) {
     const user = get<{ id: string }>("select id from users where tenant_id = ? and id = ? and deleted_at is null limit 1", [tenantId, input.userId]);
-    if (!user) return undefined;
+    if (!user) {
+      return undefined;
+    }
   }
   const id = createId("record");
   const recordNo = `TR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
@@ -1856,6 +1860,8 @@ export type ExamAttemptRow = {
   id: string;
   examId: string;
   examName: string;
+  taskId: string | null;
+  sceneId: string | null;
   userId: string | null;
   userName: string | null;
   score: number | null;
@@ -2072,14 +2078,17 @@ export function deleteExam(tenantId: string, id: string) {
   run(`update exams set deleted_at = datetime('now'), updated_at = datetime('now') where tenant_id = ? and id = ?`, [tenantId, id]);
 }
 
-export function createExamAttempt(tenantId: string, input: { examId: string; userId?: string | null }) {
+export function createExamAttempt(
+  tenantId: string,
+  input: { examId: string; userId?: string | null; taskId?: string | null; sceneId?: string | null },
+) {
   const exam = getExam(tenantId, input.examId);
   if (!exam) return undefined;
   const id = createId("att");
   run(
-    `insert into exam_attempts (id, tenant_id, exam_id, user_id, total_score, status, started_at, created_at, updated_at)
-     values (?, ?, ?, ?, ?, 'in_progress', datetime('now'), datetime('now'), datetime('now'))`,
-    [id, tenantId, input.examId, input.userId ?? null, exam.totalScore],
+    `insert into exam_attempts (id, tenant_id, exam_id, task_id, scene_id, user_id, total_score, status, started_at, created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, 'in_progress', datetime('now'), datetime('now'), datetime('now'))`,
+    [id, tenantId, input.examId, input.taskId ?? null, input.sceneId ?? null, input.userId ?? null, exam.totalScore],
   );
   return getExamAttemptDetail(tenantId, id);
 }
@@ -2133,21 +2142,33 @@ function normalizeAnswer(a: string) {
   return String(a || "").trim().toUpperCase();
 }
 
-export function listExamAttempts(tenantId: string, options: { examId?: string; userId?: string } = {}) {
+export function listExamAttempts(
+  tenantId: string,
+  options: { examId?: string; taskId?: string; sceneId?: string; userId?: string } = {},
+) {
+  const { examId, taskId, sceneId, userId } = options;
   const filters = ["a.tenant_id = ?", "a.deleted_at is null"];
   const params: unknown[] = [tenantId];
-  if (options.examId) {
+  if (examId) {
     filters.push("a.exam_id = ?");
-    params.push(options.examId);
+    params.push(examId);
   }
-  if (options.userId) {
+  if (taskId) {
+    filters.push("a.task_id = ?");
+    params.push(taskId);
+  }
+  if (sceneId) {
+    filters.push("a.scene_id = ?");
+    params.push(sceneId);
+  }
+  if (userId) {
     filters.push("a.user_id = ?");
-    params.push(options.userId);
+    params.push(userId);
   }
   return all<ExamAttemptRow>(
-    `select a.id, a.exam_id as examId, e.name as examName, a.user_id as userId, u.name as userName,
-            a.score, a.total_score as totalScore, a.status, a.duration_seconds as durationSeconds,
-            a.started_at as startedAt, a.finished_at as finishedAt, a.created_at as createdAt
+    `select a.id, a.exam_id as examId, e.name as examName, a.task_id as taskId, a.scene_id as sceneId,
+            a.user_id as userId, u.name as userName, a.score, a.total_score as totalScore, a.status,
+            a.duration_seconds as durationSeconds, a.started_at as startedAt, a.finished_at as finishedAt, a.created_at as createdAt
      from exam_attempts a
      left join exams e on e.id = a.exam_id and e.tenant_id = a.tenant_id
      left join users u on u.id = a.user_id and u.tenant_id = a.tenant_id
@@ -2159,9 +2180,9 @@ export function listExamAttempts(tenantId: string, options: { examId?: string; u
 
 function getExamAttemptDetail(tenantId: string, attemptId: string): ExamAttemptDetail | undefined {
   const attempt = get<ExamAttemptRow>(
-    `select a.id, a.exam_id as examId, e.name as examName, a.user_id as userId, u.name as userName,
-            a.score, a.total_score as totalScore, a.status, a.duration_seconds as durationSeconds,
-            a.started_at as startedAt, a.finished_at as finishedAt, a.created_at as createdAt
+    `select a.id, a.exam_id as examId, e.name as examName, a.task_id as taskId, a.scene_id as sceneId,
+            a.user_id as userId, u.name as userName, a.score, a.total_score as totalScore, a.status,
+            a.duration_seconds as durationSeconds, a.started_at as startedAt, a.finished_at as finishedAt, a.created_at as createdAt
      from exam_attempts a
      left join exams e on e.id = a.exam_id and e.tenant_id = a.tenant_id
      left join users u on u.id = a.user_id and u.tenant_id = a.tenant_id

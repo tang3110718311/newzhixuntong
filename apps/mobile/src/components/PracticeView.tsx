@@ -79,6 +79,14 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const liveTextRef = useRef("");
   const submittingRef = useRef(false);
   const voiceTextSentRef = useRef(false);
+  // 分段实时转写（Web Speech 不可用时的兜底：每 3s 把新增录音分片送后端 STT）
+  const liveSttTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sttBusyRef = useRef(false);
+  const sttChunkIndexRef = useRef(0);
+  // 录音会话 token：隔离新旧录音，防止旧录音的异步识别结果写入新录音面板
+  const recordTokenRef = useRef(0);
+  // Web Speech 是否已实际产出识别结果：一旦产出即停用后端分段兜底，避免双写冲突
+  const speechActiveRef = useRef(false);
 
   const sceneName = scene?.scene?.name || "场景对练";
   const aiRole = scene?.roles?.find((r: any) => r.roleType === "ai");
@@ -133,6 +141,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         recogRef.current?.stop();
       } catch { /* ignore */ }
       if (silenceTimerRef.current) clearInterval(silenceTimerRef.current);
+      if (liveSttTimerRef.current) clearInterval(liveSttTimerRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
@@ -280,6 +289,10 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       clearInterval(silenceTimerRef.current);
       silenceTimerRef.current = null;
     }
+    if (liveSttTimerRef.current) {
+      clearInterval(liveSttTimerRef.current);
+      liveSttTimerRef.current = null;
+    }
   };
 
   /** 停止录音器与麦克风流 */
@@ -293,13 +306,29 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     }
   };
 
+  /** 获取麦克风流：关闭聆听后设备可能未完全释放，失败时短暂等待重试一次 */
+  const getMicStream = async () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (e) {
+        if (attempt === 0) {
+          await new Promise((r) => setTimeout(r, 500));
+          continue;
+        }
+        throw e;
+      }
+    }
+    throw new Error("无法访问麦克风");
+  };
+
   const startRecording = async () => {
     if (!sceneId || submittingRef.current) return;
     try {
       // 重置上次录音残留的实时识别文字，避免旧缓存显示/静音自动提交误用
       liveTextRef.current = "";
       setLiveText("");
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await getMicStream();
       streamRef.current = stream;
       // MediaRecorder（无实时识别能力时的 STT 回退录音）
       const rec = new MediaRecorder(stream);
@@ -311,6 +340,8 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       rec.onstop = async () => {
         // 已通过实时识别文本直接发送 / 用户取消 → 不再走 STT
         if (voiceTextSentRef.current) return;
+        // 已开启新的录音（再次点击开始录音）→ 忽略旧录音器的 onstop，避免误发旧音频
+        if (mediaRecorderRef.current !== rec) return;
         try {
           const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
           showToast("语音识别中…");
@@ -325,8 +356,49 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
           showToast("语音转写失败");
         }
       };
-      rec.start();
+      // 每 1s 产生录音分片：供分段实时转写增量识别（无 timeslice 时只在 stop 时产出一次分片，
+      // 录音过程中 chunks 为空，无法边说边显示）。
+      rec.start(1000);
       mediaRecorderRef.current = rec;
+      const recToken = ++recordTokenRef.current;
+      speechActiveRef.current = false;
+
+      // 分段实时转写兜底：Web Speech 不可用/无结果时，每 3s 把新增录音分片送后端 STT，
+      // 把识别结果增量显示在聆听面板（边说边显示）。
+      sttChunkIndexRef.current = 0;
+      sttBusyRef.current = false;
+      liveSttTimerRef.current = setInterval(async () => {
+        if (sttBusyRef.current || submittingRef.current) return;
+        // Web Speech 已实际产出识别结果 → 不再走后端兜底，避免双写冲突
+        if (speechActiveRef.current) return;
+        const recNow = mediaRecorderRef.current;
+        if (!recNow || recNow.state !== "recording" || recNow !== rec) return;
+        const chunks = chunksRef.current;
+        if (chunks.length <= sttChunkIndexRef.current) return;
+        sttBusyRef.current = true;
+        try {
+          const sentBefore = sttChunkIndexRef.current;
+          const newChunks = chunks.slice(sentBefore);
+          sttChunkIndexRef.current = chunks.length;
+          // 关键：真实 MediaRecorder 的 webm 分片中只有首个分片含容器头、可独立解码，
+          // 后续分片必须拼接首个分片才能 decodeAudioData。首次发送（从 0 开始）已含头分片，无需重复拼接。
+          const parts = sentBefore === 0 ? newChunks : [chunks[0], ...newChunks];
+          const blob = new Blob(parts, { type: recNow.mimeType || "audio/webm" });
+          const pcmBase64 = await blobToPcmBase64(blob);
+          const stt = await aiApi.stt(pcmBase64, "pcm");
+          // 录音会话已切换（重新开始录音/已关闭）→ 丢弃过期结果
+          if (recordTokenRef.current !== recToken) return;
+          const seg = (stt.text || "").trim();
+          if (seg) {
+            // 每次识别的是"录音开始到当前"的整段音频，直接覆盖显示（文字随录音逐步完整）
+            liveTextRef.current = seg;
+            setLiveText(seg);
+          }
+        } catch {
+          /* 单次分段识别失败跳过，最终整段 STT 兜底 */
+        }
+        sttBusyRef.current = false;
+      }, 3000);
 
       // 音量分析（波形 + 静音自动提交判定）
       const ctx = getAudioCtx();
@@ -372,6 +444,8 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
               else interim += r[0].transcript;
             }
             const combined = (final + interim).trim();
+            // Web Speech 实际产出结果 → 停用后端分段兜底，避免双写冲突
+            if (combined) speechActiveRef.current = true;
             liveTextRef.current = combined;
             setLiveText(combined);
           };

@@ -1,31 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import type { ApiResponse, AuthSession } from "@zxt/shared";
-import {
-  Clock,
-  CalendarDays,
-  Users,
-  PlayCircle,
-  MessageSquare,
-  FileCheck2,
-  AlertCircle,
-  Check,
-  ArrowLeft,
-  X,
-  Phone,
-  Mail,
-  HelpCircle,
-} from "lucide-react";
-import AppShell, { type RightRailData } from "@/components/AppShell";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import type { ApiResponse } from "@zxt/shared";
+import AppShell from "@/components/AppShell";
 import { getPathId, navigateTo } from "@/lib/navigation";
-
-// ---------- 主题色（按原型偏紫蓝） ----------
-const PRIMARY = "#4E63F0";
-const PRIMARY_DARK = "#3a4ed8";
-const PRIMARY_LIGHT = "#eef0ff";
-const PRIMARY_LIGHT2 = "#f5f6ff";
-const ACCENT_GRADIENT = "linear-gradient(90deg,#4E63F0 0%,#6F84FF 100%)";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -94,40 +72,43 @@ type TrainingRecord = {
   createdAt: string;
 };
 
-type SceneLearnStep = "video" | "practice" | "exam";
-type StepStatus = "done" | "current" | "locked";
-
-const STEP_META: Record<
-  SceneLearnStep,
-  { title: string; desc: string; cta: string; Icon: any }
-> = {
-  video: {
-    title: "视频学习",
-    desc: "观看场景相关视频，掌握知识点。",
-    cta: "开始学习",
-    Icon: PlayCircle,
-  },
-  practice: {
-    title: "AI 对练",
-    desc: "与 AI 进行模拟对练训练。",
-    cta: "开始对练",
-    Icon: MessageSquare,
-  },
-  exam: {
-    title: "场景考试",
-    desc: "完成场景相关综合能力测评。",
-    cta: "开始考试",
-    Icon: FileCheck2,
-  },
+type ExamAttempt = {
+  id: string;
+  examId: string;
+  examName: string;
+  taskId: string | null;
+  sceneId: string | null;
+  userId: string | null;
+  userName: string | null;
+  score: number | null;
+  totalScore: number;
+  status: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
 };
 
-const STEP_ORDER: SceneLearnStep[] = ["video", "practice", "exam"];
+type SceneLearnStage = "study" | "practice" | "exam";
+type SceneState = Record<SceneLearnStage, boolean>;
+
+const STAGE_META: Record<SceneLearnStage, { label: string; desc: string; cta: string }> = {
+  study: { label: "资料学习", desc: "查看学习资料，掌握场景要点。", cta: "开始学习" },
+  practice: { label: "AI 对练", desc: "与 AI 进行模拟对话训练。", cta: "开始对练" },
+  exam: { label: "场景考试", desc: "完成场景相关综合能力测评。", cta: "开始考试" },
+};
+
+const STAGE_ORDER: SceneLearnStage[] = ["study", "practice", "exam"];
+
+function emptySceneState(): SceneState {
+  return { study: false, practice: false, exam: false };
+}
 
 // ---------- 工具函数 ----------
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const raw = typeof window !== "undefined" ? window.localStorage.getItem(AUTH_STORAGE_KEY) : null;
-  const token = raw ? (JSON.parse(raw) as { token: string }).token : "";
+  const session = raw ? (JSON.parse(raw) as { token: string; user?: { id: string; name: string } }) : null;
+  const token = session?.token || "";
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     cache: "no-store",
@@ -142,14 +123,15 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return payload.data;
 }
 
-function getAuth(): AuthSession | null {
-  if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
-  if (!raw) return null;
+function currentUserId(): string {
+  if (typeof window === "undefined") return "";
   try {
-    return JSON.parse(raw);
+    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return "";
+    const session = JSON.parse(raw) as { user?: { id?: string } };
+    return session.user?.id || "";
   } catch {
-    return null;
+    return "";
   }
 }
 
@@ -168,288 +150,16 @@ function formatDate(dateStr: string | null | undefined): string {
   }
 }
 
-function diffHours(start?: string | null, end?: string | null): string {
-  if (!start || !end) return "—";
-  try {
-    const ms = new Date(end).getTime() - new Date(start).getTime();
-    if (Number.isNaN(ms) || ms <= 0) return "—";
-    const hours = Math.round(ms / 36e5);
-    if (hours < 24) return `${hours} 小时`;
-    const days = Math.round(hours / 24);
-    return `${days} 天`;
-  } catch {
-    return "—";
-  }
-}
-
-function statusLabel(status: string) {
+function sceneTypeLabel(type: string | null | undefined): string {
   const map: Record<string, string> = {
-    completed: "已完成",
-    draft: "待发布",
-    published: "进行中",
-    overdue: "已逾期",
-    in_progress: "进行中",
-    not_started: "未开始",
+    free_practice: "自由对练",
+    fixed_practice: "固定对练",
+    free_exam: "自由考试",
+    fixed_exam: "固定考试",
+    scenario_training: "场景对练",
+    mixed: "混合模式",
   };
-  return map[status] || status;
-}
-
-// ---------- 右下角悬浮"问"按钮 ----------
-
-function SupportWidget() {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      {open && (
-        <div
-          style={{
-            position: "fixed",
-            right: 28,
-            bottom: 88,
-            width: 280,
-            background: "#fff",
-            borderRadius: 14,
-            boxShadow: "0 12px 40px rgba(15,23,42,.16)",
-            padding: 18,
-            zIndex: 9999,
-            border: "1px solid #e4e7ed",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 12,
-            }}
-          >
-            <strong style={{ fontSize: 14, color: "#172b4d" }}>需要帮助？</strong>
-            <X
-              size={16}
-              color="#8b98aa"
-              onClick={() => setOpen(false)}
-              style={{ cursor: "pointer" }}
-            />
-          </div>
-          <p
-            style={{
-              margin: "0 0 14px",
-              fontSize: 12,
-              color: "#52657f",
-              lineHeight: 1.6,
-            }}
-          >
-            您可以联系平台管理员或客服，获取一对一支持。客服工作日 9:00–18:00 在线。
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <a
-              href="tel:400-000-0000"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 12px",
-                borderRadius: 8,
-                background: PRIMARY_LIGHT2,
-                color: PRIMARY_DARK,
-                fontSize: 13,
-                textDecoration: "none",
-              }}
-            >
-              <Phone size={14} /> 联系客服（400-000-0000）
-            </a>
-            <a
-              href="mailto:support@xingyiwulian.cn"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 12px",
-                borderRadius: 8,
-                background: PRIMARY_LIGHT2,
-                color: PRIMARY_DARK,
-                fontSize: 13,
-                textDecoration: "none",
-              }}
-            >
-              <Mail size={14} /> support@xingyiwulian.cn
-            </a>
-          </div>
-        </div>
-      )}
-      <button
-        type="button"
-        aria-label="帮助"
-        onClick={() => setOpen(!open)}
-        style={{
-          position: "fixed",
-          right: 28,
-          bottom: 28,
-          width: 52,
-          height: 52,
-          borderRadius: "50%",
-          background: ACCENT_GRADIENT,
-          color: "#fff",
-          border: "none",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          boxShadow: "0 10px 28px rgba(78,99,240,.45)",
-          zIndex: 9999,
-          transition: "transform .15s",
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.06)")}
-        onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
-      >
-        {open ? <X size={20} /> : <span style={{ fontSize: 20, fontWeight: 700 }}>问</span>}
-      </button>
-    </>
-  );
-}
-
-// ---------- 组件：信息字段块 ----------
-
-function FieldBlock({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: any;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-      <div
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
-          background: PRIMARY_LIGHT,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
-        <Icon size={16} color={PRIMARY} />
-      </div>
-      <div>
-        <div style={{ color: "#8b98aa", fontSize: 12, marginBottom: 2 }}>{label}</div>
-        <strong style={{ fontSize: 14, color: "#172b4d" }}>{value}</strong>
-      </div>
-    </div>
-  );
-}
-
-// ---------- 组件：步骤列表项（按原型的纵向一行：序号+标题+描述 + 右侧按钮）----------
-
-function StepRow({
-  stepKey,
-  status,
-  onAction,
-  disabled,
-}: {
-  stepKey: SceneLearnStep;
-  status: StepStatus;
-  onAction?: () => void;
-  disabled?: boolean;
-}) {
-  const meta = STEP_META[stepKey];
-  const Icon = meta.Icon;
-  const num = STEP_ORDER.indexOf(stepKey) + 1;
-
-  const rowBg = status === "done" ? "#f7fdf9" : status === "locked" ? "#fafbfc" : "#fff";
-  const rowBorder = status === "done" ? "#bce9d3" : status === "locked" ? "#e4ebf5" : PRIMARY;
-  const titleColor = status === "locked" ? "#a0aab8" : "#172b4d";
-  const descColor = "#8b98aa";
-
-  const numBg =
-    status === "done"
-      ? "#27a66d"
-      : status === "locked"
-        ? "#eef1f5"
-        : PRIMARY_LIGHT;
-  const numColor =
-    status === "done" ? "#fff" : status === "locked" ? "#a0aab8" : PRIMARY;
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 14,
-        padding: "14px 18px",
-        background: rowBg,
-        border: `1px solid ${rowBorder}`,
-        borderRadius: 12,
-        opacity: status === "locked" ? 0.62 : 1,
-        transition: "all .2s",
-      }}
-    >
-      <div
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: "50%",
-          background: numBg,
-          color: numColor,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-          fontSize: 14,
-          fontWeight: 800,
-        }}
-      >
-        {status === "done" ? <Check size={16} /> : num}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            color: titleColor,
-            fontSize: 14,
-            fontWeight: 600,
-            marginBottom: 2,
-          }}
-        >
-          <Icon size={14} />
-          <span>{meta.title}</span>
-        </div>
-        <p style={{ margin: 0, fontSize: 12, color: descColor, lineHeight: 1.5 }}>{meta.desc}</p>
-      </div>
-      <button
-        type="button"
-        disabled={disabled || status === "locked"}
-        onClick={onAction}
-        style={{
-          padding: "8px 22px",
-          borderRadius: 8,
-          fontSize: 13,
-          fontWeight: 600,
-          border: "none",
-          cursor: disabled || status === "locked" ? "not-allowed" : "pointer",
-          background:
-            status === "done"
-              ? "#52c41a"
-              : status === "locked"
-                ? "#d9d9d9"
-                : PRIMARY,
-          color: "#fff",
-          flexShrink: 0,
-          boxShadow:
-            status === "current" ? "0 4px 12px rgba(78,99,240,.25)" : "none",
-          transition: "all .2s",
-        }}
-      >
-        {status === "done" ? "已完成" : meta.cta}
-      </button>
-    </div>
-  );
+  return map[type || ""] || "自由对练";
 }
 
 // ---------- 主组件 ----------
@@ -457,48 +167,101 @@ function StepRow({
 export default function TaskDetailPage() {
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [error, setError] = useState("");
-  const [rightRail, setRightRail] = useState<RightRailData | undefined>(undefined);
-  const [trainingRecords, setTrainingRecords] = useState<TrainingRecord[]>([]);
+  const [trainingRecordsByScene, setTrainingRecordsByScene] = useState<Record<string, TrainingRecord[]>>({});
+  const [examRecordsByScene, setExamRecordsByScene] = useState<Record<string, ExamAttempt[]>>({});
+  const [selectedSceneIdx, setSelectedSceneIdx] = useState(0);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [recordTab, setRecordTab] = useState<"practice" | "exam">("practice");
+  const [studyDone, setStudyDone] = useState<Record<string, boolean>>({});
 
   const taskId = typeof window !== "undefined" ? getPathId("tasks") : "";
-  const currentScene = detail?.scenes?.[0] || null;
+  const scenes = detail?.scenes || [];
+  const currentIdx = scenes.length ? Math.min(selectedSceneIdx, scenes.length - 1) : 0;
+  const currentScene = scenes[currentIdx] || null;
+  const task = detail?.task;
 
   useEffect(() => {
     if (!taskId) return;
     setError("");
+    setDetail(null);
+    setSelectedSceneIdx(0);
+    setTrainingRecordsByScene({});
+    setExamRecordsByScene({});
     apiFetch<TaskDetail>(`/tasks/${taskId}`)
       .then((d) => setDetail(d))
       .catch((err) => setError(err instanceof Error ? err.message : "加载任务详情失败"));
-
-    loadRightRailData().then(setRightRail);
   }, [taskId]);
 
   useEffect(() => {
     if (!currentScene || !detail) return;
+    const userId = currentUserId();
+    const sceneId = currentScene.sceneId;
+    const taskQuery = detail.task.id ? `&taskId=${encodeURIComponent(detail.task.id)}` : "";
+    const userQuery = userId ? `&filterUserId=${encodeURIComponent(userId)}` : "";
     apiFetch<{ items: TrainingRecord[] }>(
-      `/training-records?taskId=${detail.task.id}&sceneId=${currentScene.sceneId}&pageSize=50`,
+      `/training-records?sceneId=${encodeURIComponent(sceneId)}${taskQuery}${userQuery}&pageSize=50`,
     )
-      .then((res) => setTrainingRecords(res.items || []))
-      .catch(() => setTrainingRecords([]));
-  }, [currentScene?.id, detail?.task.id]);
+      .then((res) =>
+        setTrainingRecordsByScene((prev) => ({ ...prev, [sceneId]: res.items || [] })),
+      )
+      .catch(() => setTrainingRecordsByScene((prev) => ({ ...prev, [sceneId]: [] })));
+    // 考试记录：按任务+场景+当前用户过滤，仅已完成（passed/failed）视为有效记录
+    apiFetch<ExamAttempt[]>(`/exam-attempts?sceneId=${encodeURIComponent(sceneId)}${taskQuery}${userQuery}`)
+      .then((res) =>
+        setExamRecordsByScene((prev) => ({
+          ...prev,
+          [sceneId]: (res || []).filter((r) => r.status === "passed" || r.status === "failed"),
+        })),
+      )
+      .catch(() => setExamRecordsByScene((prev) => ({ ...prev, [sceneId]: [] })));
+  }, [currentScene?.sceneId, detail?.task.id]);
 
-  // 步骤完成态判断
-  const stepStatusMap = useMemo<Record<SceneLearnStep, StepStatus>>(() => {
-    if (!currentScene) {
-      return { video: "locked", practice: "locked", exam: "locked" };
-    }
-    const passedRecords = trainingRecords.filter(
-      (r) => r.status === "passed" || r.score >= (currentScene.passScore || 60),
-    );
-    const videoDone = passedRecords.length > 0; // 简化：AI 对练通过即视为"学完理论知识模块"
-    const practiceDone = currentScene.completedTrainCount >= currentScene.requiredTrainTimes;
-    const examDone = false; // 当前没有考试记录
-    return {
-      video: videoDone ? "done" : "current",
-      practice: practiceDone ? "done" : videoDone ? "current" : "locked",
-      exam: examDone ? "done" : practiceDone ? "current" : "locked",
+  // 抽屉打开时锁定页面滚动
+  useEffect(() => {
+    document.body.style.overflow = drawerOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
     };
-  }, [currentScene, trainingRecords]);
+  }, [drawerOpen]);
+
+  // 各场景学习状态（study 本地记录 / practice 对练记录 / exam 考试记录）
+  const sceneStates = useMemo<Record<string, SceneState>>(() => {
+    const map: Record<string, SceneState> = {};
+    scenes.forEach((sc) => {
+      const sceneRecords = trainingRecordsByScene[sc.sceneId] || [];
+      const completedRecords = sceneRecords.filter(
+        (r) => r.status === "completed" && r.score >= (sc.passScore || 60),
+      );
+      map[sc.id] = {
+        study: !!studyDone[sc.id],
+        practice:
+          (sc.completedTrainCount ?? 0) >= sc.requiredTrainTimes || completedRecords.length > 0,
+        // 该场景存在已完成考试记录（按任务+场景+当前用户过滤）即视为考试完成
+        exam: (examRecordsByScene[sc.sceneId] || []).length > 0,
+      };
+    });
+    return map;
+  }, [scenes, trainingRecordsByScene, studyDone, examRecordsByScene]);
+
+  const totalSteps = scenes.length * 3;
+  const doneSteps = scenes.reduce(
+    (n, sc) => n + STAGE_ORDER.filter((k) => sceneStates[sc.id]?.[k]).length,
+    0,
+  );
+  const percent = totalSteps ? Math.round((doneSteps / totalSteps) * 100) : 0;
+  const completedScenes = scenes.filter((sc) => sceneStates[sc.id]?.exam).length;
+  const flowComplete =
+    scenes.length > 0 && scenes.every((sc) => STAGE_ORDER.every((k) => sceneStates[sc.id]?.[k]));
+
+  const st = currentScene ? sceneStates[currentScene.id] || emptySceneState() : emptySceneState();
+
+  const sceneName = currentScene?.sceneName || "当前场景";
+  const intro = currentScene?.sceneName
+    ? `围绕“${sceneName}”完成情境学习，理解背景、流程和关键要求。`
+    : "围绕当前业务场景完成情境学习，理解背景、流程和关键要求。";
+  const goal = "结合场景信息完成有效沟通，准确回应诉求并推动事项闭环。";
+  const aiRole = "场景沟通对象";
+  const studentRole = "负责沟通与问题处理的培训学员";
 
   function startPractice() {
     if (!currentScene?.sceneId || !detail) return;
@@ -509,422 +272,356 @@ export default function TaskDetailPage() {
     navigateTo(`/practice?${params.toString()}`);
   }
 
-  function startVideo() {
-    if (!currentScene?.sceneId || !detail) return;
+  function handleStageAction(stage: SceneLearnStage) {
+    if (!currentScene || !detail) return;
+    if (stage === "study") {
+      setStudyDone((prev) => ({ ...prev, [currentScene.id]: true }));
+      setDrawerOpen(true);
+      return;
+    }
+    if (stage === "practice") {
+      startPractice();
+      return;
+    }
+    // exam：场景考试在管理端无独立答题路由，跳转"我的考试"列表并携带任务/场景上下文
     const params = new URLSearchParams({
-      sceneId: currentScene.sceneId,
+      section: "my-exams",
       taskId: detail.task.id,
+      sceneId: currentScene.sceneId,
     });
-    navigateTo(`/practice?${params.toString()}&mode=intro`);
+    navigateTo(`/?${params.toString()}`);
   }
 
-  function startExam() {
-    if (!currentScene?.sceneId || !detail) return;
-    navigateTo(`/scenes/${currentScene.sceneId}/exam`);
-  }
+  // ---------- 场景进度轨道 ----------
+  const sceneRail = scenes.map((sc, i) => {
+    const scSt = sceneStates[sc.id] || emptySceneState();
+    const complete = scSt.exam;
+    const current = i === currentIdx;
+    const cls = [
+      current ? "current" : "",
+      complete ? "done" : "",
+      complete && scenes.length === 1 ? "single-complete" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const statusText = complete ? "已完成" : current ? "进行中" : "待开始";
+    return (
+      <Fragment key={sc.id}>
+        <button
+          className={`task-scene-tab ${cls}`}
+          type="button"
+          onClick={() => setSelectedSceneIdx(i)}
+        >
+          <span className="task-scene-tab-status">{statusText}</span>
+          <div className="task-scene-tab-head">
+            <span className="task-scene-tab-number">{i + 1}</span>
+            <h3>{sc.sceneName || "场景"}</h3>
+          </div>
+          <p>{intro}</p>
+        </button>
+        {i < scenes.length - 1 && <span className="task-scene-arrow">›</span>}
+      </Fragment>
+    );
+  });
 
-  if (!detail) {
+  // ---------- 场景学习步骤 ----------
+  const steps = STAGE_ORDER.map((key) => {
+    const isDone = st[key];
+    // 场景内顺序：资料学习/对练可直接开始，考试需先完成对练
+    const unlocked = key === "exam" ? st.practice : true;
+    const active = !isDone && unlocked;
+    const meta = STAGE_META[key];
+    // 完成后：按钮变蓝（默认 btn），对练/考试文案带"再次"
+    const ctaLabel = isDone
+      ? key === "practice"
+        ? "再次对练"
+        : key === "exam"
+          ? "再次考试"
+          : meta.cta
+      : meta.cta;
+    return (
+      <div className={`task-step-row ${isDone ? "done" : active ? "active" : ""}`} key={key}>
+        <span className="task-step-index">
+          {isDone ? "✓" : key === "study" ? "1" : key === "practice" ? "2" : "3"}
+        </span>
+        <div className="task-step-content">
+          <b>{meta.label}</b>
+          <span>{meta.desc}</span>
+        </div>
+        <div className="task-step-action">
+          <button
+            className={`btn ${isDone ? "" : "gray"}`}
+            type="button"
+            disabled={!unlocked}
+            onClick={() => handleStageAction(key)}
+          >
+            {ctaLabel}
+          </button>
+        </div>
+      </div>
+    );
+  });
+
+  // ---------- 场景学习记录 ----------
+  // 对练记录：仅显示当前场景已完成的记录（对练完成后才生成记录报告）
+  const practiceRecords = (trainingRecordsByScene[currentScene?.sceneId || ""] || []).filter(
+    (r) => r.status === "completed",
+  );
+  // 考试记录：当前场景的已完成考试记录
+  const examRecordList = examRecordsByScene[currentScene?.sceneId || ""] || [];
+  const recordList =
+    recordTab === "practice" ? (
+      practiceRecords.length ? (
+        practiceRecords.slice(0, 8).map((r) => (
+          <div className="task-record-row" key={r.id}>
+            <strong>{formatDate(r.createdAt)}</strong>
+            <span>{r.score}分</span>
+            <a onClick={startPractice}>查看报告 ›</a>
+          </div>
+        ))
+      ) : (
+        <div className="task-record-empty">完成 AI 对练后显示对练记录</div>
+      )
+    ) : examRecordList.length ? (
+      examRecordList.slice(0, 8).map((r) => (
+        <div className="task-record-row" key={r.id}>
+          <strong>{formatDate(r.finishedAt || r.createdAt)}</strong>
+          <span>{r.score ?? 0}分</span>
+          <a onClick={() => navigateTo("/?section=my-exams")}>查看报告 ›</a>
+        </div>
+      ))
+    ) : (
+      <div className="task-record-empty">完成场景考试后显示考试记录</div>
+    );
+
+  if (!detail || !task) {
     return (
       <AppShell
         activeNavKey="my-tasks"
-        onNavClick={(key: string) => {
-          navigateTo("/?section=" + key);
-        }}
-        rightRail={rightRail}
+        onNavClick={(key: string) => navigateTo("/?section=" + key)}
         breadcrumb={{ label: "我的任务", childLabel: "任务详情" }}
       >
         {error && <div className="notice">{error}</div>}
-        <div className="empty" style={{ padding: 40 }}>
-          加载中...
-        </div>
+        <div className="empty" style={{ padding: 40 }}>加载中...</div>
       </AppShell>
     );
   }
 
-  const task = detail.task;
-  const audience =
-    task.participantCount > 0
-      ? `我 + ${task.creatorOrgName || "服务部"}（${task.participantCount} 人）`
-      : `我 + ${task.creatorOrgName || "服务部"}`;
-  const estimated = diffHours(task.startAt, task.endAt);
-
   return (
     <AppShell
       activeNavKey="my-tasks"
-      onNavClick={(key: string) => {
-        navigateTo("/?section=" + key);
-      }}
-      rightRail={rightRail}
+      onNavClick={(key: string) => navigateTo("/?section=" + key)}
       breadcrumb={{ label: "我的任务", childLabel: "任务详情" }}
     >
-      {error && <div className="notice">{error}</div>}
+      <div className="task-detail-page">
+        {error && <div className="notice">{error}</div>}
 
-      {/* ===== 1. 顶部标题区（按原型：标题 + 徽章 + 右侧"返回培训任务"按钮）===== */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 18,
-          flexWrap: "wrap",
-          gap: 12,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 20,
-              color: "#172b4d",
-              fontWeight: 700,
-            }}
-          >
-            {task.name}
-          </h1>
-          <span
-            style={{
-              padding: "2px 10px",
-              borderRadius: 4,
-              fontSize: 12,
-              fontWeight: 500,
-              background: PRIMARY_LIGHT,
-              color: PRIMARY,
-            }}
-          >
-            {statusLabel(task.status)}
-          </span>
+        {/* 顶部标题（原型 .task-detail-top / .task-detail-title） */}
+        <div className="task-detail-top">
+          <div className="task-detail-title">
+            <h1>
+              任务详情{" "}
+              <span className={`tag ${flowComplete ? "green" : "blue"}`}>
+                {flowComplete ? "已完成" : "进行中"}
+              </span>
+            </h1>
+            <p>任务编号：{task.code || task.id}</p>
+          </div>
+          <button className="btn outline" type="button" onClick={() => navigateTo("/?section=my-tasks")}>
+            返回我的任务
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => navigateTo("/?section=my-tasks")}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "7px 16px",
-            borderRadius: 6,
-            fontSize: 13,
-            border: "1px solid #d9d9d9",
-            background: "#fff",
-            color: "#52657f",
-            cursor: "pointer",
-          }}
-        >
-          <ArrowLeft size={14} />
-          返回培训任务
-        </button>
-      </div>
 
-      {/* ===== 2. 任务摘要（按原型：3 字段 = 截止时间 / 预计时长 / 适用人群 + 5px 主色左边条）===== */}
-      <div
-        style={{
-          padding: "22px 26px",
-          background: "#fff",
-          borderRadius: 12,
-          borderLeft: `5px solid ${PRIMARY}`,
-          boxShadow: "0 5px 16px rgba(65,94,156,.04)",
-          marginBottom: 16,
-        }}
-      >
-        <h3
-          style={{
-            margin: "0 0 8px",
-            fontSize: 15,
-            color: "#172b4d",
-            fontWeight: 600,
-          }}
-        >
-          任务描述
-        </h3>
-        <p
-          style={{
-            color: "#52657f",
-            lineHeight: 1.7,
-            marginBottom: 16,
-            fontSize: 14,
-            maxWidth: 920,
-          }}
-        >
-          {task.description || "完成场景学习、对练与考试。"}
-        </p>
-        <div style={{ display: "flex", gap: 48, flexWrap: "wrap" }}>
-          <FieldBlock icon={Clock} label="截止时间" value={formatDate(task.endAt)} />
-          <FieldBlock icon={CalendarDays} label="预计时长" value={estimated} />
-          <FieldBlock icon={Users} label="适用人群" value={audience} />
-        </div>
-      </div>
-
-      {/* ===== 3. 蓝色步骤横条（按原型："✓ 学完理论知识模块"） ===== */}
-      {/* 容器用 flex-wrap，每个 step 条 width:fit-content 单场景不再占满整行 */}
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 12,
-          marginBottom: 16,
-        }}
-      >
-        <div
-          style={{
-            background: ACCENT_GRADIENT,
-            color: "#fff",
-            borderRadius: 12,
-            padding: "14px 22px",
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            width: "fit-content",
-            maxWidth: "100%",
-            boxShadow: "0 6px 18px rgba(78,99,240,.25)",
-          }}
-        >
-          <span
-            style={{
-              width: 26,
-              height: 26,
-              borderRadius: "50%",
-              background: "rgba(255,255,255,.22)",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <Check size={15} />
-          </span>
-          <strong style={{ fontSize: 14 }}>学完理论知识模块</strong>
-          <span
-            style={{
-              marginLeft: 8,
-              fontSize: 12,
-              padding: "2px 10px",
-              borderRadius: 999,
-              background: "rgba(255,255,255,.18)",
-              color: "#fff",
-            }}
-          >
-            基础知识
-          </span>
-        </div>
-      </div>
-
-      {/* ===== 4. 客户场景应对对练大卡 ===== */}
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 12,
-          padding: 20,
-          boxShadow: "0 5px 16px rgba(65,94,156,.04)",
-        }}
-      >
-        <h2
-          style={{
-            margin: "0 0 16px",
-            fontSize: 16,
-            color: "#172b4d",
-            fontWeight: 600,
-          }}
-        >
-          客户场景应对对练
-        </h2>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-          {/* 左：场景学习（纵向列表） */}
-          <div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                gap: 8,
-                marginBottom: 14,
-              }}
-            >
-              <h3 style={{ margin: 0, fontSize: 14, color: "#172b4d", fontWeight: 600 }}>
-                场景学习
-              </h3>
-              <span style={{ fontSize: 12, color: "#8b98aa" }}>
-                {currentScene?.sceneName || "—"}
+        {/* 任务摘要（原型 .task-summary-card） */}
+        <div className="task-summary-card card">
+          <h3>任务描述</h3>
+          <p>{task.description || "完成各场景学习、对练与考试，按顺序推进任务进度。"}</p>
+          <div className="task-summary-meta">
+            <div>
+              <i>◷</i>
+              <span>
+                <small>截止时间</small>
+                <strong>{formatDate(task.endAt)}</strong>
               </span>
             </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {STEP_ORDER.map((stepKey) => (
-                <StepRow
-                  key={stepKey}
-                  stepKey={stepKey}
-                  status={stepStatusMap[stepKey]}
-                  onAction={() => {
-                    if (stepKey === "video") startVideo();
-                    else if (stepKey === "practice") startPractice();
-                    else startExam();
-                  }}
-                  disabled={!currentScene?.sceneId}
-                />
-              ))}
+            <div>
+              <i>◉</i>
+              <span>
+                <small>整体进度</small>
+                <strong>
+                  {percent}%（{completedScenes}/{scenes.length} 场景）
+                </strong>
+              </span>
             </div>
-
-            <div
-              style={{
-                marginTop: 14,
-                padding: "10px 14px",
-                background: "#fff7e6",
-                color: "#ad6800",
-                borderRadius: 8,
-                fontSize: 12,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <AlertCircle size={14} />
-              本场景要求先完成视频学习，再开展 AI 对练；通过 AI 对练后解锁场景考试。
+            <div>
+              <i>▣</i>
+              <span>
+                <small>发布部门</small>
+                <strong>{task.creatorOrgName || "培训管理部"}</strong>
+              </span>
             </div>
           </div>
+          <div className="task-progress">
+            <i style={{ width: `${percent}%` }} />
+          </div>
+        </div>
 
-          {/* 右：场景学习记录 */}
-          <div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                gap: 8,
-                marginBottom: 14,
-              }}
-            >
-              <h3 style={{ margin: 0, fontSize: 14, color: "#172b4d", fontWeight: 600 }}>
-                场景学习记录
-              </h3>
-              <span style={{ fontSize: 12, color: "#8b98aa" }}>
-                {currentScene?.sceneName || "—"}
-              </span>
+        {/* 场景学习标题 */}
+        <div className="task-detail-section-title">
+          <h2>场景学习</h2>
+          <span>点击场景可自由选择学习，按流程完成各环节</span>
+        </div>
+
+        {/* 场景进度轨道 */}
+        <div className="task-scene-rail">{sceneRail}</div>
+
+        {/* 当前场景卡 */}
+        {currentScene && (
+          <div className="task-current-card card">
+            <div className="task-current-head">
+              <div>
+                <h3>{currentScene.sceneName || "场景"}</h3>
+                <p>{intro}</p>
+              </div>
+              <div className="task-current-meta">
+                <span>
+                  合格标准<b>≥{currentScene.passScore || 60}%</b>
+                </span>
+                <span>
+                  任务类型<b>{sceneTypeLabel(currentScene.sceneType)}</b>
+                </span>
+                <span>
+                  回答形式<b>{currentScene.mode === "text" ? "文本输入" : "语音输入"}</b>
+                </span>
+              </div>
             </div>
 
-            {trainingRecords.length > 0 ? (
-              <div style={{ display: "grid", gap: 10 }}>
-                {trainingRecords.slice(0, 6).map((rec) => {
-                  const passed =
-                    rec.status === "passed" ||
-                    rec.score >= (currentScene?.passScore || 60);
-                  return (
-                    <div
-                      key={rec.id}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        padding: "12px 16px",
-                        borderRadius: 8,
-                        border: "1px solid #e4e7ed",
-                        background: "#fff",
-                      }}
+            {/* 场景信息（紧凑单行：场景号 + 4 个要点） */}
+            <section className="task-scene-info">
+              <span className="task-scene-info-badge">
+                场景 {String(currentIdx + 1).padStart(2, "0")}
+              </span>
+              <div className="task-info-block">
+                <label>场景介绍</label>
+                <p title={intro}>{intro}</p>
+              </div>
+              <div className="task-info-block">
+                <label>对话目标</label>
+                <p title={goal}>{goal}</p>
+              </div>
+              <div className="task-info-block">
+                <label>AI 身份</label>
+                <p title={aiRole}>{aiRole}</p>
+              </div>
+              <div className="task-info-block">
+                <label>学员身份</label>
+                <p title={studentRole}>{studentRole}</p>
+              </div>
+            </section>
+
+            {/* 双列：场景学习 + 场景学习记录 */}
+            <div className="task-current-grid">
+              <div>
+                <h3 className="task-column-title">场景学习</h3>
+                <p className="task-column-sub">{currentScene.sceneName || "—"}</p>
+                <div className="task-step-panel">
+                  {steps}
+                  <div className={`task-next-tip ${st.exam ? "done" : ""}`}>
+                    {st.exam
+                      ? "当前场景已完成，可选择下一个场景。"
+                      : st.practice
+                        ? "完成 AI 对练后，解锁场景考试。"
+                        : "资料学习和 AI 对练均可直接开始，完成 AI 对练后解锁场景考试。"}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="task-column-title">场景学习记录</h3>
+                <p className="task-column-sub">{currentScene.sceneName || "—"}</p>
+                <div className="task-record-panel">
+                  <div className="task-record-tabs">
+                    <span
+                      className={recordTab === "practice" ? "active" : ""}
+                      onClick={() => setRecordTab("practice")}
                     >
-                      <div>
-                        <strong style={{ fontSize: 13, color: "#172b4d" }}>
-                          对练 #{rec.id.slice(-4)}
-                        </strong>
-                        <div style={{ fontSize: 11, color: "#8b98aa", marginTop: 2 }}>
-                          {formatDate(rec.createdAt)}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span
-                          style={{
-                            fontSize: 14,
-                            fontWeight: 700,
-                            color: passed ? "#52c41a" : "#f5222d",
-                          }}
-                        >
-                          {rec.score} 分
-                        </span>
-                        <span
-                          style={{
-                            padding: "3px 10px",
-                            borderRadius: 999,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            background: passed ? "#f6ffed" : "#fff1f0",
-                            color: passed ? "#52c41a" : "#f5222d",
-                          }}
-                        >
-                          {passed ? "合格" : "不合格"}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+                      对练记录
+                    </span>
+                    <span
+                      className={recordTab === "exam" ? "active" : ""}
+                      onClick={() => setRecordTab("exam")}
+                    >
+                      考试记录
+                    </span>
+                  </div>
+                  <div className="task-record-list">{recordList}</div>
+                </div>
               </div>
-            ) : (
-              <div
-                style={{
-                  padding: "48px 16px",
-                  textAlign: "center",
-                  color: "#8b98aa",
-                  fontSize: 13,
-                  background: "#fafbfc",
-                  borderRadius: 8,
-                  border: "1px dashed #e4e7ed",
-                }}
-              >
-                <HelpCircle
-                  size={28}
-                  color="#cbd5e1"
-                  style={{ display: "block", margin: "0 auto 8px" }}
-                />
-                暂无对练记录
+            </div>
+          </div>
+        )}
+
+        {/* 学习资料预览抽屉（原型 #file-preview drawer-shell） */}
+        <div
+          className={`file-preview-page drawer-shell ${drawerOpen ? "drawer-open" : ""}`}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDrawerOpen(false);
+          }}
+        >
+          <div className="file-preview-top">
+            <div className="file-preview-title">
+              <h1>{task.name} · 学习资料预览</h1>
+              <p>任务详情 / {sceneName} / 学习资料</p>
+            </div>
+            <button className="btn outline" type="button" onClick={() => setDrawerOpen(false)}>
+              返回任务详情
+            </button>
+          </div>
+          <div className="file-preview-card card">
+            <div className="file-preview-head">
+              <div>
+                <h2>{sceneName}</h2>
+                <p>资料预览 · 已自动记录学习进度</p>
               </div>
-            )}
+              <span className="file-type">
+                <i>DOC</i>培训资料
+              </span>
+            </div>
+            <div className="file-preview-body">
+              <article className="file-sheet">
+                <span className="file-sheet-kicker">智训通 · 场景学习资料</span>
+                <h3>{sceneName}</h3>
+                <div className="file-line" />
+                <p>本资料用于帮助学员了解当前训练场景、关键流程和沟通要求，请结合实际工作认真学习。</p>
+                <h4>一、学习目标</h4>
+                <p>了解场景背景与任务要求，掌握处理问题的基本步骤，能够在实际对练中完成有效沟通。</p>
+                <h4>二、场景要点</h4>
+                <p>{intro} 围绕场景要求进行分析，保持专业表达，准确回应问题并推动事项闭环。</p>
+                <h4>三、学习提示</h4>
+                <p>完成资料阅读后，可返回任务详情继续进行 AI 对练；资料支持重复进入查看。</p>
+              </article>
+            </div>
+            <div className="file-preview-foot">
+              <span>学习资料可重复查看</span>
+              <div>
+                <button className="btn outline" type="button" onClick={() => setDrawerOpen(false)}>
+                  返回任务详情
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => {
+                    setDrawerOpen(false);
+                    startPractice();
+                  }}
+                >
+                  进入 AI 对练
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-
-      {/* ===== 5. 底部橙黄色 banner（按原型）===== */}
-      <div
-        style={{
-          marginTop: 16,
-          padding: "12px 18px",
-          background: "#fff7e6",
-          color: "#ad6800",
-          borderRadius: 8,
-          fontSize: 13,
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          border: "1px solid #ffe7ba",
-        }}
-      >
-        <AlertCircle size={16} />
-        实有记录：当前任务未开始学习，请尽快开始
-      </div>
-
-      {/* ===== 6. 右下角悬浮"问"按钮 ===== */}
-      <SupportWidget />
     </AppShell>
   );
-}
-
-// ---------- 右侧面板数据 ----------
-
-async function loadRightRailData(): Promise<RightRailData> {
-  try {
-    const auth = getAuth();
-    return {
-      userName: auth?.user?.name || "管理员",
-      completedRecordCount: 0,
-      practiceRecordCount: 0,
-      examCount: 0,
-      passRate: "0%",
-      pendingAppealCount: 0,
-      tenantName: auth?.user?.tenantName || "智训通本地验证租户",
-    };
-  } catch {
-    return {
-      userName: "管理员",
-      completedRecordCount: 0,
-      practiceRecordCount: 0,
-      examCount: 0,
-      passRate: "0%",
-      pendingAppealCount: 0,
-      tenantName: "智训通本地验证租户",
-    };
-  }
 }
