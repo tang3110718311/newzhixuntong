@@ -6,6 +6,7 @@ const pidFile = resolve(import.meta.dirname, "..", ".logs", "pids.json");
 const PORTS = {
   api: 4000,
   admin: 3000,
+  mobile: 3100,
 };
 
 function findListeningPids(port) {

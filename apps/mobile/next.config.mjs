@@ -17,6 +17,13 @@ function resolveApiBase() {
 const API_BASE = resolveApiBase();
 const VOICE_WS_URL = process.env.NEXT_PUBLIC_VOICE_WS_URL || "wss://zxt.xingyiwulian.cn:8765";
 
+// 本地和局域网测试：移动端同源请求 /api，再由 Next 服务端转发到独立 API 服务。
+// 这样手机访问 192.168.x.x:3100 时，不会把 localhost 解析成手机自身。
+const API_TARGET =
+  process.env.NEXT_PUBLIC_MOBILE_API_BASE_URL?.replace(/\/api\/?$/, "") ||
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/api\/?$/, "") ||
+  "http://localhost:4000";
+
 // CSP connect-src 需要裸 origin（不含路径）。同域相对路径走 'self'。
 function toCspOrigin(value) {
   if (!value || value.startsWith("/")) return "'self'";
@@ -49,6 +56,9 @@ const securityHeaders = [
 const nextConfig = {
   transpilePackages: ["@zxt/shared"],
   basePath,
+  async rewrites() {
+    return [{ source: "/api/:path*", destination: `${API_TARGET}/api/:path*` }];
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

@@ -12,6 +12,7 @@ const nodeBin = process.execPath;
 const PORTS = {
   api: 4000,
   admin: 3000,
+  mobile: 3100,
 };
 const forceRestart = process.argv.includes("--restart") || process.argv.includes("restart");
 
@@ -134,16 +135,20 @@ async function isHttpReady(url) {
 async function currentLocalServices() {
   const apiPids = findListeningPids(PORTS.api);
   const adminPids = findListeningPids(PORTS.admin);
+  const mobilePids = findListeningPids(PORTS.mobile);
   const apiReady = apiPids.length > 0 && await isHttpReady("http://localhost:4000/api/health");
   const adminReady = adminPids.length > 0 && await isHttpReady("http://localhost:3000");
-  if (!apiReady || !adminReady) return null;
+  const mobileReady = mobilePids.length > 0 && await isHttpReady("http://localhost:3100");
+  if (!apiReady || !adminReady || !mobileReady) return null;
   return {
     api: apiPids[0],
     admin: adminPids[0],
+    mobile: mobilePids[0],
     reused: true,
     startedAt: new Date().toISOString(),
     urls: {
       admin: "http://localhost:3000",
+      mobile: "http://localhost:3100",
       api: "http://localhost:4000/api",
     },
   };
@@ -175,20 +180,25 @@ await stopPortListeners();
 
 const api = start("api", "apps/api", 4000);
 const admin = start("admin", "apps/admin", 3000);
+const mobile = start("mobile", "apps/mobile", 3100);
 
 try {
   await waitForHttp("api", "http://localhost:4000/api/health", api);
   await waitForHttp("admin", "http://localhost:3000", admin);
+  await waitForHttp("mobile", "http://localhost:3100", mobile);
   const pids = {
     api: findListeningPids(PORTS.api)[0] || api.pid,
     admin: findListeningPids(PORTS.admin)[0] || admin.pid,
+    mobile: findListeningPids(PORTS.mobile)[0] || mobile.pid,
     spawned: {
       api: api.pid,
       admin: admin.pid,
+      mobile: mobile.pid,
     },
     startedAt: new Date().toISOString(),
     urls: {
       admin: "http://localhost:3000",
+      mobile: "http://localhost:3100",
       api: "http://localhost:4000/api",
     },
   };
@@ -196,7 +206,7 @@ try {
   console.log(JSON.stringify(pids, null, 2));
   process.exit(0);
 } catch (error) {
-  stopChildren([api, admin]);
+  stopChildren([api, admin, mobile]);
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);
 }

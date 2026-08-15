@@ -11,6 +11,8 @@
     "dev:api": "npm --workspace @zxt/api run dev",
     "start:local": "node scripts/start-local.mjs",
     "stop:local": "node scripts/stop-local.mjs",
+    "start:mobile:https": "node scripts/start-mobile-https.mjs",
+    "setup:mobile:https": "powershell -ExecutionPolicy Bypass -File scripts/setup-mobile-https.ps1",
     "build": "node scripts/build.mjs all",
     "build:api": "node scripts/build.mjs api",
     "build:admin": "node scripts/build.mjs admin",

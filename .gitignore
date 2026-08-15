@@ -3,6 +3,8 @@ node_modules/
 dist/
 coverage/
 .logs/
+.certs/
+apps/mobile/public/zxt-local-root-ca.cer
 .temp/
 __pycache__/
 *.pyc
