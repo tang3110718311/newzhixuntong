@@ -233,6 +233,7 @@ create table if not exists tasks (
   name text not null,
   type text not null,
   description text not null default '',
+  answer_form text not null default 'voice',
   status text not null default 'draft',
   start_at text,
   end_at text,

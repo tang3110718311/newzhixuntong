@@ -188,6 +188,7 @@ type Task = {
   name: string;
   code: string;
   type: string;
+  answerForm?: "voice" | "text" | null;
   status: string;
   startAt?: string | null;
   endAt?: string | null;
@@ -3646,7 +3647,7 @@ export function AdminDashboard() {
                         <div className="taskicon" style={{ background: categoryGradients[idx % 4] }}>{categoryLabels[idx % 4]}</div>
                         <div>
                           <h3>{task.name}</h3>
-                          <p>常规对话　|　语音形式　|　场景数：{task.sceneCount ?? 1}　|　完成进度：{progress}%</p>
+                          <p>常规对话　|　{task.answerForm === "text" ? "文本形式" : "语音形式"}　|　场景数：{task.sceneCount ?? 1}　|　完成进度：{progress}%</p>
                           <div className="meta">
                             <span>任务编号：{task.code || task.id}</span>
                             <span>{isCompleted ? "完成时间" : "截止时间"}：{formatDateTimeFull(task.endAt)}</span>

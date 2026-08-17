@@ -261,6 +261,7 @@ model Task {
   name      String
   type      String
   description String    @default("")
+  answerForm String    @default("voice") @map("answer_form")
   status    String    @default("draft")
   startAt   DateTime? @map("start_at")
   endAt     DateTime? @map("end_at")

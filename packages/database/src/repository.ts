@@ -161,6 +161,7 @@ export type TaskRow = {
   code: string;
   type: string;
   description: string;
+  answerForm?: "voice" | "text" | string | null;
   status: string;
   startAt?: string | null;
   endAt: string | null;
@@ -1372,7 +1373,7 @@ export function listTasks(
   const progressParams = options.assigneeUserId ? [options.assigneeUserId] : [];
   const total = get<{ count: number }>(`select count(*) as count from tasks t where ${where}`, params)?.count ?? 0;
   const items = all<Omit<TaskRow, "progressPercent">>(
-    `select t.id, t.name, t.code, t.type, coalesce(t.description, '') as description, t.status,
+    `select t.id, t.name, t.code, t.type, coalesce(t.description, '') as description, t.answer_form as answerForm, t.status,
             t.start_at as startAt, t.end_at as endAt, t.publish_at as publishAt, t.created_by as createdBy,
             (select max(tr.finished_at) from training_records tr where tr.tenant_id = t.tenant_id and tr.task_id = t.id and tr.status = 'completed' and tr.deleted_at is null${progressUserClause}) as completedAt,
             u.name as creatorName, o.name as creatorOrgName,
@@ -1427,7 +1428,7 @@ export function getTaskDetail(
   const progressUserClause = options.viewerUserId ? " and tr.user_id = ?" : "";
   const progressParams = options.viewerUserId ? [options.viewerUserId] : [];
   const rawTask = get<Omit<TaskRow, "progressPercent">>(
-    `select t.id, t.name, t.code, t.type, coalesce(t.description, '') as description, t.status,
+    `select t.id, t.name, t.code, t.type, coalesce(t.description, '') as description, t.answer_form as answerForm, t.status,
             t.start_at as startAt, t.end_at as endAt, t.publish_at as publishAt, t.created_by as createdBy,
             (select max(tr.finished_at) from training_records tr where tr.tenant_id = t.tenant_id and tr.task_id = t.id and tr.status = 'completed' and tr.deleted_at is null${progressUserClause}) as completedAt,
             u.name as creatorName, o.name as creatorOrgName,
