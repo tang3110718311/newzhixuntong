@@ -9,14 +9,33 @@ AIGC:
   ReservedCode2: '1e2c6910-6f0c-4733-bafa-5e54e28ee083'
 ---
 
-# AGENTS.md — 智训通 zxt-next 项目 AI 协作规则
+# AGENTS.md — 智训通 zxt-next 项目 AI 自动上下文入口
 
-> 本文件是项目内所有 AI 工具（Codex / 星辰智能体 / WorkBuddy / Trae / Claude Code）的统一入口。
-> 打开项目后请先阅读本文件与下方引用的协议文档，再开始工作。
+> 本文件是项目内所有 AI 工具（Codex / 星辰超级智能体 / WorkBuddy / Trae / Claude Code 等）的统一入口。
+> 任何 AI 智能体只要进入本工作目录，必须先读取本文件，再按下面“自动上下文读取顺序”补齐项目背景。
 
 ## 一句话
 
 **动手之前先拷问：每次只问一个问题、每个问题带推荐答案、能从文件查到的事实自己查、宏哥拍板所有决策、确认理解一致前不写代码。**
+
+## 自动上下文读取顺序
+
+任何 AI 在本目录接到“开发 / 部署 / 测试 / 排查 / 总结”任务时，先按顺序读取：
+
+1. `AGENTS.md`：项目铁律、协作方式、通用禁止事项。
+2. `docs/AI协作/00-总控看板.md`：当前主目标、窗口分工、活跃任务。
+3. `docs/AI协作/01-项目当前状态.md`：本地端口、生产域名、语音服务、账号、未提交风险。
+4. `docs/AI协作/tasks/Txxx-*.md`：如果任务能对应到具体 T 任务，必须读取对应任务文件。
+5. 只在需要时读取专题文档：
+   - 原型 / UI：`docs/skills/zxt-prototype-alignment.md`
+   - 沟通确认：`docs/skills/zxt-grill-me-protocol.md`
+   - 部署：`deploy/README.deploy.md`、`docs/AI协作/tasks/T001-生产部署与域名访问.md`
+   - 本地启动：`docs/AI协作/tasks/T002-本地启动脚本防卡住.md`
+   - 移动端语音：`docs/AI协作/tasks/T003-移动端语音文字同步.md`
+   - 移动端考试：`docs/AI协作/tasks/T004-移动端考试流程可用性.md`
+   - 业务巡检：`docs/AI协作/tasks/T005-业务板块真实可用性巡检.md`
+
+如果当前 AI 工具不能自动读取本文件，宏哥只需要说：“先读 AGENTS.md”，后续背景由 AI 自己继续读取，不再让宏哥重复解释。
 
 ## 完整协议
 
@@ -37,7 +56,7 @@ AIGC:
 
 1. 收到需求 → **不要立刻写代码**
 2. 按协议逐项追问（每次 1 个问题，带推荐答案）
-3. 能从文件/文档查证的事实先查（如 `docs/skills/`、`MEMORY.md`）
+3. 能从文件/文档查证的事实先查（如 `docs/AI协作/`、`docs/skills/`）
 4. 输出完整方案总结，等宏哥确认
 5. 确认后才进入开发；改完跑 `npx tsc --noEmit -p apps/admin/tsconfig.json` + 浏览器逐区块验证
 
@@ -45,6 +64,10 @@ AIGC:
 
 | 文档 | 用途 |
 |------|------|
+| `docs/AI协作/00-总控看板.md` | 多 AI / 多窗口协作总入口，记录当前主目标、分工、活跃任务 |
+| `docs/AI协作/01-项目当前状态.md` | 本地与生产环境事实、账号、端口、未提交风险 |
+| `docs/AI协作/02-新窗口启动模板.md` | 新开 AI 会话时可复制的启动模板 |
+| `docs/AI协作/tasks/` | 每个子任务的目标、范围、状态、验证方式和风险 |
 | `docs/skills/zxt-grill-me-protocol.md` | 本协议全文 |
 | `docs/skills/zxt-prototype-alignment.md` | 原型对齐规范 |
 | `docs/三窗口并行开发分工.md` | 并行开发文件边界 |

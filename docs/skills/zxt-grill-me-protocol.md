@@ -12,7 +12,7 @@ AIGC:
 # 智训通「先问后做」沟通协议（grill-me 中文版）
 
 > 本协议移植自 Matt Pocock 的 grill-me 技能，适配智训通 zxt-next 项目的多 AI 工具协作场景。
-> 目标：任何 AI 工具（Codex / 星辰智能体 / WorkBuddy / Trae / Claude Code）在本项目工作时，都按同一套"先拷问、后动手"的沟通方式与宏哥协作。
+> 目标：任何 AI 工具（Codex / 星辰超级智能体 / WorkBuddy / Trae / Claude Code）在本项目工作时，都按同一套"先拷问、后动手"的沟通方式与宏哥协作。
 
 ---
 
@@ -41,7 +41,7 @@ AIGC:
 - 若宏哥对某问题没有想法，直接按推荐答案推进。
 
 ### 规则 4：能查的事实不占用提问
-- 能从项目文件、代码、工具、文档（如 `docs/skills/zxt-prototype-alignment.md`、`MEMORY.md`、`三窗口并行开发分工.md`）查到的事实，**自己去查**，不浪费时间问宏哥。
+- 能从项目文件、代码、工具、文档（如 `AGENTS.md`、`docs/AI协作/01-项目当前状态.md`、`docs/skills/zxt-prototype-alignment.md`、`docs/三窗口并行开发分工.md`）查到的事实，**自己去查**，不浪费时间问宏哥。
 - 只有**需要宏哥拍板的决策**才停下来等回答。
 
 ### 规则 5：确认后再行动
@@ -66,7 +66,7 @@ AIGC:
 - 严格按 `docs/skills/zxt-prototype-alignment.md` 对齐原型：**正文 14px（禁 13px）**、标题 24px、卡片标题 20px、统计卡数字 24px；间距卡间 16px / 模块 20px / 区块 24px；`home-grid` 两列（中间 + 右侧 278px），右侧 3 卡纯白底；统计卡列数 6 卡 3 列 / 4 卡 4 列 / 3 卡 3 列。
 - 筛选区统一 `filter-bar`/`filter-row`/`filter-input`，**禁止内联样式**。
 - 页面数据**按原型写死静态数据**（唯一例外：学员首页接真实 API）。
-- 对练中心全套规则见 `docs/skills/zxt-prototype-aligning.md` 及 `MEMORY.md` 智训通项目条目。
+- 对练中心和移动端语音任务规则见 `docs/skills/zxt-prototype-alignment.md`、`docs/AI协作/tasks/T003-移动端语音文字同步.md`，并以实际代码和任务文件为准。
 - 数据库操作：API 用 sql.js（内存库+定期 saveToFile 落盘），**写库必须先停进程 → 写库 → 再启动**，否则会被内存旧数据覆盖；服务用 `next start` 生产模式，代码改动必须 `next build` + 重启才生效。
 
 ### 3.3 人机分工
@@ -114,10 +114,15 @@ AIGC:
 | 文件 | 作用 | 加载方式 |
 |------|------|---------|
 | `docs/skills/zxt-grill-me-protocol.md` | 协议本体（本文件） | 供各工具入口文件引用 |
-| `AGENTS.md`（项目根目录） | Codex / Trae / Claude Code / WorkBuddy 通用入口 | 打开项目自动加载 |
-| `.cursor/rules/zxt-grill-me.mdc` | Cursor 专用规则（若用 Cursor） | Cursor 会话自动加载 |
+| `AGENTS.md`（项目根目录） | 项目权威入口 | Codex / 通用 AI 优先读取 |
+| `AGENT.md` | 单数 Agent 兼容入口 | 只做桥接，指向 `AGENTS.md` |
+| `CLAUDE.md` / `GEMINI.md` | Claude / Gemini 类工具入口 | 只做桥接，指向 `AGENTS.md` |
+| `工作区规则.md` | 星辰超级智能体 / WorkBuddy 中文入口 | 只做桥接，指向 `AGENTS.md` |
+| `.cursor/rules/zxt-project.mdc` | Cursor 专用规则 | 只做桥接，指向 `AGENTS.md` |
+| `.trae/rules/zxt-project.md` | Trae 专用规则 | 只做桥接，指向 `AGENTS.md` |
+| `.github/copilot-instructions.md` | GitHub Copilot 入口 | 只做桥接，指向 `AGENTS.md` |
 
-> 注意：不同工具对 `AGENTS.md` 的支持程度不同（Codex 支持、Trae 支持、Claude Code 支持），若某工具不读 `AGENTS.md`，可手动让 AI 先读本协议文件。
+> 注意：不同工具对项目规则文件的自动加载能力不同；如果某个工具没有自动读取上下文，宏哥只需要说“先读 AGENTS.md”或“先读 工作区规则.md”。
 
 ---
 

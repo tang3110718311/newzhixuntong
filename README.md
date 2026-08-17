@@ -13,6 +13,17 @@ AIGC:
 
 这是 AI 智训通重构版的第一阶段工程骨架，目标是先跑通“管理端 H5 + 独立 API 服务 + SQLite 持久化 + AI/STT/TTS 接口预留”的真实业务闭环。
 
+## AI 智能体自动上下文
+
+本项目已配置多 AI 工具入口。任何 AI 智能体进入本工作目录后，应先读取：
+
+1. `AGENTS.md`
+2. `docs/AI协作/00-总控看板.md`
+3. `docs/AI协作/01-项目当前状态.md`
+4. 当前任务对应的 `docs/AI协作/tasks/Txxx-*.md`
+
+已补充适配入口：`AGENT.md`、`CLAUDE.md`、`GEMINI.md`、`工作区规则.md`、`.github/copilot-instructions.md`、`.cursor/rules/zxt-project.mdc`、`.trae/rules/zxt-project.md`。
+
 ## 技术基线
 
 - 管理端：Next.js + TypeScript，位于 `apps/admin`
