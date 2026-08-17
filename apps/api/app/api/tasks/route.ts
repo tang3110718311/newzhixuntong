@@ -12,8 +12,9 @@ export async function GET(request: Request) {
   try {
     const { tenantId, user } = await getTenantContext(request);
     const pagination = parsePagination(request);
-    const isLearner = user?.roleCode === "learner";
-    const learnerScope = isLearner && user?.id
+    // 严格按当前登录用户过滤：仅企业管理员（tenant_admin）返回全部任务，其余角色（含 trainer/learner）只返回本人参与的任务
+    const isAdmin = user?.roleCode === "tenant_admin";
+    const learnerScope = !isAdmin && user?.id
       ? { assigneeUserId: user.id, assigneeOrgId: user.orgId }
       : {};
     return ok(listTasks(tenantId, { ...pagination, ...learnerScope }));

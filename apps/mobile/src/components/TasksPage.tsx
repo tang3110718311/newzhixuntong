@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { taskApi, type TaskRow } from "@/lib/api";
-import { statusClass, taskStatusText, taskTypeText, taskFormText, fmtDate } from "@/lib/types";
+import { statusClass, taskTypeText, taskFormText, fmtDate, taskDisplayStatus } from "@/lib/types";
 import type { PageKey } from "./MobileApp";
 
 interface TasksPageProps {
@@ -18,6 +18,9 @@ function taskIconLabel(name: string): string {
   if (short.length <= 2) return short;
   return short.slice(0, 2) + "\n" + short.slice(2, 4);
 }
+
+// 任务展示状态（运行时状态 → 中文），与 PC 端「我的任务」判定一致
+const displayStatus = (t: TaskRow) => taskDisplayStatus(t.status, t.endAt);
 
 export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPageProps) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
@@ -37,7 +40,7 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
   const filtered = useMemo(() => {
     let list = tasks;
     if (statusTab) {
-      list = list.filter((t) => taskStatusText(t.status) === statusTab);
+      list = list.filter((t) => displayStatus(t) === statusTab);
     }
     if (keyword) {
       list = list.filter((t) => t.name.includes(keyword) || (t.code || "").includes(keyword));
@@ -47,9 +50,9 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
 
   const stats = useMemo(() => {
     const total = tasks.length;
-    const overdue = tasks.filter((t) => t.status === "stopped" || (t as any).status === "overdue").length;
-    const done = tasks.filter((t) => t.status === "completed").length;
-    const doing = tasks.filter((t) => t.status === "published" || t.status === "draft").length;
+    const overdue = tasks.filter((t) => displayStatus(t) === "已逾期").length;
+    const done = tasks.filter((t) => displayStatus(t) === "已完成").length;
+    const doing = tasks.filter((t) => displayStatus(t) === "进行中").length;
     return { total, overdue, done, doing };
   }, [tasks]);
 
@@ -108,7 +111,8 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
         {loading && <div className="task-empty">加载中…</div>}
         {!loading && filtered.length === 0 && <div className="task-empty">暂无相关任务</div>}
         {filtered.map((t) => {
-          const cls = statusClass(taskStatusText(t.status));
+          const st = displayStatus(t);
+          const cls = statusClass(st);
           const prog = t.progressPercent || 0;
           return (
             <article
@@ -125,17 +129,17 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
                     {taskTypeText(t.type)} | {taskFormText(t.primaryMode)} | 场景数：{t.sceneCount}
                   </p>
                 </div>
-                <span className={`status ${cls}`}>{taskStatusText(t.status)}</span>
+                <span className={`status ${cls}`}>{st}</span>
               </div>
               <div className="reference-progress">
                 <span className={cls} style={{ width: `${prog}%` }} />
               </div>
               <div className="reference-footer">
                 <span>
-                  {t.status === "completed" ? "完成" : "截止"} {fmtDate(t.endAt)}
+                  {st === "已完成" ? "完成" : "截止"} {fmtDate(t.endAt)}
                 </span>
                 <a onClick={(e) => { e.stopPropagation(); onOpenTask(t.id); }}>
-                  {t.status === "completed" ? "查看记录" : "继续学习"} <span>›</span>
+                  {st === "已完成" ? "查看记录" : "继续学习"} <span>›</span>
                 </a>
               </div>
             </article>

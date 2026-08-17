@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { taskApi, examApi, attemptApi, tenantApi, type AuthUser, type TaskRow, type ExamRow, type TenantRow } from "@/lib/api";
-import { statusClass, taskStatusText, taskTypeText } from "@/lib/types";
+import { statusClass, taskStatusText, taskTypeText, taskDisplayStatus } from "@/lib/types";
 import type { PageKey } from "./MobileApp";
 
 interface HomePageProps {
@@ -79,7 +79,7 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
   const total = tasks.length;
   const remaining = total - done;
   const pending = tasks.filter((t) => t.status !== "completed").length;
-  const percent = total ? Math.round(tasks.reduce((s, t) => s + t.progressPercent, 0) / total) : 0;
+  const percent = total ? Math.round((done / total) * 100) : 0;
 
   // 未参加考试数（待参加）
   const pendingExams = exams.filter((e) => {
@@ -140,7 +140,7 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
           </div>
           <div className="progress-summary">
             <strong id="homeProgressPercent">{percent}%</strong>
-            <span>本月目标完成率</span>
+            <span>整体完成进度</span>
           </div>
           <div className="progress-track">
             <div className="progress-fill" id="homeProgressFill" style={{ width: `${percent}%` }} />
@@ -209,7 +209,7 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
             )}
             {recentTasks.map((t) => {
               const isPractice = (t.type || "").includes("practice") || (t.type || "").includes("scenario");
-              const stText = taskStatusText(t.status);
+              const stText = taskDisplayStatus(t.status, t.endAt);
               return (
                 <div
                   className="recent-item"

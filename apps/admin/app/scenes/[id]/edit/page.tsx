@@ -282,6 +282,7 @@ export default function SceneEditPage() {
       setDetail(updated);
       setScoringRuleForms(updated.scoringRules.map((r) => ({ ...r })));
       setMessage("保存成功。");
+      navigateTo("/?section=scenes");
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
     } finally {
@@ -331,7 +332,7 @@ export default function SceneEditPage() {
                 <p className="muted">{formModeDesc}</p>
               </div>
               <div className="scene-form-actions">
-                <button className="btn outline" type="button" onClick={() => navigateTo('/scenes/' + sceneId)} disabled={submitting}>
+                <button className="btn outline" type="button" onClick={() => navigateTo('/?section=scenes')} disabled={submitting}>
                   取消
                 </button>
                 <button className="btn" type="button" disabled={submitting} onClick={handleSave}>
