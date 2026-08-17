@@ -36,21 +36,69 @@ const chatRequestSchema = z.object({
 type ChatMessage = { role: "system" | "ai" | "learner"; content: string; emotion?: string; createdAt?: string };
 
 /**
- * 固定开场白（方案 B 核心）：同一场景每次进入文本完全一致 → 可命中 TTS 落盘缓存，
- * 同时省去 start 时 LLM 生成开场白的 2-2.5s 延迟。
- * 文本完全由场景固定配置（角色身份 + 场景描述首句/目标）模板化生成，不依赖 LLM 输出。
+ * LLM 生成开场白（方案 C）：以完整系统提示词驱动模型以角色身份开口，
+ * 每次进入文本自然变化（代价：无法命中 TTS 落盘缓存，开场白需实时合成）。
+ * 失败时直接抛出，由调用方决定处理（start 返回错误，学员重试）。
  */
-function buildFixedOpening(sceneDetail: NonNullable<ReturnType<typeof getSceneDetail>>): { text: string; emotion: string } {
-  const { scene, roles } = sceneDetail;
-  const aiRole = roles.find((r) => r.roleType === "ai");
-  const identity = aiRole?.identity || "客户";
-  // 场景描述首句作为客户诉求背景（固定配置 → 文本稳定）
-  const descFirst = (scene.description || "").split(/[，。；;！？!?]/)[0].trim();
-  const complaint = descFirst && descFirst.length > 3
-    ? descFirst
-    : (aiRole?.goal || "我这边有个问题需要处理");
-  const text = `你好，我是${identity}。${complaint}，麻烦你尽快帮我处理一下，好吗？`;
-  return { text, emotion: "anxious" };
+async function generateOpeningWithLlm(
+  sceneDetail: NonNullable<ReturnType<typeof getSceneDetail>>,
+  config: NonNullable<ReturnType<typeof getDefaultAiProvider>>,
+  systemPrompt: string,
+): Promise<{ text: string; emotion: string; coachTip: string | null }> {
+  const aiRole = sceneDetail.roles.find((r) => r.roleType === "ai");
+  const apiMessages = [
+    { role: "system" as const, content: systemPrompt },
+    {
+      role: "user" as const,
+      content: `（对练开始，学员尚未发言）请你现在以你扮演的角色身份（${aiRole?.identity || "客户"}），作为提出诉求的一方，说出本次对练的第一句开场白。要求：第一人称口语化，30-80 字；正文最前面带 [EMOTION:xxx] 标记；正文末尾必须紧跟 [COACH_TIP:给学员的开场应对建议] 标记。`,
+    },
+  ];
+  const endpoint = normalizeUrl(config.baseUrl);
+  const response = await fetchWithTimeout(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + config.apiKeyEncrypted,
+    },
+    body: JSON.stringify({
+      model: config.modelName,
+      temperature: 0.5,
+      max_tokens: 900,
+      messages: apiMessages,
+    }),
+  }, LLM_CHAT_TIMEOUT_MS);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error("模型接口调用失败：HTTP " + response.status + " " + errorText.slice(0, 300));
+  }
+
+  const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+  let text = payload.choices?.[0]?.message?.content;
+  if (!text) throw new Error("模型接口未返回有效内容。");
+
+  // 解析 COACH_TIP（与 message 分支同一套规则）
+  let coachTip: string | null = null;
+  const coachMatch = text.match(/[\[【]\s*COACH_TIP\s*[:：]\s*(.+?)[\]】]/);
+  if (coachMatch) {
+    coachTip = coachMatch[1].trim();
+    text = text.replace(coachMatch[0], "").trim();
+  }
+
+  // 解析 EMOTION
+  const EMOTION_RE = /^\[EMOTION:([a-z]+)\]/i;
+  let emotion = "default";
+  const emotionMatch = text.match(EMOTION_RE);
+  if (emotionMatch) {
+    emotion = emotionMatch[1].toLowerCase();
+    text = text.replace(emotionMatch[0], "").trim();
+  }
+
+  text = toSimplified(text);
+  if (coachTip) coachTip = toSimplified(coachTip);
+
+  if (!text) throw new Error("模型未返回有效开场白。");
+  return { text, emotion, coachTip };
 }
 
 function buildSystemPrompt(sceneDetail: ReturnType<typeof getSceneDetail>): string {
@@ -219,8 +267,15 @@ export async function POST(request: Request) {
       }
       sessionId = session.id;
       sessionStartedAt = session.startedAt;
-      // 固定开场白（方案 B）：文本由场景配置模板化生成，同场景每次进入一致 → 命中 TTS 缓存
-      const opening = buildFixedOpening(sceneDetail);
+      // LLM 生成开场白（方案 C）：文本由模型以角色身份实时生成，每次自然变化；
+      // 代价：无法命中 TTS 落盘缓存，需实时合成。生成失败时置为 abandoned 并报错，学员重试。
+      let opening: { text: string; emotion: string; coachTip: string | null };
+      try {
+        opening = await generateOpeningWithLlm(sceneDetail, config, systemPrompt);
+      } catch (err) {
+        updateAiTrainingSession(tenantId, sessionId, { status: "abandoned", finishedAt: new Date().toISOString() });
+        throw err;
+      }
       const openingHistory: ChatMessage[] = [
         { role: "ai", content: opening.text, emotion: opening.emotion, createdAt: new Date().toISOString() },
       ];
@@ -233,7 +288,7 @@ export async function POST(request: Request) {
       logAiCall({
         tenantId,
         providerType: "llm",
-        modelName: "fixed-opening",
+        modelName: config.modelName,
         bizType: "chat",
         durationMs: Date.now() - started,
         success: true,
@@ -244,7 +299,7 @@ export async function POST(request: Request) {
         isFinished: false,
         trainingRecord: null,
         recordPending: false,
-        coachTip: null,
+        coachTip: opening.coachTip,
         emotion: opening.emotion,
         round: 0,
         remindCount: 0,
