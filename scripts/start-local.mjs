@@ -78,8 +78,42 @@ async function cleanupOldPidFile() {
 }
 
 function start(name, cwd, port) {
-  const out = openSync(resolve(logsDir, `${name}.detached.out.log`), "a");
-  const err = openSync(resolve(logsDir, `${name}.detached.err.log`), "a");
+  const outFile = resolve(logsDir, `${name}.detached.out.log`);
+  const errFile = resolve(logsDir, `${name}.detached.err.log`);
+  if (process.platform === "win32") {
+    // Windows 下用 Start-Process 启动独立进程并直接重定向日志，
+    // 避免子进程继承 npm/TeleAgent 的 stdout 句柄导致命令一直等待。
+    for (const f of [outFile, errFile]) {
+      try {
+        unlinkSync(f);
+      } catch {}
+    }
+    const safePsString = (value) => value.replace(/'/g, "''");
+    const psScript = [
+      "$ProgressPreference = 'SilentlyContinue';",
+      "$env:NODE_ENV = 'production';",
+      `$argsList = @('${safePsString(nextBin)}', 'start', '-p', '${port}');`,
+      `$p = Start-Process -FilePath '${safePsString(nodeBin)}' -ArgumentList $argsList -WorkingDirectory '${safePsString(resolve(root, cwd))}' -RedirectStandardOutput '${safePsString(outFile)}' -RedirectStandardError '${safePsString(errFile)}' -WindowStyle Hidden -PassThru;`,
+      "Write-Output $p.Id;",
+    ].join(" ");
+    const encoded = Buffer.from(psScript, "utf16le").toString("base64");
+    let out = "";
+    try {
+      out = execFileSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded], {
+        encoding: "utf8",
+        timeout: 3000,
+      });
+    } catch (error) {
+      if (error?.code !== "ETIMEDOUT" || !error.stdout) throw error;
+      out = String(error.stdout);
+    }
+    const lines = out.trim().split(/\r?\n/).filter(Boolean);
+    const pid = Number(lines[lines.length - 1]);
+    if (!Number.isFinite(pid) || pid <= 0) throw new Error(`Failed to start ${name}: missing child pid`);
+    return { pid, exitCode: null, wmi: true, port };
+  }
+  const out = openSync(outFile, "a");
+  const err = openSync(errFile, "a");
   const child = spawn(nodeBin, [nextBin, "start", "-p", String(port)], {
     cwd: resolve(root, cwd),
     detached: true,
@@ -93,13 +127,24 @@ function start(name, cwd, port) {
   child.unref();
   return child;
 }
-
-async function waitForHttp(name, url, child, timeoutMs = 20000) {
+async function waitForHttp(name, url, child, port, timeoutMs = 20000) {
   const started = Date.now();
   let lastError = "";
   while (Date.now() - started < timeoutMs) {
     if (child.exitCode !== null) {
       throw new Error(`${name} exited early with code ${child.exitCode}`);
+    }
+    if (child.wmi && port != null) {
+      // WMI 模式：child.pid 是 cmd 外壳进程，它存活 = 启动链仍在；它退出且端口无监听 = 启动失败
+      let shellAlive = true;
+      try {
+        process.kill(child.pid, 0);
+      } catch {
+        shellAlive = false;
+      }
+      if (!shellAlive && findListeningPids(port).length === 0) {
+        throw new Error(`${name} process exited (no listener on port ${port})`);
+      }
     }
     try {
       const response = await fetchWithTimeout(url, 1500);
@@ -161,6 +206,15 @@ function stopChildren(children) {
     } catch {
       // Best effort cleanup only.
     }
+    if (child && child.wmi && child.port != null) {
+      for (const pid of findListeningPids(child.port)) {
+        try {
+          process.kill(pid);
+        } catch {
+          // Best effort cleanup only.
+        }
+      }
+    }
   }
 }
 
@@ -183,9 +237,9 @@ const admin = start("admin", "apps/admin", 3000);
 const mobile = start("mobile", "apps/mobile", 3100);
 
 try {
-  await waitForHttp("api", "http://localhost:4000/api/health", api);
-  await waitForHttp("admin", "http://localhost:3000", admin);
-  await waitForHttp("mobile", "http://localhost:3100", mobile);
+  await waitForHttp("api", "http://localhost:4000/api/health", api, PORTS.api);
+  await waitForHttp("admin", "http://localhost:3000", admin, PORTS.admin);
+  await waitForHttp("mobile", "http://localhost:3100", mobile, PORTS.mobile);
   const pids = {
     api: findListeningPids(PORTS.api)[0] || api.pid,
     admin: findListeningPids(PORTS.admin)[0] || admin.pid,
