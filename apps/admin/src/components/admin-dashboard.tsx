@@ -2324,6 +2324,7 @@ export function AdminDashboard() {
                     {organizations.map((org) => <option value={org.id} key={org.id}>{org.name}</option>)}
                   </select>
                   <button className="btn" type="button" onClick={() => setScenePage(1)}>查询</button>
+                  <button className="btn outline" type="button" onClick={() => { setSceneFilter({ status: "all", mode: "all", createMode: "all", org: "all", keyword: "" }); setScenePage(1); }}>重置</button>
                 </div>
 
                 <div className="scene-list card">
@@ -3878,6 +3879,7 @@ export function AdminDashboard() {
                   </select>
                   <input className="field" type="text" placeholder="搜索考试名称" value={examFilter.keyword || ""} onChange={(e) => setExamFilter({ ...examFilter, keyword: e.target.value })} />
                   <button className="btn" type="button">查询</button>
+                  <button className="btn outline" type="button" onClick={() => setExamFilter({ status: "all", keyword: "" })}>重置</button>
                 </div>
 
                 {/* 考试表格（原型 .data-table） */}
