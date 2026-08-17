@@ -2192,13 +2192,19 @@ export function createExam(tenantId: string, input: {
   return getExam(tenantId, id);
 }
 
-export function listExams(tenantId: string) {
+export function listExams(tenantId: string, options: { status?: string } = {}) {
+  const filters = ["tenant_id = ?", "deleted_at is null"];
+  const params: unknown[] = [tenantId];
+  if (options.status) {
+    filters.push("status = ?");
+    params.push(options.status);
+  }
   return all<ExamRow>(
     `select id, name, code, bank_id as bankId, description, duration_minutes as durationMinutes,
             pass_score as passScore, total_score as totalScore, question_count as questionCount, status,
             start_at as startAt, end_at as endAt, created_at as createdAt
-     from exams where tenant_id = ? and deleted_at is null order by created_at desc`,
-    [tenantId],
+     from exams where ${filters.join(" and ")} order by created_at desc`,
+    params,
   );
 }
 

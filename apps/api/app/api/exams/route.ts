@@ -22,6 +22,11 @@ export async function GET(request: Request) {
     if (id) {
       const detail = getExamDetail(tenantId, id);
       if (!detail) return fail("EXAM_NOT_FOUND", "考试不存在或已删除。", 404);
+      // 与列表一致：非管理员仅可见已发布考试，草稿/未发布考试对非管理员不可见
+      const isAdmin = user?.roleCode === "tenant_admin";
+      if (!isAdmin && detail.status !== "published") {
+        return fail("EXAM_NOT_FOUND", "考试不存在或已删除。", 404);
+      }
       if (user?.roleCode !== "tenant_admin" && user?.roleCode !== "trainer") {
         return ok({
           ...detail,
@@ -34,7 +39,10 @@ export async function GET(request: Request) {
       }
       return ok(detail);
     }
-    return ok(listExams(tenantId));
+    // 严格按当前登录用户过滤：仅企业管理员（tenant_admin）可见全部考试（含草稿），
+    // 其余角色（含 trainer/learner）仅可见已发布考试
+    const isAdmin = user?.roleCode === "tenant_admin";
+    return ok(listExams(tenantId, isAdmin ? {} : { status: "published" }));
   } catch (error) {
     return handleRouteError(error);
   }

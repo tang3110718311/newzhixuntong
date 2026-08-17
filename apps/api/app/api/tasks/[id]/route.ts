@@ -9,8 +9,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   try {
     const { tenantId, user } = await getTenantContext(request);
     const { id } = await context.params;
-    const isLearner = user?.roleCode === "learner";
-    const learnerScope = isLearner && user?.id
+    // 与列表接口保持一致：仅企业管理员（tenant_admin）可见全部任务详情，其余角色仅可见本人参与的任务
+    const isAdmin = user?.roleCode === "tenant_admin";
+    const learnerScope = !isAdmin && user?.id
       ? { viewerUserId: user.id, viewerOrgId: user.orgId }
       : undefined;
     const detail = getTaskDetail(tenantId, id, learnerScope);
