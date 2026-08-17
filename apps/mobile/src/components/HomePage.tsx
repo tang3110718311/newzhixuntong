@@ -79,7 +79,7 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
   const total = tasks.length;
   const remaining = total - done;
   const pending = tasks.filter((t) => t.status !== "completed").length;
-  const percent = total ? Math.round(tasks.reduce((s, t) => s + t.progressPercent, 0) / total) : 0;
+  const percent = total ? Math.round((done / total) * 100) : 0;
 
   // 未参加考试数（待参加）
   const pendingExams = exams.filter((e) => {
@@ -140,7 +140,7 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
           </div>
           <div className="progress-summary">
             <strong id="homeProgressPercent">{percent}%</strong>
-            <span>本月目标完成率</span>
+            <span>整体完成进度</span>
           </div>
           <div className="progress-track">
             <div className="progress-fill" id="homeProgressFill" style={{ width: `${percent}%` }} />
