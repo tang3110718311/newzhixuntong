@@ -1033,7 +1033,7 @@ export function createScene(tenantId: string, input: { industryPackageId?: strin
   const id = createId("scene");
   run(
     `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, create_mode, scene_type, description, status, source_type, is_template, version, created_by, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'manual', 0, '1.0.0', ?, datetime('now'), datetime('now'))`,
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', 'manual', 0, '1.0.0', ?, datetime('now'), datetime('now'))`,
     [id, tenantId, input.industryPackageId ?? null, input.name, input.code, input.mode, input.createMode ?? "ai_practice", input.sceneType, input.description, input.createdBy ?? null],
   );
   // AI 角色
@@ -1513,7 +1513,26 @@ export function createTask(tenantId: string, input: { name: string; code: string
 export function updateTaskStatus(tenantId: string, taskId: string, status: "draft" | "published" | "stopped" | "completed") {
   const publishAt = status === "published" ? ", publish_at = datetime('now')" : "";
   run(`update tasks set status = ?, updated_at = datetime('now')${publishAt} where tenant_id = ? and id = ? and deleted_at is null`, [status, tenantId, taskId]);
+  if (status === "stopped") {
+    run(
+      `update task_participants set status = 'stopped', updated_at = datetime('now')
+       where tenant_id = ? and task_id = ? and deleted_at is null`,
+      [tenantId, taskId],
+    );
+  }
   return get<TaskRow>("select id, name, code, type, status, end_at as endAt from tasks where tenant_id = ? and id = ?", [tenantId, taskId]);
+}
+
+export function deleteStoppedTask(tenantId: string, taskId: string): boolean {
+  const task = get<{ id: string }>(
+    "select id from tasks where tenant_id = ? and id = ? and status = 'stopped' and deleted_at is null limit 1",
+    [tenantId, taskId],
+  );
+  if (!task) return false;
+  run("update tasks set deleted_at = datetime('now'), updated_at = datetime('now') where tenant_id = ? and id = ? and status = 'stopped' and deleted_at is null", [tenantId, taskId]);
+  run("update task_participants set deleted_at = datetime('now'), updated_at = datetime('now') where tenant_id = ? and task_id = ? and deleted_at is null", [tenantId, taskId]);
+  run("update task_scenes set deleted_at = datetime('now'), updated_at = datetime('now') where tenant_id = ? and task_id = ? and deleted_at is null", [tenantId, taskId]);
+  return true;
 }
 
 export function createAiTrainingSession(

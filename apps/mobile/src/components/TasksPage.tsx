@@ -11,7 +11,7 @@ interface TasksPageProps {
   showToast: (msg: string) => void;
 }
 
-const STATUS_TABS = ["全部", "待开始", "进行中", "已完成", "已逾期"];
+const STATUS_TABS = ["全部", "待开始", "进行中", "已完成", "已停用", "已逾期"];
 
 function taskIconLabel(name: string): string {
   const short = name.slice(0, 4);
@@ -118,8 +118,8 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
             <article
               className="task-card reference-task"
               key={t.id}
-              onClick={() => onOpenTask(t.id)}
-              style={{ cursor: "pointer" }}
+              onClick={() => { if (displayStatus(t) !== "已停用") onOpenTask(t.id); }}
+              style={{ cursor: displayStatus(t) === "已停用" ? "default" : "pointer" }}
             >
               <div className="reference-main">
                 <span className="task-icon">{taskIconLabel(t.name)}</span>
@@ -136,10 +136,10 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
               </div>
               <div className="reference-footer">
                 <span>
-                  {st === "已完成" ? "完成" : "截止"} {fmtDate(t.endAt)}
+                  {st === "已停用" ? "已停用" : st === "已完成" ? "完成" : "截止"} {fmtDate(t.endAt)}
                 </span>
-                <a onClick={(e) => { e.stopPropagation(); onOpenTask(t.id); }}>
-                  {st === "已完成" ? "查看记录" : "继续学习"} <span>›</span>
+                <a onClick={(e) => { e.stopPropagation(); if (st !== "已停用") onOpenTask(t.id); }}>
+                  {st === "已停用" ? "任务已停用" : st === "已完成" ? "查看记录" : "继续学习"} <span>›</span>
                 </a>
               </div>
             </article>

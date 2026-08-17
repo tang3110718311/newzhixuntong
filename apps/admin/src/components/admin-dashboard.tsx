@@ -773,6 +773,7 @@ export function AdminDashboard() {
   const [scenePage, setScenePage] = useState(1);
   const [selectedSceneIds, setSelectedSceneIds] = useState<string[]>([]);
   const [sceneToDelete, setSceneToDelete] = useState<Scene | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
   const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
   const [wizardRoleForm, setWizardRoleForm] = useState({
     aiIdentity: "",
@@ -1688,6 +1689,16 @@ export function AdminDashboard() {
     });
   }
 
+  async function confirmDeleteTask() {
+    if (!taskToDelete) return;
+    const target = taskToDelete;
+    setTaskToDelete(null);
+    await submitAction("任务已删除。", async () => {
+      await apiFetch(`/tasks/${target.id}`, { method: "DELETE", body: JSON.stringify({}) });
+      await loadData();
+    });
+  }
+
   function duplicateTask(task: Task) {
     showTaskToast(`已创建任务副本「${task.name}」，可在待发布任务中编辑`);
   }
@@ -2054,7 +2065,7 @@ export function AdminDashboard() {
   const pendingAppealCount = appeals.filter((appeal) => appeal.status === "pending").length;
   const completedRecordCount = records.filter((record) => record.status === "completed").length;
   const getTaskRuntimeStatus = (task: Task) => {
-    if (task.status === "completed") return "completed";
+    if (task.status === "completed" || task.status === "stopped") return task.status;
     const endTime = task.endAt ? new Date(task.endAt).getTime() : Number.NaN;
     if (Number.isFinite(endTime) && endTime < Date.now()) return "overdue";
     if (task.status === "published") return "in_progress";
@@ -2418,6 +2429,13 @@ export function AdminDashboard() {
                 </div>
               </div>
             )}
+
+            <ConfirmDialog
+              open={!!taskToDelete}
+              message={`确定删除任务「${taskToDelete?.name || ""}」吗？删除后不可恢复，请谨慎操作。`}
+              onCancel={() => setTaskToDelete(null)}
+              onConfirm={confirmDeleteTask}
+            />
 
             <ConfirmDialog
               open={!!sceneToDelete}
@@ -3156,7 +3174,8 @@ export function AdminDashboard() {
                                 )}
                                 <a onClick={() => viewTaskDetail(task.id)}>详情</a>
                                 {runtimeStatus === "in_progress" && <a onClick={() => stopTask(task.id)}>停用</a>}
-                                {runtimeStatus === "draft" && <a onClick={() => showTaskToast("请在创建任务页完善并发布该任务")}>编辑</a>}
+                                 {runtimeStatus === "stopped" && <a className="del" onClick={() => setTaskToDelete(task)}>删除</a>}
+                                 {runtimeStatus === "draft" && <a onClick={() => showTaskToast("请在创建任务页完善并发布该任务")}>编辑</a>}
                                 {runtimeStatus === "draft" && <a onClick={() => publishTask(task.id)}>发布</a>}
                                 {(runtimeStatus === "completed" || runtimeStatus === "stopped") && <a onClick={() => duplicateTask(task)}>复制</a>}
                                 {runtimeStatus === "overdue" && <a onClick={() => extendTask(task)}>延长时间</a>}

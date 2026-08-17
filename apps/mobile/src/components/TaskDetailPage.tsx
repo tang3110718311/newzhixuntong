@@ -120,7 +120,8 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
   const scenes = detail.scenes || [];
   const doneCount = scenes.filter((s: any) => (s.completedTrainCount || 0) > 0).length;
   const percent = scenes.length ? Math.round((doneCount / scenes.length) * 100) : 0;
-  const cls = task.status === "completed" ? "done" : taskDisplayStatus(task.status, task.endAt) === "已逾期" ? "overdue" : "doing";
+  const isStopped = task.status === "stopped";
+const cls = isStopped ? "overdue" : task.status === "completed" ? "done" : taskDisplayStatus(task.status, task.endAt) === "已逾期" ? "overdue" : "doing";
 
   if (view === "workspace") {
     return (
@@ -242,6 +243,7 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
             </div>
           </div>
         </div>
+        {isStopped && <div className="task-detail-description compact" style={{ color: "#b42318", marginTop: 12 }}>任务已停用，无法继续学习。</div>}
         <div className="scenario-section-head">
           <h3>学习场景</h3>
           <span className="section-hint">资料 → 对练 → 考试</span>
@@ -258,8 +260,8 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
               <article
                 key={sc.id}
                 className={`scenario-card scene-layout ${trainDone ? "done" : ""}`}
-                onClick={() => openScenario(i)}
-                style={{ cursor: "pointer" }}
+                onClick={() => { if (!isStopped) openScenario(i); }}
+                style={{ cursor: isStopped ? "default" : "pointer" }}
               >
                 <div className="scenario-timeline">
                   <span className="scenario-index">{String(i + 1).padStart(2, "0")}</span>
@@ -293,10 +295,12 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
                     <button
                       type="button"
                       className="material-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        enterSceneView(i, "material");
-                      }}
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         if (isStopped) return;
+                         enterSceneView(i, "material");
+                       }}
+                       disabled={isStopped}
                     >
                       查看资料{materialDone ? " ✓" : ""}
                     </button>
@@ -305,12 +309,14 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
                       className={`practice-btn${materialDone ? "" : " locked"}`}
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (isStopped) return;
                         if (!materialDone) {
                           showToast("请先完成资料学习，再开始 AI 对练");
                           return;
                         }
                         enterSceneView(i, "practice");
                       }}
+                      disabled={isStopped}
                     >
                       {trainDone ? "再次对练" : "开始对练"}
                     </button>
@@ -319,12 +325,14 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
                       className={`exam-btn${practiceDone ? "" : " locked"}`}
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (isStopped) return;
                         if (!practiceDone) {
                           showToast("请先完成 AI 对练，再进行考试");
                           return;
                         }
                         enterSceneView(i, "exam");
                       }}
+                      disabled={isStopped}
                     >
                       {examCount > 0 ? "再次考试" : "开始考试"}
                     </button>

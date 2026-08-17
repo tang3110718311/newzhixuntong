@@ -18,6 +18,7 @@ export function statusClass(s: string): string {
   if (s === "未开始" || s === "待开始" || s === "draft") return "wait";
   if (s === "进行中" || s === "published") return "doing";
   if (s === "已完成" || s === "completed") return "done";
+  if (s === "已停用" || s === "stopped") return "overdue";
   if (s === "已逾期" || s === "overdue") return "overdue";
   return "wait";
 }
@@ -28,11 +29,12 @@ export function taskStatusText(status: string): string {
     draft: "待开始",
     published: "进行中",
     completed: "已完成",
-    stopped: "已逾期",
+    stopped: "已停用",
     overdue: "已逾期",
     待开始: "待开始",
     进行中: "进行中",
     已完成: "已完成",
+    已停用: "已停用",
     已逾期: "已逾期",
   };
   return map[status] || "待开始";
@@ -42,6 +44,7 @@ export function taskStatusText(status: string): string {
 // completed → 已完成；endAt 已过 → 已逾期（不论 published/stopped）；published → 进行中；其余 → 待开始
 export function taskRuntimeStatus(status: string, endAt: string | null | undefined): string {
   if (status === "completed") return "completed";
+  if (status === "stopped") return "stopped";
   const endTime = endAt ? new Date(endAt).getTime() : Number.NaN;
   if (Number.isFinite(endTime) && endTime < Date.now()) return "overdue";
   if (status === "published") return "published";
@@ -52,6 +55,7 @@ export function taskRuntimeStatus(status: string, endAt: string | null | undefin
 export function taskDisplayStatus(status: string, endAt: string | null | undefined): string {
   const runtime = taskRuntimeStatus(status, endAt);
   if (runtime === "completed") return "已完成";
+  if (runtime === "stopped") return "已停用";
   if (runtime === "overdue") return "已逾期";
   if (runtime === "published") return "进行中";
   return "待开始";
