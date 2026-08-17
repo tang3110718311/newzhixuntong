@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { taskApi, sceneApi, recordApi, aiApi } from "@/lib/api";
-import { taskStatusText, taskTypeText, taskFormText } from "@/lib/types";
+import { taskDisplayStatus, taskTypeText, taskFormText } from "@/lib/types";
 import { isMaterialDone, markMaterialDone, getExamCount } from "@/lib/sceneProgress";
 import PracticeReport from "./PracticeReport";
 
@@ -120,7 +120,7 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
   const scenes = detail.scenes || [];
   const doneCount = scenes.filter((s: any) => (s.completedTrainCount || 0) > 0).length;
   const percent = scenes.length ? Math.round((doneCount / scenes.length) * 100) : 0;
-  const cls = task.status === "completed" ? "done" : task.status === "stopped" ? "overdue" : "doing";
+  const cls = task.status === "completed" ? "done" : taskDisplayStatus(task.status, task.endAt) === "已逾期" ? "overdue" : "doing";
 
   if (view === "workspace") {
     return (
@@ -211,7 +211,7 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
             <span className="dot"></span>
             <span>任务详情 · {task.code}</span>
             <span className={`task-detail-status status ${cls}`} style={{ marginLeft: "auto" }}>
-              {taskStatusText(task.status)}
+              {taskDisplayStatus(task.status, task.endAt)}
             </span>
           </div>
           <div className="task-detail-main">

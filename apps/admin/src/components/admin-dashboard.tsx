@@ -2109,24 +2109,39 @@ export function AdminDashboard() {
     const record = sceneStudyMap[taskId];
     return !!record && Object.values(record).some(Boolean);
   };
-  // 我的考试统计（原型 .summary-grid 4 卡）
-  const examStats = {
-    total: examAttempts.length > 0 ? examAttempts.length : 5,
-    pending: examAttempts.length > 0 ? examAttempts.filter((a) => a.status !== "passed" && a.status !== "failed").length : 2,
-    passed: examAttempts.length > 0 ? examAttempts.filter((a) => a.status === "passed").length : 2,
-    passRate: examAttempts.length > 0
-      ? Math.round((examAttempts.filter((a) => a.status === "passed").length / Math.max(1, examAttempts.filter((a) => a.status === "passed" || a.status === "failed").length)) * 100)
-      : 66.7,
-    avgScore: examAttempts.length > 0
-      ? Math.round(examAttempts.filter((a) => a.score > 0).reduce((sum, a) => sum + a.score, 0) / Math.max(1, examAttempts.filter((a) => a.score > 0).length))
-      : 78,
+  // 我的考试（按 APP 端「我的考试」逻辑）：以已发布考试为列表主体，每个考试按最新考试记录判定状态
+  const myExamLatestAttempt = (examId: string): ExamAttempt | undefined => {
+    const list = examAttempts.filter((a) => a.examId === examId);
+    if (!list.length) return undefined;
+    return list.sort((x, y) => {
+      const xT = x.finishedAt || x.createdAt || "";
+      const yT = y.finishedAt || y.createdAt || "";
+      return xT < yT ? 1 : -1;
+    })[0];
   };
-  const filteredExamAttempts = examAttempts.filter((attempt) => {
-    const matchesStatus = examFilter.status === "all" || attempt.status === examFilter.status;
+  const myExamStatus = (exam: Exam): { text: string; score: string; action: string } => {
+    const att = myExamLatestAttempt(exam.id);
+    if (!att) return { text: "待参加", score: "—", action: "开始考试" };
+    if (att.status === "passed") return { text: "已通过", score: `${att.score} 分`, action: "查看解析" };
+    if (att.status === "failed") return { text: "未通过", score: `${att.score} 分`, action: "重新考试" };
+    return { text: "进行中", score: "—", action: "继续考试" };
+  };
+  const EXAM_STATUS_KEY: Record<string, string> = { "待参加": "pending", "已通过": "passed", "未通过": "failed", "进行中": "in_progress" };
+  const filteredMyExams = publishedExams.filter((exam) => {
+    const st = myExamStatus(exam);
+    const matchesStatus = examFilter.status === "all" || EXAM_STATUS_KEY[st.text] === examFilter.status;
     const keyword = examFilter.keyword.trim().toLowerCase();
-    const matchesKeyword = !keyword || `${attempt.examName || ""}`.toLowerCase().includes(keyword);
+    const matchesKeyword = !keyword || exam.name.toLowerCase().includes(keyword);
     return matchesStatus && matchesKeyword;
   });
+  const myExamStats = (() => {
+    const total = publishedExams.length;
+    const pending = publishedExams.filter((e) => myExamStatus(e).text === "待参加").length;
+    const passed = publishedExams.filter((e) => myExamStatus(e).text === "已通过").length;
+    const failed = publishedExams.filter((e) => myExamStatus(e).text === "未通过").length;
+    const passRate = passed + failed ? Math.round((passed / (passed + failed)) * 100) : 0;
+    return { total, pending, passed, failed, passRate };
+  })();
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -3815,19 +3830,19 @@ export function AdminDashboard() {
                 <div className="module-head card">
                   <div>
                     <h1>我的考试</h1>
-                    <p className="muted">查看待参加、进行中和已完成的考试记录。</p>
+                    <p className="muted">参加已发布考试，查看历史成绩与解析。</p>
                   </div>
                   <div className="module-actions">
                     <button className="btn outline" type="button">导出记录</button>
                   </div>
                 </div>
 
-                {/* 4统计卡（原型 .summary-grid） */}
+                {/* 4统计卡（对齐 APP 端：全部/待参加/已通过/未通过） */}
                 <div className="summary-grid">
-                  <div className="summary-card card"><label>全部考试</label><strong>{examStats.total}</strong><small className="muted">本年度累计</small></div>
-                  <div className="summary-card card"><label>待参加</label><strong style={{ color: "#e49a38" }}>{examStats.pending}</strong><small className="muted">请按时完成</small></div>
-                  <div className="summary-card card"><label>已通过</label><strong className="blue">{examStats.passed}</strong><small className="muted">通过率 {examStats.passRate}%</small></div>
-                  <div className="summary-card card"><label>平均成绩</label><strong>{examStats.avgScore}<span style={{ fontSize: 14 }}> 分</span></strong><small className="muted">近 12 个月</small></div>
+                  <div className="summary-card card"><label>全部考试</label><strong>{myExamStats.total}</strong><small className="muted">已发布累计</small></div>
+                  <div className="summary-card card"><label>待参加</label><strong style={{ color: "#e49a38" }}>{myExamStats.pending}</strong><small className="muted">请按时完成</small></div>
+                  <div className="summary-card card"><label>已通过</label><strong className="blue">{myExamStats.passed}</strong><small className="muted">通过率 {myExamStats.passRate}%</small></div>
+                  <div className="summary-card card"><label>未通过</label><strong style={{ color: "#dc7662" }}>{myExamStats.failed}</strong><small className="muted">建议重新学习</small></div>
                 </div>
 
                 {/* 筛选区（原型 .module-filter） */}
@@ -3856,43 +3871,38 @@ export function AdminDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredExamAttempts.length > 0 ? filteredExamAttempts.slice(0, 20).map((attempt, i) => {
-                        const statusLabel = attempt.status === "passed" ? "已通过" : attempt.status === "failed" ? "未通过" : "待参加";
-                        const statusClass = attempt.status === "passed" ? "green" : attempt.status === "failed" ? "red" : "orange";
-                        const scoreText = attempt.score != null && attempt.totalScore ? `${attempt.score} 分` : "—";
-                        const actionLabel = attempt.status === "passed" ? "查看解析" : attempt.status === "failed" ? "重新考试" : "开始考试";
-                        const exam = exams.find((e) => e.id === attempt.examId);
+                      {filteredMyExams.length > 0 ? filteredMyExams.map((exam) => {
+                        const st = myExamStatus(exam);
+                        const statusClass = st.text === "已通过" ? "green" : st.text === "未通过" ? "red" : st.text === "进行中" ? "blue" : "orange";
+                        const att = myExamLatestAttempt(exam.id);
+                        const examTime = att?.startedAt
+                          ? new Date(att.startedAt).toLocaleString("zh-CN", { hour12: false }).slice(0, 16)
+                          : exam.startAt
+                            ? new Date(exam.startAt).toLocaleString("zh-CN", { hour12: false }).slice(0, 16)
+                            : "—";
                         return (
-                          <tr key={attempt.id || i}>
-                            <td><strong>{attempt.examName || exam?.name || "考试"}</strong></td>
+                          <tr key={exam.id}>
+                            <td><strong>{exam.name}</strong></td>
                             <td>{examTypeLabel(exam)}</td>
-                            <td>{attempt.startedAt ? new Date(attempt.startedAt).toLocaleString("zh-CN", { hour12: false }).slice(0, 16) : "—"}</td>
-                            <td>{scoreText}</td>
-                            <td><span className={`tag ${statusClass}`}>{statusLabel}</span></td>
+                            <td>{examTime}</td>
+                            <td>{st.score === "—" ? "—" : st.score}</td>
+                            <td><span className={`tag ${statusClass}`}>{st.text}</span></td>
                             <td>
-                              {attempt.status === "passed" ? (
-                                <a onClick={() => setViewingExamResult(attempt)}>查看解析</a>
+                              {st.text === "已通过" && att ? (
+                                <a onClick={() => setViewingExamResult(att)}>查看解析</a>
+                              ) : st.text === "进行中" ? (
+                                <a onClick={() => void resumeExamAttempt(exam.id)}>继续考试</a>
                               ) : (
-                                <a onClick={() => { if (exam) void createExamAttemptAndStart(exam); else void resumeExamAttempt(attempt.examId); }}>{actionLabel}</a>
+                                <a onClick={() => void createExamAttemptAndStart(exam)}>{st.action}</a>
                               )}
                             </td>
                           </tr>
                         );
-                      }) : [
-                        { name: "客户服务沟通技巧", type: "固定考试", time: "2026-08-05 09:00—23:59", score: "—", status: "待参加", statusClass: "orange", action: "开始考试" },
-                        { name: "安全生产基础知识", type: "自由考试", time: "2026-07-28 14:00—15:00", score: "86 分", status: "已通过", statusClass: "green", action: "查看解析" },
-                        { name: "新员工入职培训考试", type: "结业考试", time: "2026-07-25 10:00—11:00", score: "58 分", status: "未通过", statusClass: "red", action: "重新考试" },
-                        { name: "信息安全意识培训", type: "固定考试", time: "2026-07-18 09:00—23:59", score: "90 分", status: "已通过", statusClass: "green", action: "查看解析" },
-                      ].map((row, i) => (
-                        <tr key={i}>
-                          <td><strong>{row.name}</strong></td>
-                          <td>{row.type}</td>
-                          <td>{row.time}</td>
-                          <td>{row.score}</td>
-                          <td><span className={`tag ${row.statusClass}`}>{row.status}</span></td>
-                          <td><a>{row.action}</a></td>
+                      }) : (
+                        <tr>
+                          <td colSpan={6} className="empty" style={{ padding: 40 }}>暂无考试，请联系管理员发布考试</td>
                         </tr>
-                      ))}
+                      )}
                     </tbody>
                   </table>
                 </div>

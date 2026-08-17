@@ -38,6 +38,25 @@ export function taskStatusText(status: string): string {
   return map[status] || "待开始";
 }
 
+// 任务运行时状态（与 PC 端 getTaskRuntimeStatus 对齐）：
+// completed → 已完成；endAt 已过 → 已逾期（不论 published/stopped）；published → 进行中；其余 → 待开始
+export function taskRuntimeStatus(status: string, endAt: string | null | undefined): string {
+  if (status === "completed") return "completed";
+  const endTime = endAt ? new Date(endAt).getTime() : Number.NaN;
+  if (Number.isFinite(endTime) && endTime < Date.now()) return "overdue";
+  if (status === "published") return "published";
+  return status;
+}
+
+// 任务展示状态文本（运行时状态 → 中文），与 PC 端「我的任务」判定一致
+export function taskDisplayStatus(status: string, endAt: string | null | undefined): string {
+  const runtime = taskRuntimeStatus(status, endAt);
+  if (runtime === "completed") return "已完成";
+  if (runtime === "overdue") return "已逾期";
+  if (runtime === "published") return "进行中";
+  return "待开始";
+}
+
 export function taskFormText(mode: string | null | undefined): string {
   return mode === "text" ? "文本形式" : "语音形式";
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { taskApi, examApi, attemptApi, tenantApi, type AuthUser, type TaskRow, type ExamRow, type TenantRow } from "@/lib/api";
-import { statusClass, taskStatusText, taskTypeText } from "@/lib/types";
+import { statusClass, taskStatusText, taskTypeText, taskDisplayStatus } from "@/lib/types";
 import type { PageKey } from "./MobileApp";
 
 interface HomePageProps {
@@ -209,7 +209,7 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
             )}
             {recentTasks.map((t) => {
               const isPractice = (t.type || "").includes("practice") || (t.type || "").includes("scenario");
-              const stText = taskStatusText(t.status);
+              const stText = taskDisplayStatus(t.status, t.endAt);
               return (
                 <div
                   className="recent-item"
