@@ -771,7 +771,6 @@ export function AdminDashboard() {
   const [selectedKbFileIds, setSelectedKbFileIds] = useState<string[]>([]);
   const [sceneFilter, setSceneFilter] = useState({ status: "all", mode: "all", createMode: "all", org: "all", keyword: "" });
   const [scenePage, setScenePage] = useState(1);
-  const [batchMode, setBatchMode] = useState(false);
   const [selectedSceneIds, setSelectedSceneIds] = useState<string[]>([]);
   const [sceneToDelete, setSceneToDelete] = useState<Scene | null>(null);
   const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
@@ -1578,6 +1577,12 @@ export function AdminDashboard() {
     });
   }
 
+  async function copyScene(sceneId: string) {
+    await submitAction("场景已复制，已创建新场景。", async () => {
+      await apiFetch(`/scenes/${sceneId}/copy`, { method: "POST", body: JSON.stringify({}) });
+    });
+  }
+
   async function confirmDeleteScene() {
     if (!sceneToDelete) return;
     const target = sceneToDelete;
@@ -1595,7 +1600,6 @@ export function AdminDashboard() {
     await submitAction(`已删除 ${ids.length} 个场景。`, async () => {
       await apiFetch<{ deleted: number }>("/scenes/batch", { method: "DELETE", body: JSON.stringify({ ids }) });
       setSelectedSceneIds([]);
-      setBatchMode(false);
       setScenePage(1);
     });
   }
@@ -1607,7 +1611,12 @@ export function AdminDashboard() {
   // ===== 场景列表：过滤 + 每页 10 条客户端分页（对齐原型） =====
   const SCENE_PAGE_SIZE = 10;
   const sceneCreateModes = ["ai_practice", "ai_exam", "fixed_practice", "fixed_exam"];
-  const filteredScenes = scenes.filter((scene) => {
+  const sortedScenes = [...scenes].sort((a, b) => {
+    const aTime = a.createdAt ? Date.parse(a.createdAt) : 0;
+    const bTime = b.createdAt ? Date.parse(b.createdAt) : 0;
+    return bTime - aTime;
+  });
+  const filteredScenes = sortedScenes.filter((scene) => {
     if (sceneFilter.status !== "all" && scene.status !== sceneFilter.status) return false;
     if (sceneFilter.mode !== "all") {
       if (sceneCreateModes.includes(sceneFilter.mode)) {
@@ -1634,17 +1643,13 @@ export function AdminDashboard() {
       return checked ? [...next, ...currentPageIds] : next;
     });
   }
-  function toggleBatchMode() {
-    if (batchMode && selectedSceneIds.length > 0) {
-      setShowBatchDeleteConfirm(true);
+  function handleBatchDelete() {
+    if (!selectedSceneIds.length) {
+      setError("请选择需要删除的场景！");
       return;
     }
-    if (batchMode) {
-      setSelectedSceneIds([]);
-      setBatchMode(false);
-      return;
-    }
-    setBatchMode(true);
+    setError("");
+    setShowBatchDeleteConfirm(true);
   }
 
   async function publishTask(taskId: string) {
@@ -2281,9 +2286,7 @@ export function AdminDashboard() {
                     <p className="muted">管理智能对练场景，快速创建并关联培训任务。</p>
                   </div>
                   <div className="scene-actions">
-                    <button className="btn outline" type="button" onClick={toggleBatchMode}>
-                      {batchMode ? (selectedSceneIds.length > 0 ? `删除已选(${selectedSceneIds.length})` : "取消") : "批量删除"}
-                    </button>
+                    <button className="btn outline" type="button" onClick={handleBatchDelete}>批量删除</button>
                     <button className="btn" type="button" onClick={() => setShowSceneModePicker(true)}>＋ 添加场景</button>
                   </div>
                 </div>
@@ -2311,7 +2314,7 @@ export function AdminDashboard() {
                   <button className="btn" type="button" onClick={() => setScenePage(1)}>查询</button>
                 </div>
 
-                <div className={`scene-list card ${batchMode ? "batch-mode" : ""}`}>
+                <div className="scene-list card">
                   <div className="table-wrap">
                     <table className="scene-table">
                       <thead>
@@ -2348,7 +2351,7 @@ export function AdminDashboard() {
                                   <a onClick={() => navigateTo(`/scenes/${scene.id}`)}>预览</a>
                                   <a onClick={() => navigateTo(`/scenes/${scene.id}/edit`)}>编辑</a>
                                   {statusOn ? <a onClick={() => disableScene(scene.id)}>禁用</a> : <a onClick={() => publishScene(scene.id)}>启用</a>}
-                                  <a>复制</a>
+                                  <a onClick={() => copyScene(scene.id)}>复制</a>
                                   <a onClick={() => navigateTo(`/practice?sceneId=${scene.id}`)}>创建任务</a>
                                   <a className="del" onClick={() => setSceneToDelete(scene)}>删除</a>
                                 </div>
@@ -2439,7 +2442,7 @@ export function AdminDashboard() {
 
             <ConfirmDialog
               open={showBatchDeleteConfirm}
-              message={`确定删除选中的 ${selectedSceneIds.length} 个场景吗？删除后不可恢复，请谨慎操作。`}
+              message={`当前已选中 ${selectedSceneIds.length} 条场景数据，确认删除吗？`}
               onCancel={() => setShowBatchDeleteConfirm(false)}
               onConfirm={confirmBatchDeleteScenes}
             />
@@ -4612,8 +4615,6 @@ function LoginCaptchaModal({
     </div>
   );
 }
-
-
 
 
 
