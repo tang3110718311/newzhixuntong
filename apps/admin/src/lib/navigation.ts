@@ -7,7 +7,28 @@ export function appPath(path: string) {
 }
 
 export function navigateTo(path: string) {
+  showNavigationLoading();
   window.location.href = appPath(path);
+}
+
+export function navigateBackOr(fallbackPath: string) {
+  showNavigationLoading();
+  const referrer = typeof document !== "undefined" ? document.referrer : "";
+  const sameOriginReferrer = referrer && referrer.startsWith(window.location.origin);
+  if (window.history.length > 1 && sameOriginReferrer) {
+    window.history.back();
+    return;
+  }
+  window.location.href = appPath(fallbackPath);
+}
+
+function showNavigationLoading() {
+  if (typeof document === "undefined") return;
+  if (document.getElementById("navigation-loading-overlay")) return;
+  const overlay = document.createElement("div");
+  overlay.id = "navigation-loading-overlay";
+  overlay.innerHTML = '<div class="navigation-loading-spinner" aria-label="页面跳转中" role="status"></div>';
+  document.body.appendChild(overlay);
 }
 
 export function getPathId(segment: string) {

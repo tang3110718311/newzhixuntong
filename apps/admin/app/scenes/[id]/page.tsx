@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ApiResponse, AuthSession } from "@zxt/shared";
 import AppShell, { type RightRailData } from "@/components/AppShell";
-import { getPathId, navigateTo } from "@/lib/navigation";
+ import { getPathId, navigateBackOr, navigateTo } from "@/lib/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -207,7 +207,7 @@ export default function SceneDetailPage() {
               </div>
             </div>
             <div className="scene-actions">
-              <button className="btn outline" type="button" onClick={() => navigateTo('/?section=scenes')}>返回列表</button>
+               <button className="btn outline" type="button" onClick={() => navigateBackOr('/?section=scenes')}>返回列表</button>
               <button className="btn" type="button" onClick={() => { navigateTo('/scenes/' + scene.id + '/edit'); }}>编辑</button>
             </div>
           </div>

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ApiResponse, AuthSession } from "@zxt/shared";
 import AppShell, { type RightRailData } from "@/components/AppShell";
-import { navigateTo } from "@/lib/navigation";
+import { navigateBackOr, navigateTo } from "@/lib/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -182,7 +182,7 @@ export default function SceneNewPage() {
     setError("");
     try {
       const name = aiIdentity.replace(/\s+/g, " ").slice(0, 18) + (aiIdentity.length > 18 ? "…" : "");
-      await apiFetch("/scenes", {
+      const created = await apiFetch<{ id: string }>("/scenes", {
         method: "POST",
         body: JSON.stringify({
           name: name || "新场景",
@@ -214,8 +214,7 @@ export default function SceneNewPage() {
         }),
       });
       setMessage("创建成功。");
-      // 创建完成后自动跳转回场景管理列表页
-      navigateTo("/?section=scenes");
+      navigateTo(`/scenes/${created.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "创建失败");
     } finally {
@@ -261,7 +260,7 @@ export default function SceneNewPage() {
               <p className="muted">{formModeDesc}</p>
             </div>
             <div className="scene-form-actions">
-              <button className="btn outline" type="button" onClick={() => navigateTo('/?section=scenes')} disabled={submitting}>
+               <button className="btn outline" type="button" onClick={() => navigateBackOr('/?section=scenes')} disabled={submitting}>
                 取消
               </button>
               <button className="btn" type="button" disabled={submitting} onClick={handleSave}>

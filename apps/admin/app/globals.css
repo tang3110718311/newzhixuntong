@@ -2721,6 +2721,29 @@ body {
 }
 
 /* Page section layout */
+#navigation-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(2px);
+}
+
+.navigation-loading-spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid rgba(47, 116, 235, 0.2);
+  border-top-color: #2f74eb;
+  border-radius: 50%;
+  animation: navigation-loading-spin 0.75s linear infinite;
+}
+
+@keyframes navigation-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
 .page-section {
   display: grid;
   gap: 14px;

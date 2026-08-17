@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ApiResponse, AuthSession } from "@zxt/shared";
 import AppShell, { type RightRailData } from "@/components/AppShell";
-import { getPathId, navigateTo } from "@/lib/navigation";
+ import { getPathId, navigateBackOr, navigateTo } from "@/lib/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -282,7 +282,7 @@ export default function SceneEditPage() {
       setDetail(updated);
       setScoringRuleForms(updated.scoringRules.map((r) => ({ ...r })));
       setMessage("保存成功。");
-      navigateTo("/?section=scenes");
+       navigateTo(`/scenes/${detail.scene.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
     } finally {
@@ -332,7 +332,7 @@ export default function SceneEditPage() {
                 <p className="muted">{formModeDesc}</p>
               </div>
               <div className="scene-form-actions">
-                <button className="btn outline" type="button" onClick={() => navigateTo('/?section=scenes')} disabled={submitting}>
+                 <button className="btn outline" type="button" onClick={() => navigateBackOr(`/scenes/${detail.scene.id}`)} disabled={submitting}>
                   取消
                 </button>
                 <button className="btn" type="button" disabled={submitting} onClick={handleSave}>

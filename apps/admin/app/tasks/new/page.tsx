@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ApiResponse, AuthSession } from "@zxt/shared";
 import AppShell, { type RightRailData } from "@/components/AppShell";
-import { navigateTo } from "@/lib/navigation";
+import { navigateBackOr, navigateTo } from "@/lib/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -225,7 +225,7 @@ export default function TaskCreatePage() {
       if (publishAfter) {
         await apiFetch(`/tasks/${created.id}/publish`, { method: "POST", body: JSON.stringify({}) });
       }
-      navigateTo("/?section=tasks");
+       navigateBackOr("/?section=tasks");
     } catch (err) {
       setError(err instanceof Error ? err.message : publishAfter ? "发布失败" : "创建失败");
     } finally {
@@ -266,7 +266,7 @@ export default function TaskCreatePage() {
               <p>创建新的企业培训任务，配置基础信息、业务场景、回答形式与参与学员</p>
             </div>
             <div className="task-create-actions">
-              <button className="btn outline" type="button" onClick={() => navigateTo("/?section=tasks")} disabled={submitting}>取消</button>
+               <button className="btn outline" type="button" onClick={() => navigateBackOr("/?section=tasks")} disabled={submitting}>取消</button>
               <button className="btn outline" type="button" disabled={submitting} onClick={() => submitTask(false)}>{submitting ? "保存中…" : "保存"}</button>
               <button className="btn" type="button" disabled={submitting} onClick={() => submitTask(true)}>{submitting ? "发布中…" : "发布"}</button>
             </div>
