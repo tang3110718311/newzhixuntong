@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { aiApi, recordApi } from "@/lib/api";
 import { getDisplayedLength, getFullTextFallback, splitSpeechSegments } from "@/lib/speech-sync";
+import { createAsyncSubmitGuard } from "@/lib/submit-guard";
 
 interface PracticeViewProps {
   scene: any;
@@ -123,6 +124,8 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const recogRef = useRef<any>(null);
   const liveTextRef = useRef("");
   const submittingRef = useRef(false);
+  const chatSubmittingRef = useRef(false);
+  const voiceSubmitGuardRef = useRef(createAsyncSubmitGuard());
   const voiceTextSentRef = useRef(false);
   // 分段实时转写（Web Speech 不可用时的兜底：每 3s 把新增录音分片送后端 STT）
   const liveSttTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -218,10 +221,12 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
 
   const sendText = async (text: string, isVoice = false) => {
     if (!text.trim() || !sceneId) return;
+    if (chatSubmittingRef.current) return;
     if (!sessionId) {
       showToast("对练会话尚未建立，请稍后再试");
       return;
     }
+    chatSubmittingRef.current = true;
     pushMsg({ who: "user", text: text.trim(), time: now(), isVoice });
     setInput("");
     setSending(true);
@@ -275,6 +280,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     } catch (e: any) {
       pushMsg({ who: "ai", text: "（回复失败：" + (e.message || "网络错误") + "）" });
     } finally {
+      chatSubmittingRef.current = false;
       setSending(false);
     }
   };
@@ -814,25 +820,27 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
 
   /** 发送语音：有实时识别文本直接发送，否则等待 STT 回退 */
   const submitVoice = () => {
-    if (submittingRef.current) return;
-    submittingRef.current = true;
-    setRecording(false);
-    stopLiveRecognition();
-    const live = liveTextRef.current.trim();
-    if (live) {
-      voiceTextSentRef.current = true;
-      stopRecorderAndStream();
-      sendText(live, true);
-    } else {
-      stopRecorderAndStream(); // onstop 中走 STT
-    }
-    // 发送/提交后清空实时识别文字缓存，避免下一次录音残留
-    setLiveText("");
-    liveTextRef.current = "";
-    // 允许再次开始录音
-    setTimeout(() => {
-      submittingRef.current = false;
-    }, 300);
+    void voiceSubmitGuardRef.current.run(async () => {
+      if (submittingRef.current) return;
+      submittingRef.current = true;
+      try {
+        setRecording(false);
+        stopLiveRecognition();
+        const live = liveTextRef.current.trim();
+        if (live) {
+          voiceTextSentRef.current = true;
+          stopRecorderAndStream();
+          await sendText(live, true);
+        } else {
+          stopRecorderAndStream(); // onstop 中走 STT
+        }
+        // 发送/提交后清空实时识别文字缓存，避免下一次录音残留
+        setLiveText("");
+        liveTextRef.current = "";
+      } finally {
+        submittingRef.current = false;
+      }
+    });
   };
 
   /** 关闭聆听面板（不发送） */
