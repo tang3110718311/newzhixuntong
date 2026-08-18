@@ -67,10 +67,10 @@
 @keyframes pageSlideLeft{from{opacity:.35;transform:translateX(24px)}to{opacity:1;transform:translateX(0)}}
 @keyframes pageSlideRight{from{opacity:.35;transform:translateX(-24px)}to{opacity:1;transform:translateX(0)}}
 .task-tabs,.exam-tabs{position:relative;isolation:isolate}
-.task-tabs:after,.exam-tabs:after{content:'';position:absolute;z-index:-1;top:4px;bottom:4px;left:4px;width:calc((100% - 8px)/5);border-radius:9px;background:#fff;box-shadow:0 3px 9px rgba(91,113,190,.14);transition:transform .28s cubic-bezier(.2,.8,.2,1);pointer-events:none}
-.task-tabs:after{transform:translateX(calc(var(--tab-index,0) * (100% + 5px)))}
-.task-tabs:has(.task-tab:nth-child(2).active):after{--tab-index:1}.task-tabs:has(.task-tab:nth-child(3).active):after{--tab-index:2}.task-tabs:has(.task-tab:nth-child(4).active):after{--tab-index:3}.task-tabs:has(.task-tab:nth-child(5).active):after{--tab-index:4}
-.exam-tabs:after{width:calc((100% - 8px)/4);transform:translateX(calc(var(--tab-index,0) * (100% + 5px)))}
+.task-tabs:after,.exam-tabs:after{content:'';position:absolute;z-index:-1;top:4px;bottom:4px;left:4px;border-radius:8px;background:#fff;box-shadow:0 3px 9px rgba(91,113,190,.14);transition:transform .28s cubic-bezier(.2,.8,.2,1);pointer-events:none}
+.task-tabs:after{width:calc((100% - 48px)/6);transform:translateX(calc(var(--tab-index,0) * (100% + 8px)))}
+.task-tabs:has(.task-tab:nth-child(2).active):after{--tab-index:1}.task-tabs:has(.task-tab:nth-child(3).active):after{--tab-index:2}.task-tabs:has(.task-tab:nth-child(4).active):after{--tab-index:3}.task-tabs:has(.task-tab:nth-child(5).active):after{--tab-index:4}.task-tabs:has(.task-tab:nth-child(6).active):after{--tab-index:5}
+.exam-tabs:after{width:calc((100% - 32px)/4);transform:translateX(calc(var(--tab-index,0) * (100% + 8px)))}
 .exam-tabs:has(.exam-tab:nth-child(2).active):after{--tab-index:1}.exam-tabs:has(.exam-tab:nth-child(3).active):after{--tab-index:2}.exam-tabs:has(.exam-tab:nth-child(4).active):after{--tab-index:3}
 .task-tab.active,.exam-tab.active{position:relative;z-index:1;background:transparent;box-shadow:none}
 .practice-page .practice-topbar{height:86px;padding:10px 12px 10px;display:grid;grid-template-columns:38px minmax(0,1fr) 58px;grid-template-rows:22px 32px;column-gap:8px;row-gap:6px;align-items:center}
@@ -803,15 +803,13 @@ input, select, textarea { font-family: inherit; }
 .pv-voice-wave{display:inline-flex;align-items:flex-end;gap:2.5px;margin-right:6px;vertical-align:-2px}
 .pv-voice-wave i{display:block;width:3px;border-radius:2px;background:#fff;opacity:.95}
 .pv-voice-wave i:nth-child(1){height:9px}.pv-voice-wave i:nth-child(2){height:16px}.pv-voice-wave i:nth-child(3){height:11px}.pv-voice-wave i:nth-child(4){height:15px}
-/* AI 消息微信语音条：喇叭图标 + 时长；播放中高亮+图标脉冲 */
-.pv-ai-voicebar{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:96px;max-width:100%;padding:7px 10px;border-radius:9px;background:#f1f5fb;border:1px solid #e3ebf6;transition:background .2s}
-.pv-ai-voicebar.playing{background:#e8f1ff;border-color:#c7ddfb}
-.pv-ai-voicebar-ico{flex:none;display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff}
-.pv-ai-voicebar-dur{flex:none;min-width:22px;font-size:11px;font-weight:700;color:#64748b;font-variant-numeric:tabular-nums;text-align:right}
-.pv-ai-voicebar.playing .pv-ai-voicebar-ico{animation:pvVoicePulse 1s ease-in-out infinite}
-@keyframes pvVoicePulse{0%,100%{opacity:1}50%{opacity:.55}}
-/* AI 消息语音条下方文字：随播放进度推进，播完后显示全文 */
-.pv-ai-voicebar-text{margin-top:7px}
+/* 语音形式：AI 对话下方播放图标，播放中闪烁 */
+.pv-ai-sound-icon{display:flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;min-width:28px;min-height:28px;aspect-ratio:1;margin:7px 0 2px;padding:0;border:0;border-radius:50%;box-sizing:border-box;background:#edf4ff;color:#3b82f6;cursor:pointer;transition:background .2s,transform .2s}
+.pv-ai-sound-icon:active{transform:scale(.92)}
+.pv-ai-sound-icon.playing{background:#dbeafe;animation:pvVoicePulse .9s ease-in-out infinite}
+@keyframes pvVoicePulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(59,130,246,.35)}50%{opacity:.55;box-shadow:0 0 0 5px rgba(59,130,246,0)}}
+/* AI 消息文字：播放时逐字显示，播完后显示全文 */
+.pv-ai-message-text{margin-top:7px}
 /* TTS 合成期间：浅色"语音准备中…"占位 */
 .pv-ai-preparing{margin-top:6px}
 .pv-ai-preparing b{font-size:10px;font-weight:500;color:#a3b0c2;white-space:nowrap}
@@ -1107,8 +1105,8 @@ button.hello:active{opacity:.7}
 .material-done-btn{height:40px;padding:0 18px;border:0;border-radius:10px;background:#4080ff;color:#fff;font-size:15px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(64,128,255,.3);flex:none}
 .material-done-btn:active{opacity:.85}
 
-/* ===== 我的考试页卡片（对齐原型 v30）===== */
-.exam-card{border:1px solid #e3ebf6;border-radius:18px;background:rgba(255,255,255,.96);box-shadow:0 7px 20px rgba(56,113,177,.075);padding:14px 14px 13px;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+/* ===== 我的考试页卡片（对齐原型）===== */
+.exam-card{border:1px solid #e3ebf6;border-radius:12px!important;background:rgba(255,255,255,.96);box-shadow:0 7px 20px rgba(56,113,177,.075);padding:16px!important;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
 .exam-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .exam-kind{display:flex;align-items:center;gap:6px;color:#8a9bb1;font-size:11px;font-weight:700}
 .exam-kind-icon{width:22px;height:22px;display:grid;place-items:center;border-radius:7px;background:#edf5ff;color:#4d82e5;font-size:12px}
@@ -1116,12 +1114,13 @@ button.hello:active{opacity:.7}
 .exam-status{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap}
 .exam-status i{width:5px;height:5px;border-radius:50%;background:currentColor}
 .exam-status.wait{background:#eef3f8;color:#71849b}
+.exam-status.doing{background:#e6f1ff;color:#3f79da}
 .exam-status.done{background:#e9f8f1;color:#159b73}
 .exam-status.overdue{background:#fff0ed;color:#df6e5e}
 .exam-card-main{padding:11px 0 10px}
-.exam-card-main h3{font-size:14px;margin:0 0 7px;color:#1f2d43}
-.exam-card-main p{font-size:12px;color:#8090a7;margin:0;line-height:1.6}
-.exam-card-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:0;padding-top:10px;border-top:1px solid #f0f3f7}
+.exam-card-main h3{font-size:15px!important;margin:0 0 5px;color:#2e466d}
+.exam-card-main p{font-size:13px!important;color:#8294ab;margin:0;line-height:1.6}
+.exam-card-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:0;padding-top:11px;border-top:1px solid #f0f3f7}
 .exam-score{display:flex;align-items:baseline;gap:6px;min-width:0}
 .exam-score small{color:#9aa8b8;font-size:10px;white-space:nowrap}
 .exam-score strong{color:#5276b8;font-size:16px;line-height:1;font-weight:900;white-space:nowrap}
@@ -1131,11 +1130,17 @@ button.hello:active{opacity:.7}
 .exam-btn span{font-size:17px;line-height:10px}
 .exam-btn.done{color:#159b73}
 .exam-btn.overdue{color:#df6e5e}
-.exam-btn.wait{color:#3f79da}
+.exam-btn.wait,.exam-btn.doing{color:#3f79da}
 .exam-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:40px 20px;border:1px solid #e6edf7;box-shadow:none;border-radius:16px}
 .exam-empty span{font-size:25px;color:#9bb3d4}
 .exam-empty b{color:#5d7290;font-size:13px}
 .exam-empty small{color:#9aa8b8;font-size:11px}
+
+/* 任务状态：逾期深红、停用浅红 */
+.status.overdue{background:#fee2e2;color:#b91c1c}
+.status.stopped{background:#fff0ed;color:#df6e5e}
+.reference-progress span.overdue{background:linear-gradient(90deg,#ef4444,#b91c1c)}
+.reference-progress span.stopped{background:linear-gradient(90deg,#f7a39a,#df6e5e)}
 
 /* ===== 综合能力页（对齐原型 v30）===== */
 .ability-hero-v2{background:linear-gradient(135deg,#e3f8ff,#edf0ff);border-radius:20px;padding:19px;margin-bottom:12px}

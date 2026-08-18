@@ -188,6 +188,7 @@ export interface TaskRow {
   progressPercent: number;
   primarySceneType: string | null;
   primaryMode: string | null;
+  answerForm: "voice" | "text" | null;
 }
 
 export interface PageResult<T> {

@@ -126,7 +126,7 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
                 <div className="task-info">
                   <h3>{t.name}</h3>
                   <p>
-                    {taskTypeText(t.type)} | {taskFormText(t.primaryMode)} | 场景数：{t.sceneCount}
+                    {taskTypeText(t.type)} | {taskFormText(t.answerForm)} | 场景数：{t.sceneCount}
                   </p>
                 </div>
                 <span className={`status ${cls}`}>{st}</span>

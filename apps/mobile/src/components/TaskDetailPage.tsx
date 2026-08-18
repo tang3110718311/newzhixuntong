@@ -218,7 +218,7 @@ const cls = isStopped ? "overdue" : task.status === "completed" ? "done" : taskD
           <div className="task-detail-main">
             <h2>{task.name}</h2>
             <p>
-              {taskTypeText(task.type)} | {taskFormText(task.primaryMode)} |{" "}
+              {taskTypeText(task.type)} | {taskFormText(task.answerForm)} |{" "}
               {task.creatorOrgName || "全体员工"}
             </p>
             <p className="task-detail-description compact">{task.description || "完成本任务要求的学习内容，并查看每个场景的学习结果。"}</p>

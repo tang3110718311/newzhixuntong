@@ -81,7 +81,7 @@ function makePooledTasks<T, R>(
 export default function PracticeView({ scene, task, onBack, showToast, onReport }: PracticeViewProps) {
   const sceneId = scene?.scene?.id;
   // 文本形式：仅文本框+发送；语音形式：仅语音输入区（参考图还原）
-  const isTextMode = scene?.scene?.mode === "text";
+  const isTextMode = task?.answerForm ? task.answerForm === "text" : scene?.scene?.mode === "text";
 
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -92,8 +92,6 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const [liveText, setLiveText] = useState("");
   // AI 语音播报状态：播报中禁止录音
   const [aiSpeaking, setAiSpeaking] = useState(false);
-  // AI 播报实时进度（0-1，timeupdate 驱动）
-  const [aiSpeakProgress, setAiSpeakProgress] = useState(0);
   // AI 消息逐字显示进度（msgId → 已显示字符数；未记录 = 显示全文）
   const [aiDisp, setAiDisp] = useState<Record<string, number>>({});
   // aiDisp 的同步引用（供 timer / audio 回调读取当前值，避免闭包过期）
@@ -101,8 +99,6 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   // 正在等待 TTS 合成的 AI 消息 id（合成期间气泡下显示"语音准备中…"）
   const [ttsPreparing, setTtsPreparing] = useState<string | null>(null);
   const [ttsFailed, setTtsFailed] = useState<Record<string, boolean>>({});
-  // 各 AI 消息语音条时长（秒，loadedmetadata 后写入；未记录 = 未知）
-  const [voiceDur, setVoiceDur] = useState<Record<string, number>>({});
   // 正在播报语音的 AI 消息 id（进度条只显示在对应气泡下）
   const [speakMsgId, setSpeakMsgId] = useState<string | null>(null);
   // 学员录音已进行秒数（实时录音进度）
@@ -350,7 +346,6 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     aiAudioMsgIdRef.current = null;
     aiSpeakingRef.current = false;
     setAiSpeaking(false);
-    setAiSpeakProgress(0);
     setSpeakMsgId(null);
     setTtsPreparing(null);
   }, [revealMsgFull]);
@@ -384,16 +379,6 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
           }
           const audio = new Audio(url);
           audioRef.current = audio;
-          // 该句时长累加到语音条总时长（微信语音条显示各句之和）
-          audio.addEventListener("loadedmetadata", () => {
-            if (audioRef.current === audio && msgId && audio.duration) {
-              const sec = Math.max(1, Math.round(audio.duration));
-              setVoiceDur((prev) => {
-                const next = { ...prev, [msgId]: (prev[msgId] || 0) + sec };
-                return next;
-              });
-            }
-          });
           let settled = false;
           const settle = (played: boolean) => {
             if (settled) return;
@@ -409,8 +394,6 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
             if (audioRef.current !== audio || !audio.duration) return;
             const p = Math.min(1, audio.currentTime / audio.duration);
             const absPos = offsetInFull + p * sentence.length;
-            const prog = totalLen > 0 ? Math.min(1, absPos / totalLen) : p;
-            setAiSpeakProgress(prog);
             if (msgId) {
               const shown = Math.max(aiDispRef.current[msgId] ?? 0, getDisplayedLength(totalLen, absPos / totalLen));
               setAiDisp((prev) => {
@@ -475,15 +458,12 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
           resolvePlayEnd();
           return;
         }
-        // 语音条时长从 0 开始累加（各句之和）
-        if (msgId) setVoiceDur((prev) => (prev[msgId] ? { ...prev, [msgId]: 0 } : prev));
         // 播报状态：AI 说话期间禁止学员录音
         aiAudioMsgIdRef.current = msgId || null;
         aiSpeakingRef.current = true;
         setAiSpeaking(true);
         setSpeakMsgId(msgId || null);
-        setAiSpeakProgress(0);
-        // 分句并行合成（并发 3，避免触发后端 tts 限流），按句序 await 即"边合边播"
+            // 分句并行合成（并发 3，避免触发后端 tts 限流），按句序 await 即"边合边播"
         const ttsPromises = makePooledTasks(segments, 3, (segment) => {
           const cached = ttsCacheRef.current.get(segment.ttsText);
           if (cached) return cached;
@@ -535,8 +515,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
             aiAudioMsgIdRef.current = null;
             aiSpeakingRef.current = false;
             setAiSpeaking(false);
-            setAiSpeakProgress(0);
-            setSpeakMsgId(null);
+                    setSpeakMsgId(null);
           }
         } else {
           if (speechFailed) {
@@ -547,8 +526,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
               aiAudioMsgIdRef.current = null;
               aiSpeakingRef.current = false;
               setAiSpeaking(false);
-              setAiSpeakProgress(0);
-              setSpeakMsgId(null);
+                        setSpeakMsgId(null);
             }
             resolvePlayEnd();
             return;
@@ -958,23 +936,10 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
                   )}
                   {m.who === "ai" ? (
                     <>
-                      {/* 微信语音条：AI 消息固定展示（无论是否首次进入页面），播放中高亮+图标脉冲 */}
-                      <div className={`pv-ai-voicebar${aiSpeaking && speakMsgId === m.id ? " playing" : ""}`}>
-                        <span className="pv-ai-voicebar-ico" aria-hidden="true">
-                          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                            <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-                          </svg>
-                        </span>
-                        <b className="pv-ai-voicebar-dur">
-                          {voiceDur[m.id] ? `${voiceDur[m.id]}″` : ""}
-                        </b>
-                      </div>
-                       {/* 语音条下方文字由音频播放进度推进，失败时回退全文 */}
-                       <div className="pv-ai-voicebar-text">
-                         {aiDisp[m.id] != null && !ttsFailed[m.id]
-                           ? m.text.slice(0, aiDisp[m.id])
-                           : getFullTextFallback(m.text)}
+                      <div className="pv-ai-message-text">
+                          {aiDisp[m.id] != null && !ttsFailed[m.id]
+                            ? m.text.slice(0, aiDisp[m.id])
+                            : getFullTextFallback(m.text)}
                        </div>
                        {ttsFailed[m.id] && (
                          <button
@@ -1000,6 +965,30 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
                     m.text
                   )}
                 </div>
+                {m.who === "ai" && !isTextMode && (
+                  <button
+                    className={`pv-ai-sound-icon${aiSpeaking && speakMsgId === m.id ? " playing" : ""}`}
+                    type="button"
+                    aria-label={aiSpeaking && speakMsgId === m.id ? "正在播放 AI 语音" : "播放 AI 语音"}
+                    onClick={() => {
+                      stopAiSpeak();
+                      setTtsFailed((prev) => {
+                        const next = { ...prev };
+                        delete next[m.id];
+                        return next;
+                      });
+                      setAiDisp((prev) => ({ ...prev, [m.id]: 0 }));
+                      setTtsPreparing(m.id);
+                      void speakText(m.text, m.id);
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                      <path d="M18.5 5.5a8.5 8.5 0 0 1 0 13" />
+                    </svg>
+                  </button>
+                )}
                 {/* TTS 合成期间（音频尚未就绪）：语音条下方"语音准备中…"浅色占位 */}
                 {m.who === "ai" && !(aiSpeaking && speakMsgId === m.id) && ttsPreparing === m.id && (
                   <div className="pv-ai-preparing" aria-hidden="true">
