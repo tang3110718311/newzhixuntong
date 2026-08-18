@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { aiApi, recordApi } from "@/lib/api";
+import { aiApi, recordApi, type AiTurnScore } from "@/lib/api";
 import { getDisplayedLength, getFullTextFallback, splitSpeechSegments } from "@/lib/speech-sync";
 import { createAsyncSubmitGuard } from "@/lib/submit-guard";
 
@@ -21,6 +21,7 @@ interface ChatMsg {
   isVoice?: boolean;
   // 反馈卡结构化数据
   score?: number | null;
+  dimensions?: AiTurnScore[];
   issues?: string[];
   advice?: string[];
 }
@@ -236,15 +237,24 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       const activeSessionId = res.sessionId || sessionId;
       if (res.sessionId && res.sessionId !== sessionId) setSessionId(res.sessionId);
       // 参考图顺序：用户消息 → 反馈卡 → AI 回复
-      if (res.coachTip) {
-        const { issues, advice } = parseCoachTip(res.coachTip);
+      if (res.coachTip || res.perTurnScores?.length) {
+        const { issues, advice } = parseCoachTip(res.coachTip || "");
         // 反馈卡右上角分数 = 本轮各维度得分之和（后端单轮评分 perTurnScores）
         const turnTotal =
           Array.isArray(res.perTurnScores) && res.perTurnScores.length
-            ? res.perTurnScores.reduce((acc: number, s: any) => acc + (Number(s.score) || 0), 0)
+            ? res.perTurnScores.reduce((acc, item) => acc + (Number(item.score) || 0), 0)
             : null;
-        pushMsg({ who: "feedback", text: res.coachTip, issues, advice, score: turnTotal });
+        pushMsg({
+          who: "feedback",
+          text: res.coachTip || "",
+          issues,
+          advice,
+          score: turnTotal,
+          dimensions: res.perTurnScores,
+        });
       }
+      // 先完成评分卡的首帧渲染，再创建并播报 AI 回复，保证反馈优先可见。
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const speakPromise = res.aiReply ? pushAiMsgAndSpeak(res.aiReply) : null;
       setRound(res.round || 0);
       if (res.isFinished) {
@@ -394,8 +404,9 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
             if (audioRef.current !== audio || !audio.duration) return;
             const p = Math.min(1, audio.currentTime / audio.duration);
             const absPos = offsetInFull + p * sentence.length;
-            if (msgId) {
-              const shown = Math.max(aiDispRef.current[msgId] ?? 0, getDisplayedLength(totalLen, absPos / totalLen));
+            // 仅自动播报中的逐字消息更新展示进度；已显示全文时重播不应收回文字。
+            if (msgId && aiDispRef.current[msgId] != null) {
+              const shown = Math.max(aiDispRef.current[msgId], getDisplayedLength(totalLen, absPos / totalLen));
               setAiDisp((prev) => {
                 if (prev[msgId] === shown) return prev;
                 const next = { ...prev, [msgId]: shown };
@@ -553,6 +564,8 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       // 防御性剥离模型可能残留的 [COACH_TIP:...]/【COACH_TIP:...】标记（后端已剥离，此处兜底）
       const cleaned = text.replace(/[\[【]\s*COACH_TIP\s*[:：][\s\S]*?[\]】]/g, "").trim();
       const msgId = pushMsg({ who: "ai", text: cleaned, time: now() });
+      // 文本形式无需合成或播放语音，直接展示完整回复。
+      if (isTextMode) return Promise.resolve();
       // 首句音频开始前不显示正文，正文由音频 timeupdate 推进。
       setAiDisp((p) => {
         const next = { ...p, [msgId]: 0 };
@@ -569,7 +582,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       // 返回播完 promise，供对练结束等场景等待收尾话播完
       return speakText(cleaned, msgId);
     },
-    [pushMsg, speakText]
+    [isTextMode, pushMsg, speakText]
   );
 
   /** 停止 Web Speech 实时识别与静音检测 */
@@ -886,8 +899,18 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
                 <div className="pv-feedback-card">
                   <div className="pv-feedback-head">
                     <b>实时点评</b>
-                    <span>{m.score != null ? `${m.score}分` : "—"}</span>
+                    <span>{m.score != null ? <><strong>{m.score}</strong>分</> : "—"}</span>
                   </div>
+                  {m.dimensions && m.dimensions.length > 0 && (
+                    <div className="pv-feedback-dimensions" aria-label="本轮评分维度">
+                      {m.dimensions.map((dimension, index) => (
+                        <span className={`pv-feedback-dimension ${dimension.level}`} key={`${dimension.name}-${index}`}>
+                          <em>{dimension.name}</em>
+                          <b>{dimension.score}/{dimension.maxScore}</b>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {m.issues && m.issues.length > 0 && (
                     <div className="pv-feedback-sec">
                       <span>问题定位</span>
@@ -941,7 +964,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
                             ? m.text.slice(0, aiDisp[m.id])
                             : getFullTextFallback(m.text)}
                        </div>
-                       {ttsFailed[m.id] && (
+                       {!isTextMode && ttsFailed[m.id] && (
                          <button
                            className="pv-ai-replay"
                            type="button"
@@ -952,8 +975,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
                                delete next[m.id];
                                return next;
                              });
-                             setAiDisp((prev) => ({ ...prev, [m.id]: 0 }));
-                             setTtsPreparing(m.id);
+                              setTtsPreparing(m.id);
                              void speakText(m.text, m.id);
                            }}
                          >
@@ -971,13 +993,17 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
                     type="button"
                     aria-label={aiSpeaking && speakMsgId === m.id ? "正在播放 AI 语音" : "播放 AI 语音"}
                     onClick={() => {
+                      // 同一条消息再次点击：立即停止，并由 stopAiSpeak 补全全文。
+                      if (aiSpeakingRef.current && aiAudioMsgIdRef.current === m.id) {
+                        stopAiSpeak();
+                        return;
+                      }
                       stopAiSpeak();
                       setTtsFailed((prev) => {
                         const next = { ...prev };
                         delete next[m.id];
                         return next;
                       });
-                      setAiDisp((prev) => ({ ...prev, [m.id]: 0 }));
                       setTtsPreparing(m.id);
                       void speakText(m.text, m.id);
                     }}
@@ -1018,27 +1044,54 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         )}
       </div>
 
-      {/* ===== 底部输入区 ===== */}
+        {/* ===== 底部输入区 ===== */}
       <div className="pv-composer">
         {isTextMode ? (
-          /* 文本形式：仅文本框 + 发送 */
-          <div className="pv-text-bar">
-            <input
-              className="pv-text-input"
-              placeholder="输入你的回答…"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleSend();
-              }}
-              maxLength={500}
-            />
-            <button className="pv-text-send" type="button" onClick={handleSend} disabled={sending || !input.trim()}>
-              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
-                <path d="M3.5 11.8 20.5 3.5l-4.2 17-4.1-6.1-8.7-2.6Z" fill="#fff" stroke="none" />
-                <path d="m12.2 14.4 8.3-10.7" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+          /* 文本形式：灵感提示 + 文本框 */
+          <div className="pv-voice-area">
+            <button
+              className="pv-hint-pill"
+              type="button"
+              onClick={() => setHintVisible((v) => !v)}
+              aria-expanded={hintVisible}
+            >
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <path d="M12 3l9 9-9 9-9-9z" fill="#2563eb" />
               </svg>
+              灵感提示
             </button>
+
+            {hintVisible && (
+              <div className="pv-hint-card">
+                <h4>
+                  <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+                    <path d="M12 3l9 9-9 9-9-9z" fill="#2563eb" />
+                  </svg>
+                  {hint.title}
+                </h4>
+                <p>{hint.body}</p>
+                <em>根据当前对话上下文生成</em>
+              </div>
+            )}
+
+            <div className="pv-text-bar">
+              <input
+                className="pv-text-input"
+                placeholder="输入你的回答…"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSend();
+                }}
+                maxLength={500}
+              />
+              <button className="pv-text-send" type="button" onClick={handleSend} disabled={sending || !input.trim()}>
+                <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+                  <path d="M3.5 11.8 20.5 3.5l-4.2 17-4.1-6.1-8.7-2.6Z" fill="#fff" stroke="none" />
+                  <path d="m12.2 14.4 8.3-10.7" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+                </svg>
+              </button>
+            </div>
           </div>
         ) : (
           /* 语音形式：灵感提示 + 录音面板 */
