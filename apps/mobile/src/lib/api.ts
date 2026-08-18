@@ -297,9 +297,34 @@ export type AiChatRequest =
   | { sceneId: string; action: "message"; sessionId: string; learnerText: string }
   | { sceneId: string; action: "end"; sessionId: string };
 
+export interface AiTurnScore {
+  name: string;
+  score: number;
+  maxScore: number;
+  level: "excellent" | "pass" | "developing";
+  reason?: string;
+}
+
+export interface AiInspirationHint {
+  title: string;
+  body: string;
+}
+
+export interface AiChatResponse {
+  sessionId?: string;
+  aiReply?: string;
+  coachTip?: string;
+  inspirationHint?: AiInspirationHint | null;
+  perTurnScores?: AiTurnScore[];
+  round?: number;
+  isFinished?: boolean;
+  recordPending?: boolean;
+  trainingRecord?: { score?: number | null } | null;
+}
+
 export const aiApi = {
   chat: (body: AiChatRequest) =>
-    request<any>("/ai/chat", { method: "POST", body }),
+    request<AiChatResponse>("/ai/chat", { method: "POST", body }),
   stt: (audioBase64: string, format = "webm") =>
     request<{ text: string; durationMs: number }>("/ai/stt/transcribe", {
       method: "POST",

@@ -265,6 +265,7 @@ export type ScoreDetailRow = {
   id: string;
   ruleName: string | null;
   score: number;
+  maxScore?: number | null;
   deductionReason: string;
   evidenceText: string;
   /** 能力评级：excellent（精通）/ pass（达标）/ developing（待提升）/ 空（无） */
@@ -1751,7 +1752,7 @@ export function getTrainingRecordDetail(
     [tenantId, recordId],
   );
   const scores = all<ScoreDetailRow>(
-    `select sd.id, sr.name as ruleName, sd.score, sd.deduction_reason as deductionReason, sd.evidence_text as evidenceText, sd.level as level, sd.round_no as roundNo
+    `select sd.id, sr.name as ruleName, sd.score, sr.score as maxScore, sd.deduction_reason as deductionReason, sd.evidence_text as evidenceText, sd.level as level, sd.round_no as roundNo
      from score_details sd
      left join scoring_rules sr on sr.id = sd.scoring_rule_id and sr.tenant_id = sd.tenant_id
      where sd.tenant_id = ? and sd.record_id = ? and sd.deleted_at is null order by sd.created_at asc`,

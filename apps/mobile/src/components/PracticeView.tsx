@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { aiApi, recordApi, type AiTurnScore } from "@/lib/api";
+import { aiApi, recordApi, type AiInspirationHint, type AiTurnScore } from "@/lib/api";
 import { getDisplayedLength, getFullTextFallback, splitSpeechSegments } from "@/lib/speech-sync";
 import { createAsyncSubmitGuard } from "@/lib/submit-guard";
 
@@ -88,7 +88,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [round, setRound] = useState(0);
+  const [inspirationHint, setInspirationHint] = useState<AiInspirationHint | null>(null);
   const [recording, setRecording] = useState(false);
   const [liveText, setLiveText] = useState("");
   // AI 语音播报状态：播报中禁止录音
@@ -167,8 +167,8 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       })
       .then((res) => {
         if (res.sessionId) setSessionId(res.sessionId);
+        setInspirationHint(res.inspirationHint ?? null);
         pushAiMsgAndSpeak(res.aiReply || "你好，我是" + aiName + "，我们开始吧。");
-        setRound(res.round || 0);
       })
       .catch(() => pushMsg({ who: "ai", text: "（AI 对练服务暂时不可用，请稍后重试）" }))
       .finally(() => setSending(false));
@@ -256,7 +256,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       // 先完成评分卡的首帧渲染，再创建并播报 AI 回复，保证反馈优先可见。
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const speakPromise = res.aiReply ? pushAiMsgAndSpeak(res.aiReply) : null;
-      setRound(res.round || 0);
+      setInspirationHint(res.inspirationHint ?? null);
       if (res.isFinished) {
         // 优先使用同步返回的训练记录得分；异步评分时稍后轮询一次
         if (res.trainingRecord?.score != null) {
@@ -850,11 +850,10 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     }, 300);
   };
 
-  const hint = (() => {
-    if (round === 0) return { title: "开场回答方向", body: `先礼貌问候并说明来意，再结合“${sceneName}”询问对方当前最关注的问题。` };
-    if (round === 1) return { title: "需求推进方向", body: "先复述并确认对方需求，再分步骤说明方案，最后明确下一步行动和时间。" };
-    return { title: "收尾回答方向", body: "总结已经确认的信息，回应对方最后的顾虑，并自然提出后续跟进或复盘安排。" };
-  })();
+  const hint = inspirationHint ?? {
+    title: "回答方向",
+    body: "暂无新的上下文提示，请先结合 AI 最新追问自行组织回答。",
+  };
 
   return (
     <div className="pv-shell">

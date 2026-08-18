@@ -23,6 +23,31 @@ function fmtTimeFull(iso?: string | null): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+function fmtChatTime(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+type TranscriptTurnScore = {
+  ruleName: string | null;
+  score: number;
+  maxScore?: number | null;
+  deductionReason?: string;
+  level?: string | null;
+};
+
+function normalizeLevel(score: number, maxScore = 100, level?: string | null): "excellent" | "pass" | "developing" {
+  const raw = (level || "").toLowerCase();
+  if (raw === "excellent" || raw === "pass" || raw === "developing") return raw;
+  const ratio = maxScore > 0 ? score / maxScore : 0;
+  if (ratio >= 0.9) return "excellent";
+  if (ratio >= 0.6) return "pass";
+  return "developing";
+}
+
 /** 环形进度（对练报告：绿色） */
 function RingProgress({ value, size = 80, stroke = 6, color = "#27ae60" }: { value: number; size?: number; stroke?: number; color?: string }) {
   const r = (size - stroke) / 2;
@@ -152,21 +177,33 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
   // 后端暂未返回权重：按维度数均分兜底（展示格式对齐原型「维度名（权重%）得分」）
   const dimWeight = overallScores.length ? Math.round(100 / overallScores.length) : 0;
 
-  // 对话记录 tab：第 n 条学员消息 = 第 n 轮，匹配 turnScores
+  // 对话记录 tab：第 n 条学员消息 = 第 n 轮，匹配 turnScores；数据来源为 AI 对练页落库后的训练记录 turns/turnScores
   const transcript = useMemo(() => {
     if (!detail) return [];
-    const turnScores: Array<{ roundNo: number; scores: Array<{ ruleName: string | null; score: number; deductionReason?: string; level?: string }> }> =
-      detail.turnScores ?? [];
+    const turnScores: Array<{ roundNo: number; scores: TranscriptTurnScore[] }> = detail.turnScores ?? [];
     let learnerIdx = 0;
     return (detail.turns ?? []).map((t: any, i: number) => {
+      const time = t.startedAt || detail.record?.startedAt;
       if (t.speaker === "learner") {
         learnerIdx += 1;
         const ts = turnScores.find((x) => x.roundNo === learnerIdx);
-        const turnTotal = ts?.scores?.reduce((a, s) => a + (Number(s.score) || 0), 0) ?? null;
-        const reasons = (ts?.scores?.map((s) => s.deductionReason).filter(Boolean) as string[]) ?? [];
-        return { ...t, key: i, turnTotal, reasons };
+        const dimensions =
+          ts?.scores?.map((s) => {
+            const scoreValue = Number(s.score) || 0;
+            const maxScore = Number(s.maxScore) || 100;
+            return {
+              name: s.ruleName || "评分维度",
+              score: scoreValue,
+              maxScore,
+              level: normalizeLevel(scoreValue, maxScore, s.level),
+              reason: s.deductionReason || "",
+            };
+          }) ?? [];
+        const turnTotal = dimensions.length ? dimensions.reduce((a, s) => a + (Number(s.score) || 0), 0) : null;
+        const reasons = dimensions.map((s) => s.reason).filter(Boolean);
+        return { ...t, key: i, time, turnTotal, reasons, dimensions };
       }
-      return { ...t, key: i };
+      return { ...t, key: i, time };
     });
   }, [detail]);
 
@@ -410,9 +447,9 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
           {transcript.map((t: any) => {
             if (t.speaker === "ai") {
               return (
-                <div className="pr-msg ai" key={t.key}>
-                  <span className="pr-avatar ai" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#fff" strokeWidth="1.7">
+                <div className="pv-msg ai" key={t.key}>
+                  <span className="pv-avatar ai" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" strokeWidth="1.7">
                       <rect x="4.5" y="7" width="15" height="11" rx="3.2" />
                       <circle cx="9.2" cy="12.2" r="1.2" fill="#fff" stroke="none" />
                       <circle cx="14.8" cy="12.2" r="1.2" fill="#fff" stroke="none" />
@@ -421,52 +458,61 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
                       <path d="M7 16.6h.01M11.5 16.6h.01M16 16.6h.01" strokeWidth="2" strokeLinecap="round" />
                     </svg>
                   </span>
-                  <div className="pr-msg-main">
-                    <span className="pr-time">{fmtTimeFull(detail.record?.startedAt)}</span>
-                    <div className="pr-bubble ai">{t.text}</div>
+                  <div className="pv-msg-main">
+                    <span className="pv-time">{fmtChatTime(t.time)}</span>
+                    <div className="pv-bubble">{t.text}</div>
                   </div>
                 </div>
               );
             }
             return (
               <div className="pr-turn" key={t.key}>
-                <div className="pr-msg user">
-                  <span className="pr-avatar user" aria-hidden="true"></span>
-                  <div className="pr-msg-main">
-                    <span className="pr-time">{fmtTimeFull(detail.record?.startedAt)}</span>
-                    <div className="pr-bubble user">
-                      <span className="pr-wave" aria-hidden="true">
+                <div className="pv-msg user">
+                  <span className="pv-avatar user" aria-hidden="true"></span>
+                  <div className="pv-msg-main">
+                    <span className="pv-time">{fmtChatTime(t.time)}</span>
+                    <div className="pv-bubble">{Number(t.durationMs) > 0 && (
+                      <span className="pv-voice-wave" aria-hidden="true">
                         <i></i>
                         <i></i>
                         <i></i>
                         <i></i>
                       </span>
-                      {t.text}
-                    </div>
+                    )}{t.text}</div>
                   </div>
                 </div>
-                <div className="pr-fb-card">
-                  <div className="pr-fb-head">
-                    <b>本次回答反馈</b>
-                    <span>{t.turnTotal != null ? `${t.turnTotal}分` : "—"}</span>
+                <div className="pv-msg feedback">
+                  <div className="pv-feedback-card">
+                    <div className="pv-feedback-head">
+                      <b>实时点评</b>
+                      <span>{t.turnTotal != null ? <><strong>{t.turnTotal}</strong>分</> : "—"}</span>
+                    </div>
+                    {t.dimensions && t.dimensions.length > 0 && (
+                      <div className="pv-feedback-dimensions" aria-label="本轮评分维度">
+                        {t.dimensions.map((dimension: any, index: number) => (
+                          <span className={`pv-feedback-dimension ${dimension.level}`} key={`${dimension.name}-${index}`}>
+                            <em>{dimension.name}</em>
+                            <b>{dimension.score}/{dimension.maxScore}</b>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {t.reasons?.length > 0 && (
+                      <div className="pv-feedback-sec">
+                        <span>问题定位</span>
+                        <p>{t.reasons.join("；")}</p>
+                      </div>
+                    )}
+                    {detail.suggestions?.length > 0 && (
+                      <>
+                        <div className="pv-feedback-divider"></div>
+                        <div className="pv-feedback-sec green">
+                          <span>改进建议</span>
+                          <p>{detail.suggestions[0]}</p>
+                        </div>
+                      </>
+                    )}
                   </div>
-                  {(t.reasons?.length > 0 || detail.suggestions?.length > 0) && (
-                    <>
-                      <div className="pr-fb-divider"></div>
-                      {t.reasons?.length > 0 && (
-                        <div className="pr-fb-row">
-                          <em>问题定位：</em>
-                          {t.reasons.join("；")}
-                        </div>
-                      )}
-                      {detail.suggestions?.length > 0 && (
-                        <div className="pr-fb-row">
-                          <em>改进建议：</em>
-                          {detail.suggestions[0]}
-                        </div>
-                      )}
-                    </>
-                  )}
                 </div>
               </div>
             );
