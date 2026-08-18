@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import "./practice.css";
 import AppShell, { type RightRailData } from "@/components/AppShell";
 import { navigateTo } from "@/lib/navigation";
+import { createAutoStartGuard, shouldAutoStartPractice } from "@/lib/practice-entry";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -235,6 +236,7 @@ export default function PracticePage() {
   const sceneVoiceSceneIdRef = useRef<string | null>(null);
   // 对练会话 ID：进入场景时生成，整个会话共享，用于训练记录幂等与评分轮询
   const sessionIdRef = useRef<string>("");
+  const autoStartGuardRef = useRef(createAutoStartGuard());
   // 评分轮询定时器（组件卸载时清理）
   const pollTimerRef = useRef<number | null>(null);
 
@@ -462,7 +464,7 @@ export default function PracticePage() {
 
   // ===== 进入对话 =====
   const enterChat = useCallback(
-    async (scene: Scene) => {
+    async (scene: Scene, autoStart = false): Promise<boolean> => {
       setError("");
       stopAudio();
       // 若为同一场景重复进入（如 enterChat 被多次调用），保留已选声音，不重新随机
@@ -494,7 +496,7 @@ export default function PracticePage() {
       );
       setRecordNo(`RW${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`);
       setView("chat");
-      setShowBrief(true);
+      setShowBrief(!autoStart);
       setChatRound(0);
       try {
         const detail = await apiGet<{
@@ -512,10 +514,14 @@ export default function PracticePage() {
           passScore: detail.scene?.passScore ?? 80,
           endCondition: detail.rule?.endCondition || undefined,
         });
-        // 引导页展示后,预取 AI 开场白（仅预览，不创建训练记录）
-        void loadOpeningPreview(scene);
+        if (!autoStart) {
+          // 引导页展示后,预取 AI 开场白（仅预览，不创建训练记录）
+          void loadOpeningPreview(scene);
+        }
+        return true;
       } catch (err) {
         setError(err instanceof Error ? err.message : "进入对话失败");
+        return false;
       }
     },
     [apiGet, pickSceneVoice, stopAudio, loadOpeningPreview],
@@ -919,6 +925,7 @@ export default function PracticePage() {
     const params = new URLSearchParams(window.location.search);
     const sceneId = params.get("sceneId");
     const taskId = params.get("taskId");
+    const autoStart = shouldAutoStartPractice(params);
     // 记住来源任务，对练结束后跳回
     if (taskId) {
       try { window.sessionStorage.setItem("zxt-practice-taskId", taskId); } catch {}
@@ -934,12 +941,18 @@ export default function PracticePage() {
     if (sceneId) {
       // 有 sceneId 时直接进对话，不闪现场景选择页
       setView("chat");
+      if (autoStart && !autoStartGuardRef.current.tryStart()) return;
       void (async () => {
         try {
           const data = await apiGet<{ items: Scene[] }>(`/scenes?pageSize=50`);
           const list = data.items || [];
           const scene = list.find((s) => s.id === sceneId);
-          if (scene) void enterChat(scene);
+          if (scene) {
+            const entered = await enterChat(scene, autoStart);
+            if (entered && autoStart) {
+              await triggerAiFirst(scene, []);
+            }
+          }
           else {
             setError("未找到指定场景，已返回历史记录。");
             setView("history");
