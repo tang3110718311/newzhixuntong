@@ -77,8 +77,7 @@ export type ActiveSection =
   | "sys-departments"
   | "sys-posts"
   | "sys-tenants"
-  | "records"
-  | "practice";
+  | "records";
 
 // ---------- 共享 UI 组件 ----------
 

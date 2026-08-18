@@ -76,7 +76,6 @@ const PERMISSION_GROUPS: Array<{ label: string; items: Array<{ code: string; nam
       { code: "exams:manage", name: "管理考试" },
       { code: "my-tasks:view", name: "查看我的任务" },
       { code: "my-exams:view", name: "查看我的考试" },
-      { code: "practice:use", name: "使用对练中心" },
     ],
   },
   {

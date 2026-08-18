@@ -610,7 +610,7 @@ export function HomeSection({ auth, submitting, onRefresh }: HomeProps) {
                 <div className="co-insight-side">
                   <span className="co-chip good">优势：组织参与率 ↑</span>
                   <span className="co-chip risk">风险：需求挖掘失分</span>
-                  <button type="button" className="co-link inline" style={{ margin: 0 }} onClick={() => navigateTo("/practice")}>查看建议 →</button>
+                  <button type="button" className="co-link inline" style={{ margin: 0 }} onClick={() => navigateTo("/?section=statistics-learner")}>查看建议 →</button>
                 </div>
               </div>
 
@@ -696,7 +696,7 @@ export function HomeSection({ auth, submitting, onRefresh }: HomeProps) {
                 <div className="dept-insight-side">
                   <span className="dept-chip good">优势：参与覆盖率 ↑</span>
                   <span className="dept-chip risk">风险：需求挖掘失分</span>
-                  <button type="button" className="dept-link inline" style={{ margin: 0 }} onClick={() => navigateTo("/practice")}>查看建议 →</button>
+                  <button type="button" className="dept-link inline" style={{ margin: 0 }} onClick={() => navigateTo("/?section=statistics-learner")}>查看建议 →</button>
                 </div>
               </div>
 
@@ -800,7 +800,7 @@ export function HomeSection({ auth, submitting, onRefresh }: HomeProps) {
                   <div><strong>{learnerCompletion}<em>%</em></strong><small>当前达成率</small></div>
                   <div><strong>2<em>次</em></strong><small>建议对练</small></div>
                 </div>
-                <button className="btn" type="button" onClick={() => navigateTo("/practice")}>开始专项对练</button>
+                <button className="btn" type="button" onClick={() => navigateTo("/?section=my-tasks")}>查看我的任务</button>
               </div>
 
               {/* 下排 2 卡：高频失分 + 训练成就排名 */}

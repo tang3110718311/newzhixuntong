@@ -409,15 +409,14 @@ type ActiveSection =
   | "sys-departments"
   | "sys-posts"
   | "sys-tenants"
-  | "records"
-  | "practice";
+  | "records";
 
 // 所有可导航的 section key（用于校验 URL ?section= 参数）
 const VALID_SECTIONS: ReadonlySet<string> = new Set([
   "overview", "student-home", "my-tasks", "task-detail", "my-exams", "scenes", "knowledge",
   "tasks", "appeals", "statistics-dept", "statistics-learner", "materials", "settings",
   "sys-users", "sys-roles", "sys-menus", "sys-departments", "sys-posts", "sys-tenants",
-  "records", "practice",
+  "records",
 ]);
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
@@ -1722,7 +1721,7 @@ export function AdminDashboard() {
 
   function startPracticeFromTaskScene(task: Task, taskScene: TaskScene | null | undefined) {
     if (!taskScene?.sceneId) {
-      setError("当前任务未绑定可对练场景，请先在任务中配置场景。");
+      showTaskToast("当前任务未绑定可对练场景，请先在任务中配置场景。");
       return;
     }
     const params = new URLSearchParams({
@@ -2233,61 +2232,6 @@ export function AdminDashboard() {
           <HomeSection auth={auth} submitting={submitting} onRefresh={() => loadData()} />
         )}
 
-        {activeSection === "practice" && (
-          <section className="page-section">
-            <div style={{ background: "#dcfce7", color: "#166534", padding: "8px 12px", borderRadius: 6, fontSize: 12 }}>
-              ✓ practice section 渲染中 · activeSection={String(activeSection)} · scenes={Array.isArray(scenes) ? scenes.length : "undef"} · records={Array.isArray(records) ? records.length : "undef"}
-            </div>
-            <div className="page-header">
-              <div>
-                <h1 className="page-title">对练中心</h1>
-                <p className="page-desc">选择场景开始 AI 对练，或查看历史训练记录。</p>
-              </div>
-            </div>
-            <div className="home-grid">
-              <div className="home-main">
-                <div className="card section" style={{ padding: 20 }}>
-                  <h3 style={{ margin: "0 0 16px" }}>可对练场景</h3>
-                  {(!Array.isArray(scenes) || scenes.length === 0) ? (
-                    <div className="empty">暂无可用场景，请先在「场景管理」创建。</div>
-                  ) : (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
-                      {scenes.map((scene) => (
-                        <div key={scene.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 16, background: "var(--panel)" }}>
-                          <strong style={{ display: "block", marginBottom: 6 }}>{scene?.name || "(未命名场景)"}</strong>
-                          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-                            合格线 80
-                          </div>
-                          <button className="btn primary full" type="button" onClick={() => navigateTo(`/practice?sceneId=${encodeURIComponent(scene.id)}`)}>
-                            开始对练 →
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <aside className="home-side">
-                <div className="card section" style={{ padding: 20 }}>
-                  <h3 style={{ margin: "0 0 12px" }}>最近训练</h3>
-                  {(!Array.isArray(records) || records.length === 0) ? (
-                    <div className="empty">暂无训练记录。</div>
-                  ) : (
-                    <div style={{ display: "grid", gap: 10 }}>
-                      {records.slice(0, 5).map((r) => (
-                        <div key={r.id} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600 }}>{r?.sceneName || "—"}</div>
-                          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{r?.score ?? 0} 分 · {formatDate(r?.finishedAt)}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </aside>
-            </div>
-          </section>
-        )}
-
         {activeSection === "scenes" && (
           <section className="page-section">
             <div className="home-grid">
@@ -2365,7 +2309,7 @@ export function AdminDashboard() {
                                   <a onClick={() => navigateTo(`/scenes/${scene.id}/edit`)}>编辑</a>
                                   {statusOn ? <a onClick={() => disableScene(scene.id)}>禁用</a> : <a onClick={() => publishScene(scene.id)}>启用</a>}
                                   <a onClick={() => copyScene(scene.id)}>复制</a>
-                                  <a onClick={() => navigateTo(`/practice?sceneId=${scene.id}`)}>创建任务</a>
+                                  <a onClick={() => navigateTo(`/tasks/new?sceneId=${encodeURIComponent(scene.id)}`)}>创建任务</a>
                                   <a className="del" onClick={() => setSceneToDelete(scene)}>删除</a>
                                 </div>
                               </td>
