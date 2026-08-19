@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { aiApi, recordApi, type AiInspirationHint, type AiTurnScore } from "@/lib/api";
-import { getDisplayedLength, getFullTextFallback, splitSpeechSegments } from "@/lib/speech-sync";
+import { aiApi, recordApi, type AiInspirationHint } from "@/lib/api";
+import { getDisplayedLength, splitSpeechSegments } from "@/lib/speech-sync";
+import PracticeChat, { type PracticeChatMsg } from "./PracticeChat";
 import { createAsyncSubmitGuard } from "@/lib/submit-guard";
 
 interface PracticeViewProps {
@@ -13,18 +14,7 @@ interface PracticeViewProps {
   onReport: (sessionId: string) => void;
 }
 
-interface ChatMsg {
-  id: string;
-  who: "ai" | "user" | "feedback";
-  text: string;
-  time?: string;
-  isVoice?: boolean;
-  // 反馈卡结构化数据
-  score?: number | null;
-  dimensions?: AiTurnScore[];
-  issues?: string[];
-  advice?: string[];
-}
+type ChatMsg = PracticeChatMsg;
 
 /**
  * 解析教练提示（兼容两种格式）：
@@ -890,158 +880,43 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       </div>
 
       {/* ===== 对话区 ===== */}
-      <div className="pv-chat" ref={chatRef}>
-        {messages.map((m) => {
-          if (m.who === "feedback") {
-            return (
-              <div className="pv-msg feedback" key={m.id}>
-                <div className="pv-feedback-card">
-                  <div className="pv-feedback-head">
-                    <b>实时点评</b>
-                    <span>{m.score != null ? <><strong>{m.score}</strong>分</> : "—"}</span>
-                  </div>
-                  {m.dimensions && m.dimensions.length > 0 && (
-                    <div className="pv-feedback-dimensions" aria-label="本轮评分维度">
-                      {m.dimensions.map((dimension, index) => (
-                        <span className={`pv-feedback-dimension ${dimension.level}`} key={`${dimension.name}-${index}`}>
-                          <em>{dimension.name}</em>
-                          <b>{dimension.score}/{dimension.maxScore}</b>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {m.issues && m.issues.length > 0 && (
-                    <div className="pv-feedback-sec">
-                      <span>问题定位</span>
-                      <p>{m.issues.join("；")}</p>
-                    </div>
-                  )}
-                  {m.advice && m.advice.length > 0 && (
-                    <>
-                      <div className="pv-feedback-divider"></div>
-                      <div className="pv-feedback-sec green">
-                        <span>改进建议</span>
-                        <p>{m.advice.join("；")}</p>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            );
+      <PracticeChat
+        messages={messages}
+        chatRef={chatRef}
+        sending={sending}
+        sendingTime={now()}
+        isTextMode={isTextMode}
+        aiDisp={aiDisp}
+        ttsFailed={ttsFailed}
+        ttsPreparing={ttsPreparing}
+        aiSpeaking={aiSpeaking}
+        speakMsgId={speakMsgId}
+        onReplayAi={(message) => {
+          stopAiSpeak();
+          setTtsFailed((prev) => {
+            const next = { ...prev };
+            delete next[message.id];
+            return next;
+          });
+          setTtsPreparing(message.id);
+          void speakText(message.text, message.id);
+        }}
+        onToggleAiAudio={(message) => {
+          // 同一条消息再次点击：立即停止，并由 stopAiSpeak 补全全文。
+          if (aiSpeakingRef.current && aiAudioMsgIdRef.current === message.id) {
+            stopAiSpeak();
+            return;
           }
-          return (
-            <div className={`pv-msg ${m.who}`} key={m.id}>
-              {m.who === "ai" ? (
-                <span className="pv-avatar ai" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" strokeWidth="1.7">
-                    <rect x="4.5" y="7" width="15" height="11" rx="3.2" />
-                    <circle cx="9.2" cy="12.2" r="1.2" fill="#fff" stroke="none" />
-                    <circle cx="14.8" cy="12.2" r="1.2" fill="#fff" stroke="none" />
-                    <path d="M12 4.5v2.5" />
-                    <circle cx="12" cy="3.6" r="1.1" fill="#fff" stroke="none" />
-                    <path d="M7 16.6h.01M11.5 16.6h.01M16 16.6h.01" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                </span>
-              ) : (
-                <span className="pv-avatar user" aria-hidden="true"></span>
-              )}
-              <div className="pv-msg-main">
-                <span className="pv-time">{m.time}</span>
-                <div className="pv-bubble">
-                  {m.who === "user" && m.isVoice && (
-                    <span className="pv-voice-wave" aria-hidden="true">
-                      <i></i>
-                      <i></i>
-                      <i></i>
-                      <i></i>
-                    </span>
-                  )}
-                  {m.who === "ai" ? (
-                    <>
-                      <div className="pv-ai-message-text">
-                          {aiDisp[m.id] != null && !ttsFailed[m.id]
-                            ? m.text.slice(0, aiDisp[m.id])
-                            : getFullTextFallback(m.text)}
-                       </div>
-                       {!isTextMode && ttsFailed[m.id] && (
-                         <button
-                           className="pv-ai-replay"
-                           type="button"
-                           onClick={() => {
-                             stopAiSpeak();
-                             setTtsFailed((prev) => {
-                               const next = { ...prev };
-                               delete next[m.id];
-                               return next;
-                             });
-                              setTtsPreparing(m.id);
-                             void speakText(m.text, m.id);
-                           }}
-                         >
-                           重新播放
-                         </button>
-                       )}
-                    </>
-                  ) : (
-                    m.text
-                  )}
-                </div>
-                {m.who === "ai" && !isTextMode && (
-                  <button
-                    className={`pv-ai-sound-icon${aiSpeaking && speakMsgId === m.id ? " playing" : ""}`}
-                    type="button"
-                    aria-label={aiSpeaking && speakMsgId === m.id ? "正在播放 AI 语音" : "播放 AI 语音"}
-                    onClick={() => {
-                      // 同一条消息再次点击：立即停止，并由 stopAiSpeak 补全全文。
-                      if (aiSpeakingRef.current && aiAudioMsgIdRef.current === m.id) {
-                        stopAiSpeak();
-                        return;
-                      }
-                      stopAiSpeak();
-                      setTtsFailed((prev) => {
-                        const next = { ...prev };
-                        delete next[m.id];
-                        return next;
-                      });
-                      setTtsPreparing(m.id);
-                      void speakText(m.text, m.id);
-                    }}
-                  >
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-                      <path d="M18.5 5.5a8.5 8.5 0 0 1 0 13" />
-                    </svg>
-                  </button>
-                )}
-                {/* TTS 合成期间（音频尚未就绪）：语音条下方"语音准备中…"浅色占位 */}
-                {m.who === "ai" && !(aiSpeaking && speakMsgId === m.id) && ttsPreparing === m.id && (
-                  <div className="pv-ai-preparing" aria-hidden="true">
-                    <b>语音准备中…</b>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-        {sending && (
-          <div className="pv-msg ai">
-            <span className="pv-avatar ai" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" strokeWidth="1.7">
-                <rect x="4.5" y="7" width="15" height="11" rx="3.2" />
-                <circle cx="9.2" cy="12.2" r="1.2" fill="#fff" stroke="none" />
-                <circle cx="14.8" cy="12.2" r="1.2" fill="#fff" stroke="none" />
-                <path d="M12 4.5v2.5" />
-                <circle cx="12" cy="3.6" r="1.1" fill="#fff" stroke="none" />
-              </svg>
-            </span>
-            <div className="pv-msg-main">
-              <span className="pv-time">{now()}</span>
-              <div className="pv-bubble">正在思考…</div>
-            </div>
-          </div>
-        )}
-      </div>
+          stopAiSpeak();
+          setTtsFailed((prev) => {
+            const next = { ...prev };
+            delete next[message.id];
+            return next;
+          });
+          setTtsPreparing(message.id);
+          void speakText(message.text, message.id);
+        }}
+      />
 
         {/* ===== 底部输入区 ===== */}
       <div className="pv-composer">

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { recordApi } from "@/lib/api";
+import PracticeChat, { type PracticeChatMsg } from "./PracticeChat";
 
 interface PracticeReportProps {
   /** 对练会话（练习完成后进入报告流程时使用，轮询 by-session 等待后台评分） */
@@ -177,17 +178,34 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
   // 后端暂未返回权重：按维度数均分兜底（展示格式对齐原型「维度名（权重%）得分」）
   const dimWeight = overallScores.length ? Math.round(100 / overallScores.length) : 0;
 
-  // 对话记录 tab：第 n 条学员消息 = 第 n 轮，匹配 turnScores；数据来源为 AI 对练页落库后的训练记录 turns/turnScores
-  const transcript = useMemo(() => {
+  // 对话记录 tab：把历史 turns/turnScores 转成 AI 对练页同款消息列表，渲染时直接复用 PracticeChat。
+  // 当 turnScores 为空（实时评分超时导致）时，使用 overallScores（整场评分）在最后一轮兜底展示。
+  const transcriptMessages = useMemo<PracticeChatMsg[]>(() => {
     if (!detail) return [];
     const turnScores: Array<{ roundNo: number; scores: TranscriptTurnScore[] }> = detail.turnScores ?? [];
+    const suggestions: string[] = Array.isArray(detail.suggestions) ? detail.suggestions : [];
+    const messages: PracticeChatMsg[] = [];
     let learnerIdx = 0;
-    return (detail.turns ?? []).map((t: any, i: number) => {
-      const time = t.startedAt || detail.record?.startedAt;
-      if (t.speaker === "learner") {
-        learnerIdx += 1;
+    const totalTurns = (detail.turns ?? []).filter((t: any) => t.speaker === "learner").length;
+    const hasAnyTurnScores = turnScores.length > 0;
+
+    (detail.turns ?? []).forEach((t: any, i: number) => {
+      const time = fmtChatTime(t.startedAt || detail.record?.startedAt);
+      const text = t.text || "";
+      if (t.speaker === "ai") {
+        messages.push({ id: `turn-${i}-ai`, who: "ai", text, time });
+        return;
+      }
+
+      if (t.speaker !== "learner") return;
+      learnerIdx += 1;
+      messages.push({ id: `turn-${i}-learner`, who: "user", text, time, isVoice: Number(t.durationMs) > 0 });
+
+      // 优先使用 turnScores（每轮评分），兜底使用 overallScores（整场评分，仅在最后一轮展示）
+      let dimensions: Array<{ name: string; score: number; maxScore: number; level: "excellent" | "pass" | "developing"; reason: string }> = [];
+      if (hasAnyTurnScores) {
         const ts = turnScores.find((x) => x.roundNo === learnerIdx);
-        const dimensions =
+        dimensions =
           ts?.scores?.map((s) => {
             const scoreValue = Number(s.score) || 0;
             const maxScore = Number(s.maxScore) || 100;
@@ -199,13 +217,37 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
               reason: s.deductionReason || "",
             };
           }) ?? [];
-        const turnTotal = dimensions.length ? dimensions.reduce((a, s) => a + (Number(s.score) || 0), 0) : null;
-        const reasons = dimensions.map((s) => s.reason).filter(Boolean);
-        return { ...t, key: i, time, turnTotal, reasons, dimensions };
+      } else if (learnerIdx === totalTurns && (detail.scores ?? []).length > 0) {
+        // 兜底：turnScores 为空时，在最后一轮展示整场评分
+        dimensions = (detail.scores ?? []).map((s: { ruleName?: string | null; score: number | null; level?: string | null; deductionReason?: string }) => ({
+          name: s.ruleName || "评分维度",
+          score: Number(s.score) || 0,
+          maxScore: 100,
+          level: normalizeLevel(Number(s.score) || 0, 100, s.level || undefined),
+          reason: s.deductionReason || "",
+        }));
       }
-      return { ...t, key: i, time };
+
+      const turnTotal = dimensions.length ? dimensions.reduce((a, s) => a + (Number(s.score) || 0), 0) : null;
+      const issues = dimensions.map((s) => s.reason).filter(Boolean);
+      const advice = suggestions[learnerIdx - 1] ? [suggestions[learnerIdx - 1]] : suggestions[0] ? [suggestions[0]] : [];
+
+      if (turnTotal != null || dimensions.length > 0 || issues.length > 0 || advice.length > 0) {
+        messages.push({
+          id: `turn-${i}-feedback`,
+          who: "feedback",
+          text: advice.join("；"),
+          score: turnTotal,
+          dimensions,
+          issues,
+          advice,
+        });
+      }
     });
+
+    return messages;
   }, [detail]);
+
 
   // 中转页：对练报告生成中（对齐原型 report-generating-modal）
   if (!detail && !failed) {
@@ -440,87 +482,14 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
             关闭报告
           </button>
         </div>
-      ) : (
+      ) : transcriptMessages.length === 0 ? (
         /* ===== 对话记录 tab ===== */
         <div className="pr-transcript">
-          {transcript.length === 0 && <div className="pr-empty">暂无对话记录</div>}
-          {transcript.map((t: any) => {
-            if (t.speaker === "ai") {
-              return (
-                <div className="pv-msg ai" key={t.key}>
-                  <span className="pv-avatar ai" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" strokeWidth="1.7">
-                      <rect x="4.5" y="7" width="15" height="11" rx="3.2" />
-                      <circle cx="9.2" cy="12.2" r="1.2" fill="#fff" stroke="none" />
-                      <circle cx="14.8" cy="12.2" r="1.2" fill="#fff" stroke="none" />
-                      <path d="M12 4.5v2.5" />
-                      <circle cx="12" cy="3.6" r="1.1" fill="#fff" stroke="none" />
-                      <path d="M7 16.6h.01M11.5 16.6h.01M16 16.6h.01" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                  </span>
-                  <div className="pv-msg-main">
-                    <span className="pv-time">{fmtChatTime(t.time)}</span>
-                    <div className="pv-bubble">{t.text}</div>
-                  </div>
-                </div>
-              );
-            }
-            return (
-              <div className="pr-turn" key={t.key}>
-                <div className="pv-msg user">
-                  <span className="pv-avatar user" aria-hidden="true"></span>
-                  <div className="pv-msg-main">
-                    <span className="pv-time">{fmtChatTime(t.time)}</span>
-                    <div className="pv-bubble">{Number(t.durationMs) > 0 && (
-                      <span className="pv-voice-wave" aria-hidden="true">
-                        <i></i>
-                        <i></i>
-                        <i></i>
-                        <i></i>
-                      </span>
-                    )}{t.text}</div>
-                  </div>
-                </div>
-                <div className="pv-msg feedback">
-                  <div className="pv-feedback-card">
-                    <div className="pv-feedback-head">
-                      <b>实时点评</b>
-                      <span>{t.turnTotal != null ? <><strong>{t.turnTotal}</strong>分</> : "—"}</span>
-                    </div>
-                    {t.dimensions && t.dimensions.length > 0 && (
-                      <div className="pv-feedback-dimensions" aria-label="本轮评分维度">
-                        {t.dimensions.map((dimension: any, index: number) => (
-                          <span className={`pv-feedback-dimension ${dimension.level}`} key={`${dimension.name}-${index}`}>
-                            <em>{dimension.name}</em>
-                            <b>{dimension.score}/{dimension.maxScore}</b>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {t.reasons?.length > 0 && (
-                      <div className="pv-feedback-sec">
-                        <span>问题定位</span>
-                        <p>{t.reasons.join("；")}</p>
-                      </div>
-                    )}
-                    {detail.suggestions?.length > 0 && (
-                      <>
-                        <div className="pv-feedback-divider"></div>
-                        <div className="pv-feedback-sec green">
-                          <span>改进建议</span>
-                          <p>{detail.suggestions[0]}</p>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-          <button className="pr-close-report" type="button" onClick={onClose}>
-            关闭报告
-          </button>
+          <div className="pr-empty">暂无对话记录</div>
         </div>
+      ) : (
+        /* ===== 对话记录 tab：直接复用 AI 对练页对话记录 ===== */
+        <PracticeChat messages={transcriptMessages} />
       )}
     </div>
   );
