@@ -1,6 +1,6 @@
 "use client";
 
-import { type RefObject } from "react";
+import { type RefObject, useState } from "react";
 import { getFullTextFallback } from "@/lib/speech-sync";
 import { type AiTurnScore } from "@/lib/api";
 
@@ -53,36 +53,69 @@ function AiAvatar({ reportMode = false }: { reportMode?: boolean }) {
 }
 
 function PracticeFeedbackCard({ message }: { message: PracticeChatMsg }) {
+  const [collapsed, setCollapsed] = useState(true);
+  const hasDetail =
+    (message.dimensions && message.dimensions.length > 0) ||
+    message.feedbackMessage ||
+    (message.issues && message.issues.length > 0) ||
+    (message.advice && message.advice.length > 0);
+
   return (
     <div className="pv-feedback-card">
-      <div className="pv-feedback-head">
+      <div
+        className="pv-feedback-head pv-feedback-toggle"
+        onClick={hasDetail ? () => setCollapsed((v) => !v) : undefined}
+        style={hasDetail ? { cursor: "pointer" } : undefined}
+      >
         <b>实时点评</b>
-        <span>{message.score != null ? <><strong>{message.score}</strong>分</> : "—"}</span>
+        <span style={{ gap: "6px", alignItems: "center" }}>
+          {message.score != null ? <><strong>{message.score}</strong>分</> : "—"}
+          {hasDetail && (
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="#94a3b8"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`pv-feedback-chevron${collapsed ? "" : " open"}`}
+              aria-hidden="true"
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          )}
+        </span>
       </div>
-      {message.dimensions && message.dimensions.length > 0 && (
-        <div className="pv-feedback-dimensions" aria-label="本轮评分维度">
-          {message.dimensions.map((dimension, index) => (
-            <span className={`pv-feedback-dimension ${dimension.level}`} key={`${dimension.name}-${index}`}>
-              <em>{dimension.name}</em>
-              <b>{dimension.score}/{dimension.maxScore}</b>
-            </span>
-          ))}
-        </div>
-      )}
-      {message.feedbackMessage && <p className="pv-feedback-empty">{message.feedbackMessage}</p>}
-      {message.issues && message.issues.length > 0 && (
-        <div className="pv-feedback-sec">
-          <span>问题定位</span>
-          <p>{message.issues.join("；")}</p>
-        </div>
-      )}
-      {message.advice && message.advice.length > 0 && (
+      {!collapsed && (
         <>
-          <div className="pv-feedback-divider"></div>
-          <div className="pv-feedback-sec green">
-            <span>改进建议</span>
-            <p>{message.advice.join("；")}</p>
-          </div>
+          {message.dimensions && message.dimensions.length > 0 && (
+            <div className="pv-feedback-dimensions" aria-label="本轮评分维度">
+              {message.dimensions.map((dimension, index) => (
+                <span className={`pv-feedback-dimension ${dimension.level}`} key={`${dimension.name}-${index}`}>
+                  <em>{dimension.name}</em>
+                  <b>{dimension.score}/{dimension.maxScore}</b>
+                </span>
+              ))}
+            </div>
+          )}
+          {message.feedbackMessage && <p className="pv-feedback-empty">{message.feedbackMessage}</p>}
+          {message.issues && message.issues.length > 0 && (
+            <div className="pv-feedback-sec">
+              <span>问题定位</span>
+              <p>{message.issues.join("；")}</p>
+            </div>
+          )}
+          {message.advice && message.advice.length > 0 && (
+            <>
+              <div className="pv-feedback-divider"></div>
+              <div className="pv-feedback-sec green">
+                <span>改进建议</span>
+                <p>{message.advice.join("；")}</p>
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
