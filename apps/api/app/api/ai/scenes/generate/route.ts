@@ -54,19 +54,6 @@ export async function POST(request: Request) {
           knowledgeSummaries.map((k) => `【${k.folderName}】${k.name}\n${k.summary}`).join("\n\n"),
       ],
     });
-    // 主动追问模式：描述信息不足时仅返回追问问题，不落库场景
-    if (draft.followUpQuestions?.length) {
-      logAiCall({
-        tenantId,
-        providerType: "llm",
-        modelName: config.modelName,
-        bizType: "scene_generation",
-        durationMs: Date.now() - started,
-        success: true,
-        traceId,
-      });
-      return ok({ scene: null, draft }, traceId, 200);
-    }
     const scene = createGeneratedScene(tenantId, {
       industryPackageId: body.industryPackageId,
       name: draft.name,
