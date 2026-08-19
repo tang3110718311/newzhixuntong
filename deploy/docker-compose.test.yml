@@ -22,7 +22,6 @@ services:
     environment:
       NODE_ENV: production
       SQLITE_DB_PATH: /app/storage/sqlite/dev.db
-      TTS_PYTHON_BIN: python3
     volumes:
       - /data/zxt-next/storage:/app/storage
       - /data/zxt-next/logs:/app/.logs
@@ -47,6 +46,37 @@ services:
       - /data/zxt-next/deploy/env.test
     environment:
       NODE_ENV: production
+    depends_on:
+      zxt-api:
+        condition: service_healthy
+    volumes:
+      - /data/zxt-next/logs:/app/.logs
+    networks:
+      - zxt-next-net
+
+  zxt-mobile:
+    image: zxt-next-mobile:test
+    container_name: zxt-next-mobile
+    build:
+      context: ${ZXT_RELEASE_DIR}
+      dockerfile: /data/zxt-next/deploy/Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE}
+        NEXT_BASE_PATH: ${NEXT_MOBILE_BASE_PATH}
+        NEXT_PUBLIC_APP_BASE_PATH: ${NEXT_PUBLIC_MOBILE_APP_BASE_PATH}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_MOBILE_API_BASE_URL}
+    restart: unless-stopped
+    working_dir: /app
+    command: ["npm", "--workspace", "@zxt/mobile", "run", "start", "--", "-H", "0.0.0.0"]
+    ports:
+      - "${ZXT_MOBILE_PORT}:3100"
+    env_file:
+      - /data/zxt-next/deploy/env.test
+    environment:
+      NODE_ENV: production
+      NEXT_BASE_PATH: ${NEXT_MOBILE_BASE_PATH}
+      NEXT_PUBLIC_APP_BASE_PATH: ${NEXT_PUBLIC_MOBILE_APP_BASE_PATH}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_MOBILE_API_BASE_URL}
     depends_on:
       zxt-api:
         condition: service_healthy

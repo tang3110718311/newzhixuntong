@@ -3,6 +3,8 @@ node_modules/
 dist/
 coverage/
 .logs/
+.certs/
+apps/mobile/public/zxt-local-root-ca.cer
 .temp/
 __pycache__/
 *.pyc
@@ -21,5 +23,7 @@ apps/**/.env.*
 
 storage/
 !storage/.gitkeep
+.tts-cache/
 deploy/*.local
 deploy/*.secret
+.worktrees/

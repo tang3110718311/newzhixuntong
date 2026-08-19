@@ -1,14 +1,14 @@
 import { updateScoringRulesSchema } from "@zxt/shared";
 import { replaceSceneScoringRules } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
-import { getTenantContext } from "@/lib/tenant";
+import { requireTrainingManager } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId } = await requireTrainingManager(request);
     const { id } = await context.params;
     const body = updateScoringRulesSchema.parse(await request.json());
     const detail = replaceSceneScoringRules(tenantId, id, body.rules);

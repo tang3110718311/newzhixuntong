@@ -1,11 +1,39 @@
 ﻿import { defaultTenantCode } from "@zxt/shared";
 import { ensureDb, getTenantByCode, getUserBySessionToken } from "@zxt/database";
+import { getAuthCookieToken } from "./auth-cookie";
 import { HttpError } from "./response";
 
 export function getBearerToken(request?: Request) {
   const authorization = request?.headers.get("authorization") || "";
   const [scheme, token] = authorization.split(" ");
-  return scheme?.toLowerCase() === "bearer" && token ? token : "";
+  if (scheme?.toLowerCase() === "bearer" && token) return token;
+  return getAuthCookieToken(request);
+}
+
+function hostnameOf(value: string) {
+  if (!value) return "";
+  try {
+    if (/^https?:\/\//i.test(value)) return new URL(value).hostname.toLowerCase();
+    return value.split(":")[0]?.replace(/^\[|\]$/g, "").toLowerCase() || "";
+  } catch {
+    return "";
+  }
+}
+
+function isDevTenantHost(hostname: string) {
+  if (["localhost", "127.0.0.1", "::1"].includes(hostname)) return true;
+  const extraHosts = (process.env.DEV_TENANT_HEADER_HOSTS || "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+  return extraHosts.includes(hostname);
+}
+
+function canUseDevTenantHeader(request?: Request) {
+  if (process.env.ALLOW_DEV_TENANT_HEADER !== "true") return false;
+  const host = hostnameOf(request?.headers.get("host") || "");
+  const origin = hostnameOf(request?.headers.get("origin") || "");
+  return isDevTenantHost(host) || isDevTenantHost(origin);
 }
 
 export async function getTenantContext(request?: Request) {
@@ -27,7 +55,7 @@ export async function getTenantContext(request?: Request) {
     };
   }
 
-  if (process.env.ALLOW_DEV_TENANT_HEADER === "true") {
+  if (canUseDevTenantHeader(request)) {
     const tenantCode = request?.headers.get("x-tenant-code") || process.env.DEFAULT_TENANT_CODE || defaultTenantCode;
     const tenant = getTenantByCode(tenantCode);
 

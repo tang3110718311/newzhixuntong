@@ -1,6 +1,28 @@
-﻿# AI 智训通 Next.js 重构版
+﻿---
+AIGC:
+  ContentProducer: '001191110102MAD55U9H0F10002'
+  ContentPropagator: '001191110102MAD55U9H0F10002'
+  Label: '1'
+  ProduceID: 'f8004a95-292a-4fb4-b8a8-6ec20adf9198'
+  PropagateID: 'f8004a95-292a-4fb4-b8a8-6ec20adf9198'
+  ReservedCode1: '8a5da6da-695d-412d-a40d-cdf40b264805'
+  ReservedCode2: '8a5da6da-695d-412d-a40d-cdf40b264805'
+---
+
+# AI 智训通 Next.js 重构版
 
 这是 AI 智训通重构版的第一阶段工程骨架，目标是先跑通“管理端 H5 + 独立 API 服务 + SQLite 持久化 + AI/STT/TTS 接口预留”的真实业务闭环。
+
+## AI 智能体自动上下文
+
+本项目已配置多 AI 工具入口。任何 AI 智能体进入本工作目录后，应先读取：
+
+1. `AGENTS.md`
+2. `docs/AI协作/00-总控看板.md`
+3. `docs/AI协作/01-项目当前状态.md`
+4. 当前任务对应的 `docs/AI协作/tasks/Txxx-*.md`
+
+已补充适配入口：`AGENT.md`、`CLAUDE.md`、`GEMINI.md`、`工作区规则.md`、`.github/copilot-instructions.md`、`.cursor/rules/zxt-project.mdc`、`.trae/rules/zxt-project.md`。
 
 ## 技术基线
 
@@ -16,9 +38,22 @@
 ```powershell
 npm.cmd install
 npm.cmd run setup
-npm.cmd run dev:api
-npm.cmd run dev:admin
+node scripts/build.mjs all
+node scripts/start-local.mjs
 ```
+
+> 注意：构建必须走根目录统一脚本 `node scripts/build.mjs`（或 `npm run build`），
+> 不要直接用 `npm.cmd run dev:api` / `npm.cmd run dev:admin` 或旧式 `npm --workspaces run build`——
+> 前者在 CodeBuddy/WorkBuddy 沙箱下可能因 safe-delete 拦截 `.next` 清理而失败，后者缺少保护开关。
+>
+> 构建脚本用法：
+> ```powershell
+> node scripts/build.mjs        # 构建 api + admin + mobile
+> node scripts/build.mjs api    # 只构建 api
+> node scripts/build.mjs admin  # 只构建 admin
+> node scripts/build.mjs mobile # 只构建 mobile
+> npm run build                 # 等价 build.mjs all
+> ```
 
 默认端口：
 
@@ -106,7 +141,7 @@ npm.cmd --workspace @zxt/admin run typecheck
 ## 本轮新增能力：管理端登录与会话
 
 - 后端新增 `POST /api/auth/login`、`GET /api/auth/me`、`POST /api/auth/logout`，登录成功后发放 7 天有效期 Bearer Token。
-- 业务 API 默认要求 `Authorization: Bearer <token>`，不再依赖管理端硬编码 `X-Tenant-Code`；开发调试可通过 `ALLOW_DEV_TENANT_HEADER=true` 临时恢复租户头访问。
+- 业务 API 默认要求 `Authorization: Bearer <token>`，不再依赖管理端硬编码 `X-Tenant-Code`；仅本机开发调试可通过 `ALLOW_DEV_TENANT_HEADER=true` 临时恢复租户头访问，服务端只接受 localhost/127.0.0.1 或 `DEV_TENANT_HEADER_HOSTS` 白名单主机。
 - SQLite 初始化和 Prisma 种子脚本会给本地管理员写入密码哈希，支持真实账号登录。
 - 管理端新增登录页、会话本地保存、退出登录和当前用户展示。
-- 本地默认账号：租户 `zxt-demo`，手机号 `13800000000`，密码 `Zxt@2026`；可用 `ZXT_SEED_ADMIN_PASSWORD` 覆盖初始化密码。
+- 本地默认账号：租户 `zxt-demo`，手机号 `13800000000`，密码 `Zxt@2026`；可用 `ZXT_SEED_ADMIN_PASSWORD` 覆盖初始化密码；登录前需完成一次图形滑块验证码，后端会发放一次性 `captchaToken`。

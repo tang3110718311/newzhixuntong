@@ -183,7 +183,7 @@ export function AppealsSection({
 
                 {/* 查看训练记录折叠面板 */}
                 <div style={{ marginTop: 20, borderTop: "1px solid #eee", paddingTop: 16 }}>
-                  <button type="button" style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", fontSize: 15, fontWeight: 600, color: "#4080ff", padding: 0 }}
+                  <button type="button" style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", fontSize: 15, fontWeight: 600, color: "#4e63f0", padding: 0 }}
                     onClick={() => {
                       const next = !recordExpanded;
                       setRecordExpanded(next);
@@ -239,7 +239,7 @@ export function AppealsSection({
                                       borderRadius: 8,
                                       fontSize: 13,
                                       lineHeight: 1.6,
-                                      background: turn.speaker === "ai" ? "#f0f4f8" : "#4080ff",
+                                      background: turn.speaker === "ai" ? "#f0f4f8" : "#4e63f0",
                                       color: turn.speaker === "ai" ? "#333" : "#fff",
                                     }}>
                                       <div style={{ fontSize: 11, marginBottom: 4, opacity: 0.7 }}>{turn.speaker === "ai" ? "AI" : "学员"}</div>

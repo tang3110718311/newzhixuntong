@@ -2,7 +2,8 @@ import { createOpenAiCompatibleLlmProvider } from "@zxt/ai-provider";
 import { generateSceneSchema } from "@zxt/shared";
 import { createGeneratedScene, getDefaultAiProvider, getIndustryPackage, listKnowledgeSummaries, logAiCall } from "@zxt/database";
 import { createTraceId, fail, handleRouteError, ok } from "@/lib/response";
-import { getTenantContext } from "@/lib/tenant";
+import { requireTrainingManager } from "@/lib/authz";
+import { assertRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -13,8 +14,10 @@ export async function POST(request: Request) {
   let tenantIdForLog: string | null = null;
 
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId, user: ctxUser } = await requireTrainingManager(request);
     tenantIdForLog = tenantId;
+    assertRateLimit("ai:scene-generation:tenant", tenantId, { limit: 20, windowMs: 60_000, message: "AI 创建场景请求过于频繁，请稍后再试。" });
+    assertRateLimit("ai:scene-generation:ip", getClientIp(request), { limit: 40, windowMs: 60_000, message: "AI 创建场景请求过于频繁，请稍后再试。" });
     const body = generateSceneSchema.parse(await request.json());
     const config = getDefaultAiProvider(tenantId);
 
@@ -33,7 +36,7 @@ export async function POST(request: Request) {
     }
 
     const industry = getIndustryPackage(tenantId, body.industryPackageId);
-    const knowledgeSummaries = listKnowledgeSummaries(tenantId, 20);
+    const knowledgeSummaries = listKnowledgeSummaries(tenantId, 20, body.attachmentFileIds?.length ? body.attachmentFileIds : undefined);
     const provider = createOpenAiCompatibleLlmProvider({
       baseUrl: config.baseUrl,
       apiKey: config.apiKeyEncrypted,
@@ -51,10 +54,25 @@ export async function POST(request: Request) {
           knowledgeSummaries.map((k) => `【${k.folderName}】${k.name}\n${k.summary}`).join("\n\n"),
       ],
     });
+    // 主动追问模式：描述信息不足时仅返回追问问题，不落库场景
+    if (draft.followUpQuestions?.length) {
+      logAiCall({
+        tenantId,
+        providerType: "llm",
+        modelName: config.modelName,
+        bizType: "scene_generation",
+        durationMs: Date.now() - started,
+        success: true,
+        traceId,
+      });
+      return ok({ scene: null, draft }, traceId, 200);
+    }
     const scene = createGeneratedScene(tenantId, {
       industryPackageId: body.industryPackageId,
       name: draft.name,
       mode: body.mode,
+      createMode: body.createMode,
+      createdBy: ctxUser?.id ?? null,
       sceneType: draft.sceneType,
       description: draft.description,
       sourceType: "ai",

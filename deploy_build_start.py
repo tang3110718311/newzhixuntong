@@ -3,10 +3,22 @@ import os
 import time
 import sys
 
+def require_env(name):
+    value = os.environ.get(name)
+    if not value:
+        raise SystemExit(f"Missing required environment variable: {name}")
+    return value
+
+host = require_env("DEPLOY_SSH_HOST")
+deploy_user = require_env("DEPLOY_SSH_USER")
+deploy_key_path = require_env("DEPLOY_SSH_KEY_PATH")
+root_user = require_env("DEPLOY_ROOT_USER")
+root_password = require_env("DEPLOY_ROOT_PASSWORD")
+
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-pkey = paramiko.Ed25519Key.from_private_key_file(r'C:\Users\Administrator\.ssh\id_ed25519_zxt_next_deploy')
-ssh.connect('171.111.198.77', username='tangdeploy', pkey=pkey, timeout=30)
+pkey = paramiko.Ed25519Key.from_private_key_file(deploy_key_path)
+ssh.connect(host, username=deploy_user, pkey=pkey, timeout=30)
 src = r'C:\Users\Administrator\Documents\日常办公\zxt-next-local-20260811-122000-a666009.tar.gz'
 remote = '/data/zxt-next/incoming/zxt-next-local-20260811-122000-a666009.tar.gz'
 sftp = ssh.open_sftp()
@@ -20,7 +32,7 @@ ssh.close()
 # root 清空 + 解包 + 改 env + 启动后台构建
 ssh2 = paramiko.SSHClient()
 ssh2.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh2.connect('171.111.198.77', username='root', password=os.environ.get('JIFU_PW', 'Jifu@2024'), timeout=30)
+ssh2.connect(host, username=root_user, password=root_password, timeout=30)
 release = 'rel-a666009-20260811-122000'
 tar = 'zxt-next-local-20260811-122000-a666009.tar.gz'
 cmd = f"""
@@ -58,7 +70,7 @@ deadline = time.time() + 600
 while time.time() < deadline:
     ssp = paramiko.SSHClient()
     ssp.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssp.connect('171.111.198.77', username='root', password=os.environ.get('JIFU_PW', 'Jifu@2024'), timeout=30)
+    ssp.connect(host, username=root_user, password=root_password, timeout=30)
     check = f"""
 set +e
 cd /data/zxt-next/.logs

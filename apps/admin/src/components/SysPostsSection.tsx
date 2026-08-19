@@ -15,9 +15,16 @@ type Post = {
   name: string;
   headcount: number;
   status: string;
+  roleCode: string | null;
+  roleName: string | null;
+  industryPackageId: string | null;
+  industryPackageName: string | null;
   sortOrder: number;
   createdAt: string;
 };
+
+type RoleOption = { id: string; name: string; code: string };
+type PackageOption = { id: string; name: string };
 
 function getStoredAuthToken() {
   if (typeof window === "undefined") return "";
@@ -49,10 +56,12 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return payload.data;
 }
 
-const emptyForm = { name: "", orgId: "", headcount: 0, status: "enabled", sortOrder: 0 };
+const emptyForm = { name: "", orgId: "", headcount: 0, status: "enabled", roleCode: "", industryPackageId: "", sortOrder: 0 };
 
 export function SysPostsSection({ organizations }: { organizations: Organization[] }) {
   const [posts, setPosts] = useState<Post[]>([]);
+  const [roles, setRoles] = useState<RoleOption[]>([]);
+  const [packages, setPackages] = useState<PackageOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -73,8 +82,22 @@ export function SysPostsSection({ organizations }: { organizations: Organization
     }
   }
 
+  async function loadOptions() {
+    try {
+      const [roleData, packageData] = await Promise.all([
+        apiFetch<{ items: RoleOption[] }>("/roles?pageSize=100"),
+        apiFetch<{ items: PackageOption[] }>("/industry-packages?pageSize=100"),
+      ]);
+      setRoles(roleData.items);
+      setPackages(packageData.items);
+    } catch {
+      /* 选项加载失败不阻塞岗位列表 */
+    }
+  }
+
   useEffect(() => {
     void loadPosts();
+    void loadOptions();
   }, []);
 
   const totalHeadcount = posts.reduce((sum, post) => sum + (post.headcount || 0), 0);
@@ -93,6 +116,8 @@ export function SysPostsSection({ organizations }: { organizations: Organization
       orgId: post.orgId ?? "",
       headcount: post.headcount,
       status: post.status,
+      roleCode: post.roleCode ?? "",
+      industryPackageId: post.industryPackageId ?? "",
       sortOrder: post.sortOrder,
     });
     setShowModal(true);
@@ -101,7 +126,7 @@ export function SysPostsSection({ organizations }: { organizations: Organization
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    const body = { ...form, orgId: form.orgId || null };
+    const body = { ...form, orgId: form.orgId || null, roleCode: form.roleCode || null, industryPackageId: form.industryPackageId || null };
     try {
       if (editing) {
         await apiFetch<Post>(`/posts/${editing.id}`, { method: "PUT", body: JSON.stringify(body) });
@@ -150,11 +175,13 @@ export function SysPostsSection({ organizations }: { organizations: Organization
         {loading ? (
           <div className="empty">正在加载岗位数据…</div>
         ) : (
-          <DataTable headers={["岗位名称", "所属部门", "编制人数", "状态", "操作"]}>
+          <DataTable headers={["岗位名称", "所属部门", "关联角色", "关联训练包", "编制人数", "状态", "操作"]}>
             {posts.map((post) => (
               <tr key={post.id}>
                 <td><strong>{post.name}</strong></td>
                 <td className="muted-text">{post.orgName || "—"}</td>
+                <td>{post.roleName || "—"}</td>
+                <td className="muted-text">{post.industryPackageName || "—"}</td>
                 <td>{post.headcount}</td>
                 <td>{statusBadge(post.status)}</td>
                 <td>
@@ -163,7 +190,7 @@ export function SysPostsSection({ organizations }: { organizations: Organization
                 </td>
               </tr>
             ))}
-            {!posts.length && <tr><td colSpan={5}><div className="empty">暂无岗位，请点击「新增岗位」创建。</div></td></tr>}
+            {!posts.length && <tr><td colSpan={7}><div className="empty">暂无岗位，请点击「新增岗位」创建。</div></td></tr>}
           </DataTable>
         )}
       </div>
@@ -181,6 +208,22 @@ export function SysPostsSection({ organizations }: { organizations: Organization
                 <option value="">不关联部门</option>
                 {organizations.map((org) => (
                   <option key={org.id} value={org.id}>{org.name}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="关联角色">
+              <select value={form.roleCode} onChange={(e) => setForm({ ...form, roleCode: e.target.value })}>
+                <option value="">不关联角色</option>
+                {roles.map((role) => (
+                  <option key={role.id} value={role.code}>{role.name}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="关联训练包">
+              <select value={form.industryPackageId} onChange={(e) => setForm({ ...form, industryPackageId: e.target.value })}>
+                <option value="">不关联训练包</option>
+                {packages.map((pkg) => (
+                  <option key={pkg.id} value={pkg.id}>{pkg.name}</option>
                 ))}
               </select>
             </Field>

@@ -165,6 +165,7 @@ create table if not exists scenes (
   name text not null,
   code text not null,
   mode text not null default 'voice',
+  create_mode text not null default 'ai_practice',
   status text not null default 'draft',
   version text not null default '1.0.0',
   is_template integer not null default 0,
@@ -188,6 +189,7 @@ create table if not exists scene_roles (
   background text not null default '',
   personality text not null default '',
   emotion text not null default 'calm',
+  language_style text not null default '',
   goal text not null default '',
   created_at text not null default current_timestamp,
   updated_at text not null default current_timestamp,
@@ -231,6 +233,7 @@ create table if not exists tasks (
   name text not null,
   type text not null,
   description text not null default '',
+  answer_form text not null default 'voice',
   status text not null default 'draft',
   start_at text,
   end_at text,
@@ -290,6 +293,22 @@ create table if not exists training_records (
   unique(tenant_id, record_no)
 );
 
+create table if not exists ai_training_sessions (
+  id text primary key,
+  tenant_id text not null,
+  user_id text,
+  scene_id text not null,
+  status text not null default 'in_progress',
+  history_json text not null default '[]',
+  off_topic_count integer not null default 0,
+  round_count integer not null default 0,
+  started_at text,
+  finished_at text,
+  created_at text not null default current_timestamp,
+  updated_at text not null default current_timestamp,
+  deleted_at text
+);
+
 create table if not exists training_turns (
   id text primary key,
   tenant_id text not null,
@@ -299,6 +318,7 @@ create table if not exists training_turns (
   text text not null,
   started_at text,
   duration_ms integer not null default 0,
+  emotion text not null default '',
   created_at text not null default current_timestamp,
   updated_at text not null default current_timestamp,
   deleted_at text
@@ -309,6 +329,7 @@ create table if not exists score_details (
   tenant_id text not null,
   record_id text not null,
   scoring_rule_id text,
+  round_no integer not null default 0,
   score integer not null,
   deduction_reason text not null default '',
   evidence_text text not null default '',
@@ -464,6 +485,8 @@ create table if not exists posts (
   name text not null,
   headcount integer not null default 0,
   status text not null default 'enabled',
+  role_code text,
+  industry_package_id text,
   sort_order integer not null default 0,
   created_at text not null default current_timestamp,
   updated_at text not null default current_timestamp,
@@ -521,11 +544,15 @@ ensureColumn("scenes", "pass_score", "integer not null default 80");
 ensureColumn("training_records", "session_id", "text");
 ensureColumn("training_records", "suggestions", "text not null default '[]'");
 ensureColumn("training_records", "summary_json", "text");
+ensureColumn("score_details", "level", "text not null default ''");
+ensureColumn("training_records", "capability_profile", "text not null default '[]'");
 
 // ---- 核心表索引（查询以 tenant_id + deleted_at 过滤，按 record/scene/user/task join）----
 exec(`create index if not exists idx_tr_tenant_user_status on training_records(tenant_id, user_id, status)`);
 exec(`create index if not exists idx_tr_tenant_scene on training_records(tenant_id, scene_id)`);
 exec(`create index if not exists idx_tr_session on training_records(tenant_id, session_id)`);
+exec(`create index if not exists idx_ai_training_sessions_user on ai_training_sessions(tenant_id, user_id, status)`);
+exec(`create index if not exists idx_ai_training_sessions_scene on ai_training_sessions(tenant_id, scene_id)`);
 exec(`create index if not exists idx_tr_tenant_created on training_records(tenant_id, created_at)`);
 exec(`create index if not exists idx_tt_record on training_turns(record_id)`);
 exec(`create index if not exists idx_sd_record on score_details(record_id)`);
@@ -557,8 +584,7 @@ const taskId = "task_customer_service_20260805";
 const recordId = "record_customer_complaint_001";
 
 const scenes = [
-  ["scene_complaint", "CJ-KF-TS-001", "客户投诉处理对练", "投诉处理", "客户因服务等待时间长、问题未闭环产生不满，训练客服识别诉求、安抚情绪并推进处理。"],
-  ["scene_tariff", "CJ-KF-ZF-002", "套餐资费咨询对练", "套餐资费咨询", "客户咨询套餐价格、流量、宽带和合约限制，训练客服解释资费并推荐合适方案。"],
+  ["scene_complaint", "CJ-KF-TS-001", "客户投诉处理对练", "投诉处理", "客户因服务等待时间长、问题未闭环产生不满，训练客服识别诉求、安抚情绪并推进处理。"],  ["scene_tariff", "CJ-KF-ZF-002", "套餐资费咨询对练", "套餐资费咨询", "客户咨询套餐价格、流量、宽带和合约限制，训练客服解释资费并推荐合适方案。"],
   ["scene_fault", "CJ-KF-GZ-003", "网络故障报修受理对练", "网络故障报修", "客户反馈宽带无法上网，训练客服快速定位问题、登记报修并说明处理安排。"],
 ];
 

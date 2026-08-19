@@ -159,6 +159,8 @@ const MIGRATION_SQL: string[] = [
     id text primary key,
     tenant_id text not null,
     exam_id text not null,
+    task_id text,
+    scene_id text,
     user_id text,
     score integer,
     total_score integer not null default 100,
@@ -248,6 +250,21 @@ const MIGRATION_SQL: string[] = [
     updated_at text not null default (datetime('now')),
     deleted_at text
   )`,
+  `CREATE TABLE IF NOT EXISTS ai_training_sessions (
+    id text primary key,
+    tenant_id text not null,
+    user_id text,
+    scene_id text not null,
+    status text not null default 'in_progress',
+    history_json text not null default '[]',
+    off_topic_count integer not null default 0,
+    round_count integer not null default 0,
+    started_at text,
+    finished_at text,
+    created_at text not null default (datetime('now')),
+    updated_at text not null default (datetime('now')),
+    deleted_at text
+  )`,
 ];
 
 function applyMigrations() {
@@ -257,14 +274,26 @@ function applyMigrations() {
   }
   ensureColumn("tasks", "description", "text not null default ''");
   ensureColumn("tasks", "answer_form", "text not null default 'voice'");
+  ensureColumn("posts", "role_code", "text");
+  ensureColumn("posts", "industry_package_id", "text");
+  ensureColumn("scenes", "create_mode", "text not null default 'ai_practice'");
+  ensureColumn("scene_roles", "language_style", "text not null default ''");
+  ensureColumn("exam_attempts", "task_id", "text");
+  ensureColumn("exam_attempts", "scene_id", "text");
   ensureColumn("training_records", "session_id", "text");
   ensureColumn("training_records", "suggestions", "text not null default '[]'");
   ensureColumn("training_records", "summary_json", "text");
+  // 胜任力评分（与 init.mjs 保持一致，避免已有库缺失列导致评分落库失败）
+  ensureColumn("score_details", "level", "text not null default ''");
+  ensureColumn("score_details", "round_no", "integer not null default 0");
+  ensureColumn("training_records", "capability_profile", "text not null default '[]'");
   ensureColumn("training_turns", "emotion", "text not null default ''");
   // 核心表索引（已有库同样补齐，与 init.mjs 保持一致）
   db.run("create index if not exists idx_tr_tenant_user_status on training_records(tenant_id, user_id, status)");
   db.run("create index if not exists idx_tr_tenant_scene on training_records(tenant_id, scene_id)");
   db.run("create index if not exists idx_tr_session on training_records(tenant_id, session_id)");
+  db.run("create index if not exists idx_ai_training_sessions_user on ai_training_sessions(tenant_id, user_id, status)");
+  db.run("create index if not exists idx_ai_training_sessions_scene on ai_training_sessions(tenant_id, scene_id)");
   db.run("create index if not exists idx_tr_tenant_created on training_records(tenant_id, created_at)");
   db.run("create index if not exists idx_tt_record on training_turns(record_id)");
   db.run("create index if not exists idx_sd_record on score_details(record_id)");

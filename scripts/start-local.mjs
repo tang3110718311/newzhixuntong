@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -9,27 +9,111 @@ mkdirSync(logsDir, { recursive: true });
 
 const nextBin = resolve(root, "node_modules/next/dist/bin/next");
 const nodeBin = process.execPath;
+const PORTS = {
+  api: 4000,
+  admin: 3000,
+  mobile: 3100,
+};
+const forceRestart = process.argv.includes("--restart") || process.argv.includes("restart");
 
-function cleanupOldPidFile() {
+function findListeningPids(port) {
+  if (process.platform !== "win32") return [];
+  try {
+    const output = execFileSync("netstat", ["-ano"], { encoding: "utf8" });
+    const pids = new Set();
+    for (const line of output.split(/\r?\n/)) {
+      if (!line.includes("LISTENING")) continue;
+      const parts = line.trim().split(/\s+/);
+      const local = parts[1] || "";
+      const pid = Number(parts[parts.length - 1]);
+      if (local.match(new RegExp(`(^|:)${port}$`)) && Number.isFinite(pid) && pid > 0) {
+        pids.add(pid);
+      }
+    }
+    return [...pids];
+  } catch {
+    return [];
+  }
+}
+
+function killPid(pid, label) {
+  try {
+    process.kill(pid);
+    console.log(`Stopped ${label}: ${pid}`);
+  } catch (error) {
+    console.log(`Skip ${label}: ${pid} (${error.message})`);
+  }
+}
+
+async function waitForPortFree(port, timeoutMs = 5000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (findListeningPids(port).length === 0) return;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+  }
+}
+
+async function stopPortListeners() {
+  for (const [name, port] of Object.entries(PORTS)) {
+    const pids = findListeningPids(port);
+    for (const pid of pids) {
+      killPid(pid, `${name} listener on ${port}`);
+    }
+    if (pids.length > 0) await waitForPortFree(port);
+  }
+}
+
+async function cleanupOldPidFile() {
   if (!existsSync(pidFile)) return;
   try {
     const pids = JSON.parse(readFileSync(pidFile, "utf8"));
     for (const [name, pid] of Object.entries(pids)) {
       if (name === "startedAt" || typeof pid !== "number") continue;
-      try {
-        process.kill(pid);
-      } catch {
-        // Ignore stale PIDs; the readiness probe below is the source of truth.
-      }
+      killPid(pid, name);
     }
   } finally {
     unlinkSync(pidFile);
   }
+  await stopPortListeners();
 }
 
 function start(name, cwd, port) {
-  const out = openSync(resolve(logsDir, `${name}.detached.out.log`), "a");
-  const err = openSync(resolve(logsDir, `${name}.detached.err.log`), "a");
+  const outFile = resolve(logsDir, `${name}.detached.out.log`);
+  const errFile = resolve(logsDir, `${name}.detached.err.log`);
+  if (process.platform === "win32") {
+    // Windows 下用 Start-Process 启动独立进程并直接重定向日志，
+    // 避免子进程继承 npm/TeleAgent 的 stdout 句柄导致命令一直等待。
+    for (const f of [outFile, errFile]) {
+      try {
+        unlinkSync(f);
+      } catch {}
+    }
+    const safePsString = (value) => value.replace(/'/g, "''");
+    const psScript = [
+      "$ProgressPreference = 'SilentlyContinue';",
+      "$env:NODE_ENV = 'production';",
+      `$argsList = @('${safePsString(nextBin)}', 'start', '-p', '${port}');`,
+      `$p = Start-Process -FilePath '${safePsString(nodeBin)}' -ArgumentList $argsList -WorkingDirectory '${safePsString(resolve(root, cwd))}' -RedirectStandardOutput '${safePsString(outFile)}' -RedirectStandardError '${safePsString(errFile)}' -WindowStyle Hidden -PassThru;`,
+      "Write-Output $p.Id;",
+    ].join(" ");
+    const encoded = Buffer.from(psScript, "utf16le").toString("base64");
+    let out = "";
+    try {
+      out = execFileSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded], {
+        encoding: "utf8",
+        timeout: 3000,
+      });
+    } catch (error) {
+      if (error?.code !== "ETIMEDOUT" || !error.stdout) throw error;
+      out = String(error.stdout);
+    }
+    const lines = out.trim().split(/\r?\n/).filter(Boolean);
+    const pid = Number(lines[lines.length - 1]);
+    if (!Number.isFinite(pid) || pid <= 0) throw new Error(`Failed to start ${name}: missing child pid`);
+    return { pid, exitCode: null, wmi: true, port };
+  }
+  const out = openSync(outFile, "a");
+  const err = openSync(errFile, "a");
   const child = spawn(nodeBin, [nextBin, "start", "-p", String(port)], {
     cwd: resolve(root, cwd),
     detached: true,
@@ -43,16 +127,27 @@ function start(name, cwd, port) {
   child.unref();
   return child;
 }
-
-async function waitForHttp(name, url, child, timeoutMs = 20000) {
+async function waitForHttp(name, url, child, port, timeoutMs = 20000) {
   const started = Date.now();
   let lastError = "";
   while (Date.now() - started < timeoutMs) {
     if (child.exitCode !== null) {
       throw new Error(`${name} exited early with code ${child.exitCode}`);
     }
+    if (child.wmi && port != null) {
+      // WMI 模式：child.pid 是 cmd 外壳进程，它存活 = 启动链仍在；它退出且端口无监听 = 启动失败
+      let shellAlive = true;
+      try {
+        process.kill(child.pid, 0);
+      } catch {
+        shellAlive = false;
+      }
+      if (!shellAlive && findListeningPids(port).length === 0) {
+        throw new Error(`${name} process exited (no listener on port ${port})`);
+      }
+    }
     try {
-      const response = await fetch(url, { cache: "no-store" });
+      const response = await fetchWithTimeout(url, 1500);
       if (response.ok) return;
       lastError = `HTTP ${response.status}`;
     } catch (error) {
@@ -63,6 +158,47 @@ async function waitForHttp(name, url, child, timeoutMs = 20000) {
   throw new Error(`${name} did not become ready at ${url}: ${lastError}`);
 }
 
+async function fetchWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { cache: "no-store", signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function isHttpReady(url) {
+  try {
+    const response = await fetchWithTimeout(url, 1200);
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function currentLocalServices() {
+  const apiPids = findListeningPids(PORTS.api);
+  const adminPids = findListeningPids(PORTS.admin);
+  const mobilePids = findListeningPids(PORTS.mobile);
+  const apiReady = apiPids.length > 0 && await isHttpReady("http://localhost:4000/api/health");
+  const adminReady = adminPids.length > 0 && await isHttpReady("http://localhost:3000");
+  const mobileReady = mobilePids.length > 0 && await isHttpReady("http://localhost:3100");
+  if (!apiReady || !adminReady || !mobileReady) return null;
+  return {
+    api: apiPids[0],
+    admin: adminPids[0],
+    mobile: mobilePids[0],
+    reused: true,
+    startedAt: new Date().toISOString(),
+    urls: {
+      admin: "http://localhost:3000",
+      mobile: "http://localhost:3100",
+      api: "http://localhost:4000/api",
+    },
+  };
+}
+
 function stopChildren(children) {
   for (const child of children) {
     try {
@@ -70,30 +206,61 @@ function stopChildren(children) {
     } catch {
       // Best effort cleanup only.
     }
+    if (child && child.wmi && child.port != null) {
+      for (const pid of findListeningPids(child.port)) {
+        try {
+          process.kill(pid);
+        } catch {
+          // Best effort cleanup only.
+        }
+      }
+    }
   }
 }
 
-cleanupOldPidFile();
+if (!forceRestart) {
+  const existing = await currentLocalServices();
+  if (existing) {
+    writeFileSync(pidFile, JSON.stringify(existing, null, 2));
+    console.log("Local services are already running. Reusing existing processes.");
+    console.log(JSON.stringify(existing, null, 2));
+    process.exit(0);
+  }
+}
+
+console.log(forceRestart ? "Restarting local services..." : "Starting local services...");
+await cleanupOldPidFile();
+await stopPortListeners();
 
 const api = start("api", "apps/api", 4000);
 const admin = start("admin", "apps/admin", 3000);
+const mobile = start("mobile", "apps/mobile", 3100);
 
 try {
-  await waitForHttp("api", "http://localhost:4000/api/health", api);
-  await waitForHttp("admin", "http://localhost:3000", admin);
+  await waitForHttp("api", "http://localhost:4000/api/health", api, PORTS.api);
+  await waitForHttp("admin", "http://localhost:3000", admin, PORTS.admin);
+  await waitForHttp("mobile", "http://localhost:3100", mobile, PORTS.mobile);
   const pids = {
-    api: api.pid,
-    admin: admin.pid,
+    api: findListeningPids(PORTS.api)[0] || api.pid,
+    admin: findListeningPids(PORTS.admin)[0] || admin.pid,
+    mobile: findListeningPids(PORTS.mobile)[0] || mobile.pid,
+    spawned: {
+      api: api.pid,
+      admin: admin.pid,
+      mobile: mobile.pid,
+    },
     startedAt: new Date().toISOString(),
     urls: {
       admin: "http://localhost:3000",
+      mobile: "http://localhost:3100",
       api: "http://localhost:4000/api",
     },
   };
   writeFileSync(pidFile, JSON.stringify(pids, null, 2));
   console.log(JSON.stringify(pids, null, 2));
+  process.exit(0);
 } catch (error) {
-  stopChildren([api, admin]);
+  stopChildren([api, admin, mobile]);
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);
 }

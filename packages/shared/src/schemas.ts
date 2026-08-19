@@ -1,10 +1,159 @@
 import { z } from "zod";
 
+type AiProviderUrlValidationEnv = {
+  nodeEnv?: string;
+  allowlist?: string;
+};
+
+type AiProviderUrlValidationResult =
+  | { ok: true; url: URL }
+  | { ok: false; message: string };
+
+function getRuntimeEnv(): AiProviderUrlValidationEnv {
+  const env = (globalThis as typeof globalThis & { process?: { env?: Record<string, string | undefined> } }).process?.env;
+  return {
+    nodeEnv: env?.NODE_ENV,
+    allowlist: env?.AI_PROVIDER_BASE_URL_ALLOWLIST,
+  };
+}
+
+function normalizeHostname(hostname: string) {
+  return hostname.replace(/^\[|\]$/g, "").replace(/\.$/, "").toLowerCase();
+}
+
+function parseAllowlist(raw?: string) {
+  return (raw || "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean)
+    .map((item) => {
+      try {
+        return normalizeHostname(new URL(item).hostname);
+      } catch {
+        return normalizeHostname(item.split("/")[0]?.split(":")[0] || item);
+      }
+    })
+    .filter(Boolean);
+}
+
+function matchesAllowlist(hostname: string, allowlist: string[]) {
+  const host = normalizeHostname(hostname);
+  return allowlist.some((entry) => {
+    if (entry.startsWith("*.")) {
+      const suffix = entry.slice(1);
+      return host.endsWith(suffix) && host.length > suffix.length;
+    }
+    return host === entry;
+  });
+}
+
+function parseIpv4(hostname: string): number[] | null {
+  const parts = hostname.split(".");
+  if (parts.length !== 4) return null;
+  const octets = parts.map((part) => Number(part));
+  if (octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return null;
+  return octets;
+}
+
+function isUnsafeIpv4(octets: number[]) {
+  const [a, b] = octets;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168)
+  );
+}
+
+function isUnsafeIpv6(hostname: string) {
+  const host = normalizeHostname(hostname);
+  if (host === "::1" || host === "0:0:0:0:0:0:0:1") return true;
+
+  const mappedIpv4 = host.match(/(?:^|:)(\d{1,3}(?:\.\d{1,3}){3})$/)?.[1];
+  if (mappedIpv4) {
+    const octets = parseIpv4(mappedIpv4);
+    if (octets && isUnsafeIpv4(octets)) return true;
+  }
+
+  const firstHextet = parseInt(host.split(":")[0] || "0", 16);
+  if (!Number.isFinite(firstHextet)) return false;
+  // fc00::/7 unique-local, fe80::/10 link-local.
+  return (firstHextet & 0xfe00) === 0xfc00 || (firstHextet & 0xffc0) === 0xfe80;
+}
+
+function isUnsafeAiProviderHost(hostname: string) {
+  const host = normalizeHostname(hostname);
+  if (!host) return true;
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host === "metadata" || host === "metadata.google.internal") return true;
+
+  const ipv4 = parseIpv4(host);
+  if (ipv4) return isUnsafeIpv4(ipv4);
+  if (host.includes(":")) return isUnsafeIpv6(host);
+  return false;
+}
+
+function isAllowedDevHttpHost(hostname: string) {
+  const host = normalizeHostname(hostname);
+  return host === "localhost" || host === "127.0.0.1";
+}
+
+export function validateAiProviderBaseUrl(
+  baseUrl: string,
+  env: AiProviderUrlValidationEnv = getRuntimeEnv(),
+): AiProviderUrlValidationResult {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return { ok: false, message: "baseUrl 必须是合法 URL。" };
+  }
+
+  if (url.username || url.password) {
+    return { ok: false, message: "baseUrl 不允许包含用户名或密码。" };
+  }
+  if (url.search || url.hash) {
+    return { ok: false, message: "baseUrl 不允许包含查询参数或片段。" };
+  }
+
+  const isProduction = env.nodeEnv === "production";
+  const host = normalizeHostname(url.hostname);
+  const isDevLocalHttp = !isProduction && url.protocol === "http:" && isAllowedDevHttpHost(host);
+  if (url.protocol !== "https:" && !isDevLocalHttp) {
+    return { ok: false, message: "baseUrl 必须使用 https；本地开发仅允许 http://localhost 或 http://127.0.0.1。" };
+  }
+
+  if (!isDevLocalHttp && isUnsafeAiProviderHost(host)) {
+    return { ok: false, message: "baseUrl 不允许指向本机、内网、链路本地或 metadata 地址。" };
+  }
+
+  const allowlist = parseAllowlist(env.allowlist);
+  if (isProduction && allowlist.length > 0 && !matchesAllowlist(host, allowlist)) {
+    return { ok: false, message: "baseUrl 域名不在 AI_PROVIDER_BASE_URL_ALLOWLIST 中。" };
+  }
+
+  // TODO: add DNS resolution/rebinding checks before outbound fetches to catch domains resolving to private ranges.
+  return { ok: true, url };
+}
+
+export const aiProviderBaseUrlSchema = z.string().trim().min(1).max(2048).superRefine((value, ctx) => {
+  const result = validateAiProviderBaseUrl(value);
+  if (!result.ok) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: result.message });
+  }
+});
+
 export const paginationQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(1000).default(20),
   keyword: z.string().optional().default(""),
   status: z.string().optional().default(""),
+  mode: z.string().optional().default(""),
+  createMode: z.string().optional().default(""),
+  orgId: z.string().optional().default(""),
 });
 
 export const updateTenantSettingsSchema = z.object({
@@ -16,6 +165,8 @@ export const updateTenantSettingsSchema = z.object({
     aiTokenLimit: z.coerce.number().int().min(0).max(100000000).default(100000),
     sttSeconds: z.coerce.number().int().min(0).max(100000000).default(3600),
     ttsCharacters: z.coerce.number().int().min(0).max(100000000).default(100000),
+    userLimit: z.coerce.number().int().min(0).max(1000000).default(100),
+    storageMb: z.coerce.number().int().min(0).max(1000000).default(1024),
   }),
 });
 export const createIndustryPackageSchema = z.object({
@@ -33,6 +184,13 @@ export const createOrganizationSchema = z.object({
   parentId: z.string().optional().nullable(),
   sortOrder: z.coerce.number().int().min(0).max(100000).default(0),
 });
+export const updateOrganizationSchema = z.object({
+  name: z.string().min(2).max(80).optional(),
+  code: z.string().min(2).max(40).optional(),
+  type: z.enum(["department", "company", "team", "external"]).optional(),
+  parentId: z.string().optional().nullable(),
+  sortOrder: z.coerce.number().int().min(0).max(100000).optional(),
+});
 export const createUserSchema = z.object({
   name: z.string().min(2).max(40),
   mobile: z.string().min(6).max(30),
@@ -41,15 +199,32 @@ export const createUserSchema = z.object({
   orgId: z.string().optional().nullable(),
   initialPassword: z.string().min(8).max(128),
 });
+export const updateUserSchema = z.object({
+  name: z.string().min(2).max(40).optional(),
+  mobile: z.string().min(6).max(30).optional(),
+  email: z.string().email().optional().or(z.literal("")),
+  roleCode: z.enum(["tenant_admin", "trainer", "learner"]).optional(),
+  orgId: z.string().optional().nullable(),
+  status: z.enum(["active", "disabled"]).optional(),
+});
 
 export const loginSchema = z.object({
   mobile: z.string().min(6).max(30),
   password: z.string().min(8).max(128),
-  code: z.string().min(4).max(10),
+  captchaToken: z.string().min(16).max(120),
+});
+
+export const captchaVerifySchema = z.object({
+  captchaId: z.string().uuid(),
+  positionX: z.coerce.number().min(0).max(320),
 });
 
 export const sendCodeSchema = z.object({
   mobile: z.string().min(6).max(30),
+});
+
+export const switchTenantSchema = z.object({
+  tenantCode: z.string().min(1).max(60),
 });
 
 export const changePasswordSchema = z.object({
@@ -77,11 +252,19 @@ export const createCapabilityModelSchema = z.object({
   message: "能力项权重合计必须等于 100。",
   path: ["items"],
 });
+export const sceneCreateModeSchema = z.enum(["ai_practice", "ai_exam", "fixed_practice", "fixed_exam"]);
+export const sceneCreateModeLabels: Record<string, string> = {
+  ai_practice: "AI对练模式",
+  ai_exam: "AI对练+考试模式",
+  fixed_practice: "固定对练模式",
+  fixed_exam: "固定对练+考试模式",
+};
 export const createSceneSchema = z.object({
   industryPackageId: z.string().optional().nullable(),
   name: z.string().min(2).max(120),
   code: z.string().min(2).max(60),
   mode: z.enum(["voice", "text"]).default("voice"),
+  createMode: sceneCreateModeSchema.default("ai_practice"),
   sceneType: z.string().min(1).max(80),
   description: z.string().min(1).max(2000),
   aiRole: z.object({
@@ -89,6 +272,7 @@ export const createSceneSchema = z.object({
     background: z.string().max(300).optional().default(""),
     personality: z.string().max(200).optional().default(""),
     emotion: z.string().max(50).optional().default(""),
+    languageStyle: z.string().max(200).optional().default(""),
     goal: z.string().max(200).optional().default(""),
   }).optional(),
   learnerRole: z.object({
@@ -108,6 +292,34 @@ export const createSceneSchema = z.object({
   })).optional().default([]),
 });
 
+
+export const updateSceneSchema = z.object({
+  name: z.string().min(2).max(120).optional(),
+  description: z.string().max(2000).optional(),
+  aiRole: z.object({
+    identity: z.string().max(200).optional().default(""),
+    background: z.string().max(300).optional().default(""),
+    personality: z.string().max(200).optional().default(""),
+    emotion: z.string().max(50).optional().default(""),
+    languageStyle: z.string().max(200).optional().default(""),
+    goal: z.string().max(200).optional().default(""),
+  }).optional(),
+  learnerRole: z.object({
+    identity: z.string().max(200).optional().default(""),
+    goal: z.string().max(500).optional().default(""),
+  }).optional(),
+  endCondition: z.string().max(300).optional(),
+  interruptCondition: z.string().max(300).optional(),
+  dialogueExample: z.string().max(2000).optional(),
+  initiator: z.enum(["ai", "learner", "random"]).optional(),
+  scoringRules: z.array(z.object({
+    name: z.string().min(1).max(80),
+    score: z.number().min(0).max(100),
+    criteria: z.string().max(500).optional().default(""),
+    deductionRule: z.string().max(500).optional().default(""),
+    evidenceRequired: z.string().max(500).optional().default(""),
+  })).optional(),
+});
 
 export const createMaterialSchema = z.object({
   name: z.string().min(2).max(120),
@@ -188,7 +400,7 @@ export const updateAiProviderSchema = z.object({
   providerType: z.enum(["llm", "stt", "tts"]).default("llm"),
   providerName: z.string().min(2).max(80),
   modelName: z.string().min(1).max(120),
-  baseUrl: z.string().url(),
+  baseUrl: aiProviderBaseUrlSchema,
   apiKey: z.string().min(8).max(300).optional(),
   status: z.enum(["enabled", "disabled"]).default("enabled"),
   isDefault: z.boolean().default(true),
@@ -196,9 +408,10 @@ export const updateAiProviderSchema = z.object({
 
 export const generateSceneSchema = z.object({
   industryPackageId: z.string().optional().nullable(),
-  sceneDescription: z.string().min(10).max(2000),
+  sceneDescription: z.string().min(10, "场景描述至少需要 10 个字").max(2000, "场景描述不能超过 2000 个字"),
   targetRole: z.string().min(1).max(120),
   mode: z.enum(["voice", "text"]).default("voice"),
+  createMode: sceneCreateModeSchema.default("ai_practice"),
   attachmentFileIds: z.array(z.string()).default([]),
 });
 export const transcribeAudioSchema = z.object({
@@ -246,6 +459,8 @@ export const updateExamSchema = z.object({
 export const createExamAttemptSchema = z.object({
   examId: z.string().min(1),
   userId: z.string().optional().nullable(),
+  taskId: z.string().optional().nullable(),
+  sceneId: z.string().optional().nullable(),
 });
 
 export const submitExamAttemptSchema = z.object({
@@ -294,6 +509,8 @@ export const createPostSchema = z.object({
   name: z.string().min(2).max(80),
   headcount: z.coerce.number().int().min(0).max(100000).default(0),
   status: z.enum(["enabled", "disabled"]).default("enabled"),
+  roleCode: z.string().max(40).optional().nullable(),
+  industryPackageId: z.string().max(80).optional().nullable(),
   sortOrder: z.coerce.number().int().min(0).max(100000).default(0),
 });
 
@@ -302,6 +519,8 @@ export const updatePostSchema = z.object({
   name: z.string().min(2).max(80).optional(),
   headcount: z.coerce.number().int().min(0).max(100000).optional(),
   status: z.enum(["enabled", "disabled"]).optional(),
+  roleCode: z.string().max(40).optional().nullable(),
+  industryPackageId: z.string().max(80).optional().nullable(),
   sortOrder: z.coerce.number().int().min(0).max(100000).optional(),
 });
 
@@ -314,9 +533,6 @@ export const updateKnowledgeFolderSchema = z.object({
   name: z.string().min(2).max(120).optional(),
   description: z.string().max(1000).optional(),
 });
-
-
-
 
 
 

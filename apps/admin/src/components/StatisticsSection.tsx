@@ -313,12 +313,12 @@ export function StatisticsSection({
           <div className="tab-bar" style={{ borderBottom: "none", gap: 8, marginBottom: 20 }}>
             <button className="tab-item" type="button"
               onClick={() => onSwitchTab("statistics-dept")}
-              style={isDept ? { background: "#4080ff", color: "#fff", borderRadius: 6, borderBottom: "none", fontWeight: 600 } : {}}>
+              style={isDept ? { background: "#4e63f0", color: "#fff", borderRadius: 6, borderBottom: "none", fontWeight: 600 } : {}}>
               部门数据
             </button>
             <button className="tab-item" type="button"
               onClick={() => onSwitchTab("statistics-learner")}
-              style={!isDept ? { background: "#4080ff", color: "#fff", borderRadius: 6, borderBottom: "none", fontWeight: 600 } : {}}>
+              style={!isDept ? { background: "#4e63f0", color: "#fff", borderRadius: 6, borderBottom: "none", fontWeight: 600 } : {}}>
               学员统计
             </button>
           </div>
@@ -327,7 +327,7 @@ export function StatisticsSection({
             <>
               <div className="stats prototype-stats stats-4" style={{ marginBottom: 24 }}>
                 <div className="metric card"><span>培训任务数</span><strong>{deptTaskCount}</strong><small>2026年度</small></div>
-                <div className="metric card"><span>参与学员数</span><strong style={{ color: "#4080ff" }}>{deptLearnerCount}</strong><small>累计参与</small></div>
+                <div className="metric card"><span>参与学员数</span><strong style={{ color: "#4e63f0" }}>{deptLearnerCount}</strong><small>累计参与</small></div>
                 <div className="metric card"><span>任务完成率</span><strong>{deptCompletionRate}%</strong><small style={{ color: "#22c55e" }}>较上月 +0%</small></div>
                 <div className="metric card"><span>考试合格率</span><strong style={{ color: "#22c55e" }}>{deptExamPassRate}%</strong><small style={{ color: "#ef4444" }}>较上月 -0%</small></div>
               </div>
@@ -351,7 +351,7 @@ export function StatisticsSection({
                 <div className="rankcard card">
                   <h2>重点指标排名</h2>
                   {rankDepts.length > 0 ? rankDepts.map((dept, i) => (
-                    <div key={dept.name} className="rank-row"><span className="rank-num" style={{ background: "#4080ff", color: "#fff" }}>{i + 1}</span><span className="rank-label">{dept.name}</span><strong style={{ color: "#1a202c" }}>{dept.completionRate}%</strong></div>
+                    <div key={dept.name} className="rank-row"><span className="rank-num" style={{ background: "#4e63f0", color: "#fff" }}>{i + 1}</span><span className="rank-label">{dept.name}</span><strong style={{ color: "#1a202c" }}>{dept.completionRate}%</strong></div>
                   )) : (
                     <div style={{ textAlign: "center", padding: 32, color: "#8b98aa" }}>暂无排名数据</div>
                   )}
@@ -380,7 +380,7 @@ export function StatisticsSection({
             <>
               <div className="stats prototype-stats stats-4" style={{ marginBottom: 24 }}>
                 <div className="metric card"><span>学员总数</span><strong>{learnerTotal}</strong><small>2026年度</small></div>
-                <div className="metric card"><span>人均学习时长</span><strong style={{ color: "#4080ff" }}>{learnerAvgHours}h</strong><small>累计参与</small></div>
+                <div className="metric card"><span>人均学习时长</span><strong style={{ color: "#4e63f0" }}>{learnerAvgHours}h</strong><small>累计参与</small></div>
                 <div className="metric card"><span>学习完成率</span><strong>{learnerCompletionRate}%</strong><small style={{ color: "#22c55e" }}>较上月 +0%</small></div>
                 <div className="metric card"><span>优秀率</span><strong style={{ color: "#22c55e" }}>{learnerExcellentRate}%</strong><small style={{ color: "#ef4444" }}>较上月 -0%</small></div>
               </div>
@@ -404,7 +404,7 @@ export function StatisticsSection({
                 <div className="rankcard card">
                   <h2>重点指标排名</h2>
                   {rankLearners.length > 0 ? rankLearners.map((l, i) => (
-                    <div key={l.id} className="rank-row"><span className="rank-num" style={{ background: "#4080ff", color: "#fff" }}>{i + 1}</span><span className="rank-label">{l.name}</span><strong style={{ color: "#1a202c" }}>{l.score}%</strong></div>
+                    <div key={l.id} className="rank-row"><span className="rank-num" style={{ background: "#4e63f0", color: "#fff" }}>{i + 1}</span><span className="rank-label">{l.name}</span><strong style={{ color: "#1a202c" }}>{l.score}%</strong></div>
                   )) : (
                     <div style={{ textAlign: "center", padding: 32, color: "#8b98aa" }}>暂无排名数据</div>
                   )}

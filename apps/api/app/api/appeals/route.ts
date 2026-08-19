@@ -2,6 +2,7 @@
 import { createAppeal, listAppeals } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { parsePagination } from "@/lib/pagination";
+import { requireTrainingManager } from "@/lib/authz";
 import { getTenantContext } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +10,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const { tenantId } = await getTenantContext(request);
+    const { tenantId } = await requireTrainingManager(request);
     return ok(listAppeals(tenantId, parsePagination(request)));
   } catch (error) {
     return handleRouteError(error);

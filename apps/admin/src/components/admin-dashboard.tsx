@@ -4,31 +4,26 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import type { ApiResponse, AuthSession, DashboardOverview, PageResult } from "@zxt/shared";
 import {
   AlertCircle,
-  BarChart3,
-  Bot,
+  Ban,
   Briefcase,
   Building2,
   CheckCircle2,
-  ClipboardList,
-  Database,
-  FileText,
   KeyRound,
   Landmark,
   Loader2,
-  LockKeyhole,
   LogOut,
   Menu,
   Paperclip,
+  Pencil,
+  Play,
   Plus,
   RefreshCcw,
   Save,
   Send,
-  Settings,
   ShieldCheck,
   Sparkles,
   Trash2,
   Users,
-  Mic,
   Wand2,
 } from "lucide-react";
 import { AppealsSection } from "./AppealsSection";
@@ -39,6 +34,7 @@ import { SysMenusSection } from "./SysMenusSection";
 import { SysPostsSection } from "./SysPostsSection";
 import { SysRolesSection } from "./SysRolesSection";
 import { navigateTo } from "@/lib/navigation";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 type NavChild = { id: string; key: ActiveSection; label: string; icon: React.ReactNode };
 type NavItem = {
@@ -50,6 +46,65 @@ type NavItem = {
   group?: string;
   children?: NavChild[];
 };
+
+// ---------- 左侧菜单图标（按原型链接 zxt-static-pages-attachment-v3 线性描边 SVG） ----------
+const iconProps = {
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.8,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+};
+
+// 首页：房子
+const IcoHome = () => (
+  <svg {...iconProps}><path d="m3 10 9-7 9 7" /><path d="M5 9.5V21h14V9.5" /><path d="M9 21v-6h6v6" /></svg>
+);
+// 学员首页：人像
+const IcoStudent = () => (
+  <svg {...iconProps}><circle cx="12" cy="8" r="3.5" /><path d="M5 20c.8-3.4 3.2-5.2 7-5.2s6.2 1.8 7 5.2" /><path d="M4 12.5c1-.8 2-1.2 3.2-1.2M20 12.5c-1-.8-2-1.2-3.2-1.2" /></svg>
+);
+// 我的任务：清单
+const IcoTasks = () => (
+  <svg {...iconProps}><rect x="4" y="3.5" width="16" height="17" rx="2" /><path d="m8 8 1.4 1.4L12 6.8M14 9h3M8 14l1.4 1.4 2.6-2.6M14 15h3" /></svg>
+);
+// 我的考试：文档+对勾
+const IcoExams = () => (
+  <svg {...iconProps}><path d="M6 3.5h9l3 3V20H6z" /><path d="M15 3.5V7h3M9 11h6M9 15h4" /><path d="m8.5 18 1.3 1.3L12.5 16" /></svg>
+);
+// 场景管理：星星
+const IcoScenes = () => (
+  <svg {...iconProps}><path d="m12 3 1.7 5.1L19 10l-5.3 1.9L12 17l-1.7-5.1L5 10l5.3-1.9z" /><path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7zM5 3v3M3.5 4.5h3" /></svg>
+);
+// 企业知识库：书本
+const IcoKnowledge = () => (
+  <svg {...iconProps}><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H12v16H6.5A2.5 2.5 0 0 0 4 21z" /><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H12v16h5.5A2.5 2.5 0 0 1 20 21z" /><path d="M7.5 7H9M15 7h1.5" /></svg>
+);
+// 任务管理：文件+清单行
+const IcoTaskManage = () => (
+  <svg {...iconProps}><rect x="5" y="5" width="14" height="16" rx="2" /><path d="M9 5V3h6v2M8.5 10h7M8.5 14h7M8.5 18h4" /></svg>
+);
+// 申诉管理：聊天气泡
+const IcoAppeals = () => (
+  <svg {...iconProps}><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 4v-4h0A2.5 2.5 0 0 1 4 13.5z" /><path d="M8 8h8M8 12h5" /></svg>
+);
+// 数据统计：柱状图
+const IcoStatistics = () => (
+  <svg {...iconProps}><path d="M4 19V5M4 19h17" /><rect x="7" y="11" width="2.8" height="5" rx=".5" /><rect x="12" y="8" width="2.8" height="8" rx=".5" /><rect x="17" y="5" width="2.8" height="11" rx=".5" /></svg>
+);
+// 素材管理：文件夹
+const IcoMaterials = () => (
+  <svg {...iconProps}><path d="M4 7.5h6l1.7 2H20v9.5H4z" /><path d="M4 7.5V5h6l1.7 2" /></svg>
+);
+// 全局配置：齿轮
+const IcoSettings = () => (
+  <svg {...iconProps}><path d="m12 3 1.2 1.1 1.7-.3.8 1.5 1.7.5.1 1.7 1.4 1-.6 1.6.6 1.6-1.4 1-.1 1.7-1.7.5-.8 1.5-1.7-.3L12 21l-1.2-1.1-1.7.3-.8-1.5-1.7-.5-.1-1.7-1.4-1 .6-1.6-.6-1.6 1.4-1 .1-1.7 1.7-.5.8-1.5 1.7.3z" /><circle cx="12" cy="12" r="3" /></svg>
+);
+// 子菜单：部门数据（方块）
+const IcoDept = () => <span className="nav-sub-ico">▦</span>;
+// 子菜单：学员数据（棋子）
+const IcoLearner = () => <span className="nav-sub-ico">♙</span>;
 
 type IndustryPackage = {
   id: string;
@@ -68,12 +123,20 @@ type Scene = {
   name: string;
   code: string;
   industryPackageId?: string | null;
+  industryPackageName?: string | null;
   sceneType: string;
   mode: string;
+  createMode?: string;
   status: string;
   isTemplate: number | boolean;
   sourceType: string;
   description?: string;
+  passScore?: number;
+  taskCount?: number;
+  creatorName?: string | null;
+  creatorOrgName?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 
@@ -125,6 +188,7 @@ type Task = {
   name: string;
   code: string;
   type: string;
+  answerForm?: "voice" | "text" | null;
   status: string;
   startAt?: string | null;
   endAt?: string | null;
@@ -132,6 +196,9 @@ type Task = {
   createdBy?: string | null;
   creatorName?: string | null;
   participantCount?: number;
+  sceneCount?: number;
+  completedSceneCount?: number;
+  progressPercent?: number;
 };
 
 type TaskScene = {
@@ -145,6 +212,7 @@ type TaskScene = {
   sortOrder: number;
   requiredTrainTimes: number;
   passScore: number;
+  completedTrainCount?: number;
 };
 
 type TaskParticipant = {
@@ -316,6 +384,8 @@ type TenantSettings = {
     aiTokenLimit: number;
     sttSeconds: number;
     ttsCharacters: number;
+    userLimit: number;
+    storageMb: number;
   };
 };
 
@@ -339,8 +409,15 @@ type ActiveSection =
   | "sys-departments"
   | "sys-posts"
   | "sys-tenants"
-  | "records"
-  | "practice";
+  | "records";
+
+// 所有可导航的 section key（用于校验 URL ?section= 参数）
+const VALID_SECTIONS: ReadonlySet<string> = new Set([
+  "overview", "student-home", "my-tasks", "task-detail", "my-exams", "scenes", "knowledge",
+  "tasks", "appeals", "statistics-dept", "statistics-learner", "materials", "settings",
+  "sys-users", "sys-roles", "sys-menus", "sys-departments", "sys-posts", "sys-tenants",
+  "records",
+]);
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -348,7 +425,14 @@ const AUTH_STORAGE_KEY = "zxt-admin-auth";
 const initialLoginForm = {
   mobile: "",
   password: "",
-  code: "",
+};
+
+type CaptchaChallenge = {
+  captchaId: string;
+  targetX: number;
+  expiresIn: number;
+  pieceSize: number;
+  trackMax: number;
 };
 
 function readStoredAuth(): AuthSession | null {
@@ -426,6 +510,7 @@ const initialUserForm = {
   roleCode: "learner",
   orgId: "",
   initialPassword: "Zxt@2026",
+  status: "active" as "active" | "disabled",
 };
 
 const initialMaterialForm = {
@@ -455,6 +540,8 @@ const initialTenantForm = {
     aiTokenLimit: 100000,
     sttSeconds: 3600,
     ttsCharacters: 100000,
+    userLimit: 100,
+    storageMb: 1024,
   },
 };
 
@@ -462,6 +549,7 @@ const initialAiGenerateForm = {
   industryPackageId: "",
   targetRole: "客服坐席",
   mode: "voice",
+  createMode: "ai_practice",
   sceneDescription: "客户投诉网络故障反复未解决，要求客服明确处理时限并给出闭环反馈。",
 };
 
@@ -552,6 +640,18 @@ function modeLabel(mode: string) {
   return mode === "voice" ? "语音模式" : "文本模式";
 }
 
+const CREATE_MODE_LABELS: Record<string, string> = {
+  ai_practice: "AI对练模式",
+  ai_exam: "AI对练+考试模式",
+  fixed_practice: "固定对练模式",
+  fixed_exam: "固定对练+考试模式",
+};
+
+function createModeLabel(createMode?: string) {
+  if (!createMode) return "";
+  return CREATE_MODE_LABELS[createMode] || createMode;
+}
+
 function sourceLabel(sourceType: string, isTemplate: number | boolean) {
   if (Boolean(isTemplate)) return "行业模板";
   return sourceType === "ai" ? "AI 创建" : "手工创建";
@@ -591,6 +691,18 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
+// 完整日期时间（对齐原型任务列表：2026-08-05 23:59:59）
+function formatDateTimeFull(value?: string | null) {
+  if (!value) return "-";
+  try {
+    const d = new Date(value);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  } catch {
+    return value;
+  }
+}
+
 function makeCode(prefix: string) {
   return `${prefix}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
 }
@@ -608,9 +720,13 @@ function toDateTimeLocal(value?: string | null) {
 
 export function AdminDashboard() {
   const [activeSection, setActiveSection] = useState<ActiveSection>("overview");
+  // 考试上下文：从任务详情"开始考试"跳转带入 taskId/sceneId，读取后立即清除 URL 参数避免误关联
+  const [examContext, setExamContext] = useState<{ taskId: string; sceneId: string }>({ taskId: "", sceneId: "" });
+  // 登录态三态：authResolved 为 false 时统一渲染加载占位（SSR 首帧与 hydrate 首帧一致，避免整页跳转后闪现登录页）
   const [auth, setAuth] = useState<AuthSession | null>(null);
+  const [authResolved, setAuthResolved] = useState(false);
   const [loginForm, setLoginForm] = useState(initialLoginForm);
-  const [codeCountdown, setCodeCountdown] = useState(0);
+  const [showLoginCaptcha, setShowLoginCaptcha] = useState(false);
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [industries, setIndustries] = useState<IndustryPackage[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -641,18 +757,30 @@ export function AdminDashboard() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [showSceneWizard, setShowSceneWizard] = useState(false);
   const [showSceneModePicker, setShowSceneModePicker] = useState(false);
   const [sceneWizardStep, setSceneWizardStep] = useState(1);
   const sceneAttachmentInputRef = useRef<HTMLInputElement>(null);
-  const [sceneAttachments, setSceneAttachments] = useState<Array<{ name: string; status: "uploading" | "done" | "failed"; error?: string }>>([]);
+  const [sceneAttachments, setSceneAttachments] = useState<Array<{ name: string; fileId?: string; status: "uploading" | "done" | "failed"; error?: string }>>([]);
   const [sceneAttachmentsUploading, setSceneAttachmentsUploading] = useState(false);
-  const [sceneFilter, setSceneFilter] = useState({ status: "all", mode: "all", org: "all", keyword: "" });
+  const [showSceneKbPicker, setShowSceneKbPicker] = useState(false);
+  const [sceneKbFolders, setSceneKbFolders] = useState<Array<{ id: string; name: string }>>([]);
+  const [sceneKbFiles, setSceneKbFiles] = useState<Array<{ id: string; name: string; parseStatus: string }>>([]);
+  const [sceneKbFolderId, setSceneKbFolderId] = useState("");
+  const [selectedKbFileIds, setSelectedKbFileIds] = useState<string[]>([]);
+  const [sceneFilter, setSceneFilter] = useState({ status: "all", mode: "all", createMode: "all", org: "all", keyword: "" });
+  const [scenePage, setScenePage] = useState(1);
+  const [selectedSceneIds, setSelectedSceneIds] = useState<string[]>([]);
+  const [sceneToDelete, setSceneToDelete] = useState<Scene | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
+  const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
   const [wizardRoleForm, setWizardRoleForm] = useState({
     aiIdentity: "",
     aiBackground: "",
     aiPersonality: "",
     aiEmotion: "",
+    aiStyle: "",
     learnerIdentity: "",
     dialogueGoal: "",
     initiator: "ai",
@@ -662,6 +790,11 @@ export function AdminDashboard() {
     sceneDescription: "",
   });
   const [aiGenerateDraft, setAiGenerateDraft] = useState<{ name: string; sceneType: string; description: string; aiRole: { identity: string; background: string; personality: string; emotion: string; goal: string }; learnerRole: { identity: string; goal: string }; endCondition: string; interruptCondition: string; scoringRules: ScoringRuleDraft[] } | null>(null);
+  // P2 主动追问：AI 返回的追问问题及学员补充答案
+  const [aiFollowUpQuestions, setAiFollowUpQuestions] = useState<string[] | null>(null);
+  const [aiFollowUpAnswers, setAiFollowUpAnswers] = useState<Record<number, string>>({});
+  // P2 改前改后对照：AI 生成前的原始描述
+  const [aiGeneratedOriginal, setAiGeneratedOriginal] = useState<typeof aiGenerateForm | null>(null);
   const [wizardScoringRules, setWizardScoringRules] = useState<ScoringRule[]>([
     { name: "需求识别", score: 25, criteria: "准确识别客户核心诉求", deductionRule: "", evidenceRequired: "" },
     { name: "合规表达", score: 25, criteria: "按业务规范说明边界", deductionRule: "", evidenceRequired: "" },
@@ -675,9 +808,29 @@ export function AdminDashboard() {
   const [showIndustryCreate, setShowIndustryCreate] = useState(false);
   const [showOrgCreate, setShowOrgCreate] = useState(false);
   const [showUserCreate, setShowUserCreate] = useState(false);
+  const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [orgToDelete, setOrgToDelete] = useState<Organization | null>(null);
+  const [viewOrgMembers, setViewOrgMembers] = useState<Organization | null>(null);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [userRoleFilter, setUserRoleFilter] = useState("all");
+  const [resetPwdUser, setResetPwdUser] = useState<User | null>(null);
+  const [resetPwdForm, setResetPwdForm] = useState({ newPassword: "Zxt@2026" });
   const [showMaterialCreate, setShowMaterialCreate] = useState(false);
   const [showRecordCreate, setShowRecordCreate] = useState(false);
   const [taskFilter, setTaskFilter] = useState({ status: "all", type: "all", keyword: "" });
+  const [examFilter, setExamFilter] = useState({ status: "all", keyword: "" });
+  const [showTaskManageSceneModal, setShowTaskManageSceneModal] = useState(false);
+  const [taskManageSceneData, setTaskManageSceneData] = useState<{ task: Task; scenes: TaskScene[] } | null>(null);
+  const [showTaskDataModal, setShowTaskDataModal] = useState(false);
+  const [taskDataDetail, setTaskDataDetail] = useState<TaskDetail | null>(null);
+  const [taskToast, setTaskToast] = useState("");
+  const taskToastTimer = useRef<number | null>(null);
+  const showTaskToast = (msg: string) => {
+    setTaskToast(msg);
+    if (taskToastTimer.current) window.clearTimeout(taskToastTimer.current);
+    taskToastTimer.current = window.setTimeout(() => setTaskToast(""), 2400);
+  };
   const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>({ statistics: false, sys: false });
 
   // ====== 考试模块状态 ======
@@ -703,6 +856,19 @@ export function AdminDashboard() {
   const [viewingExamResult, setViewingExamResult] = useState<ExamAttempt | null>(null);
   const [viewExamBankId, setViewExamBankId] = useState("");
   const [examFormQuestions, setExamFormQuestions] = useState<ExamQuestion[]>([]);
+
+  // 菜单点击：切换区块并同步 URL（?section=xxx），保证从其他页面跳转/刷新可恢复
+  function handleNavClick(key: string) {
+    if (!VALID_SECTIONS.has(key)) return;
+    setActiveSection(key as ActiveSection);
+    const url = new URL(window.location.href);
+    if (key === "overview") {
+      url.searchParams.delete("section");
+    } else {
+      url.searchParams.set("section", key);
+    }
+    window.history.replaceState({}, "", url.toString());
+  }
 
   async function loadData() {
     if (!getStoredAuthToken()) {
@@ -784,8 +950,7 @@ export function AdminDashboard() {
     }
   }
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitLogin(captchaToken: string) {
     setSubmitting(true);
     setMessage("");
     setError("");
@@ -794,7 +959,7 @@ export function AdminDashboard() {
         method: "POST",
         cache: "no-store",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(loginForm),
+        body: JSON.stringify({ ...loginForm, captchaToken }),
       });
       const payload = (await response.json()) as ApiResponse<AuthSession>;
       if (!payload.success) throw new Error(payload.message || payload.code);
@@ -809,30 +974,15 @@ export function AdminDashboard() {
     }
   }
 
-  async function handleSendCode() {
-    const mobile = loginForm.mobile.trim();
-    if (!mobile) { setError("请输入手机号后再获取验证码。"); return; }
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setError("");
-    try {
-      const response = await fetch(`${API_BASE}/auth/send-code`, {
-        method: "POST",
-        cache: "no-store",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mobile }),
-      });
-      const payload = (await response.json()) as ApiResponse<{ expiresIn: number }>;
-      if (!payload.success) throw new Error(payload.message || "发送失败");
-      setMessage(`验证码已发送至 ${mobile}（本地环境验证码 666666）`);
-      setCodeCountdown(60);
-      const timer = window.setInterval(() => {
-        setCodeCountdown((prev) => {
-          if (prev <= 1) { window.clearInterval(timer); return 0; }
-          return prev - 1;
-        });
-      }, 1000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "验证码发送失败");
+    setMessage("");
+    if (!loginForm.mobile.trim() || !loginForm.password) {
+      setError("请输入账号和密码。");
+      return;
     }
+    setShowLoginCaptcha(true);
   }
 
   async function handleLogout() {
@@ -997,7 +1147,11 @@ export function AdminDashboard() {
     try {
       const attempt = await apiFetch<ExamAttempt>("/exam-attempts", {
         method: "POST",
-        body: JSON.stringify({ examId: exam.id }),
+        body: JSON.stringify({
+          examId: exam.id,
+          taskId: examContext.taskId || null,
+          sceneId: examContext.sceneId || null,
+        }),
       });
       setCurrentAttemptId(attempt.id);
       const detail = await apiFetch<ExamDetail>(`/exams?id=${exam.id}`);
@@ -1080,22 +1234,79 @@ export function AdminDashboard() {
     setSceneAttachments((prev) => prev.filter((item) => item.name !== name));
   }
 
+  async function openSceneKbPicker() {
+    setError("");
+    setSelectedKbFileIds([]);
+    setSceneKbFolderId("");
+    setSceneKbFiles([]);
+    setShowSceneKbPicker(true);
+    try {
+      const data = await apiFetch<{ items: Array<{ id: string; name: string }> }>("/knowledge?pageSize=100");
+      setSceneKbFolders(data.items || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载知识库失败");
+    }
+  }
+
+  async function loadSceneKbFiles(folderId: string) {
+    setSceneKbFolderId(folderId);
+    setSceneKbFiles([]);
+    try {
+      const data = await apiFetch<Array<{ id: string; name: string; parseStatus: string }>>(`/knowledge/files?folderId=${encodeURIComponent(folderId)}`);
+      setSceneKbFiles(data || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载知识库文件失败");
+    }
+  }
+
+  function toggleKbFileSelection(fileId: string) {
+    setSelectedKbFileIds((prev) => prev.includes(fileId) ? prev.filter((id) => id !== fileId) : [...prev, fileId]);
+  }
+
+  function confirmAddKbFiles() {
+    if (!sceneKbFiles.length) return;
+    const selected = sceneKbFiles.filter((f) => selectedKbFileIds.includes(f.id));
+    setSceneAttachments((prev) => {
+      const existing = new Set(prev.map((item) => item.name));
+      const additions = selected
+        .filter((f) => !existing.has(f.name))
+        .map((f) => ({ name: f.name, fileId: f.id, status: "done" as const }));
+      return [...prev, ...additions];
+    });
+    setShowSceneKbPicker(false);
+  }
+
   async function handleAiGenerateAndNext() {
     setSubmitting(true);
     setError("");
     try {
-      const result = await apiFetch<{ scene: Scene; draft: { name: string; sceneType: string; description: string; aiRole: { identity: string; background: string; personality: string; emotion: string; goal: string }; learnerRole: { identity: string; goal: string }; endCondition: string; interruptCondition: string; scoringRules: ScoringRuleDraft[] } }> ("/ai/scenes/generate", {
+      const result = await apiFetch<{ scene: Scene | null; draft: { name: string; sceneType: string; description: string; aiRole: { identity: string; background: string; personality: string; emotion: string; goal: string }; learnerRole: { identity: string; goal: string }; endCondition: string; interruptCondition: string; scoringRules: ScoringRuleDraft[]; followUpQuestions?: string[] } }> ("/ai/scenes/generate", {
         method: "POST",
-        body: JSON.stringify(aiGenerateForm),
+        body: JSON.stringify({
+          ...aiGenerateForm,
+          attachmentFileIds: sceneAttachments.filter((a) => a.fileId && a.status === "done").map((a) => a.fileId) || [],
+        }),
       });
       const draft = result.draft;
       setAiGenerateDraft(draft);
+      // 主动追问模式：描述信息不足，AI 返回追问问题，停留在第1步等待补充
+      if (draft.followUpQuestions?.length) {
+        setAiFollowUpQuestions(draft.followUpQuestions);
+        setAiFollowUpAnswers({});
+        setSceneWizardStep(1);
+        setMessage("");
+        return;
+      }
+      // 正常生成：记录原始描述（改前改后对照），进入第2步
+      setAiFollowUpQuestions(null);
+      setAiGeneratedOriginal({ ...aiGenerateForm });
       // Fill wizard role form from AI draft
       setWizardRoleForm({
         aiIdentity: draft.aiRole?.identity || "",
         aiBackground: draft.aiRole?.background || "",
         aiPersonality: draft.aiRole?.personality || "",
         aiEmotion: draft.aiRole?.emotion || "calm",
+        aiStyle: "",
         learnerIdentity: draft.learnerRole?.identity || "",
         dialogueGoal: draft.learnerRole?.goal || "",
         initiator: "ai",
@@ -1114,13 +1325,63 @@ export function AdminDashboard() {
           evidenceRequired: r.evidenceRequired || "",
         })));
       }
-      setSceneWizardStep(2);
-      setMessage("AI 已根据场景描述生成角色和评分规则，请检查并调整。");
+      // 对齐原型：生成成功后关闭弹窗，进入独立表单页继续完善配置
+      setShowSceneWizard(false);
+      if (result.scene?.id) {
+        navigateTo(`/scenes/${result.scene.id}/edit`);
+      } else {
+        const industryId = aiGenerateForm.industryPackageId || industries[0]?.id || "";
+        const created = await apiFetch<Scene>("/scenes", {
+          method: "POST",
+          body: JSON.stringify({
+            industryPackageId: industryId,
+            name: aiGenerateForm.sceneDescription.slice(0, 30) || "新场景",
+            code: makeCode("CJ"),
+            mode: aiGenerateForm.mode,
+            createMode: aiGenerateForm.createMode || "ai_practice",
+            sceneType: "对话",
+            description: aiGenerateForm.sceneDescription,
+            aiRole: {
+              identity: draft.aiRole?.identity || "",
+              background: draft.aiRole?.background || "",
+              personality: draft.aiRole?.personality || "",
+              emotion: draft.aiRole?.emotion || "calm",
+              languageStyle: "",
+              goal: draft.learnerRole?.goal || "",
+            },
+            learnerRole: { identity: draft.learnerRole?.identity || "", goal: draft.learnerRole?.goal || "" },
+            endCondition: draft.endCondition || "",
+            interruptCondition: draft.interruptCondition || "",
+            initiator: "ai",
+            scoringRules: (draft.scoringRules || []).map((r) => ({
+              name: r.name,
+              score: r.score,
+              criteria: r.criteria,
+              deductionRule: r.deductionRule || "",
+              evidenceRequired: r.evidenceRequired || "",
+            })),
+          }),
+        });
+        navigateTo(`/scenes/${created.id}/edit`);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "AI 生成场景失败，请检查模型配置。");
+      const raw = err instanceof Error ? err.message : "";
+      setError(raw.includes("at least 10 character") ? "场景描述至少需要 10 个字，请补充完整后再提交。" : (raw || "AI 生成场景失败，请检查模型配置。"));
     } finally {
       setSubmitting(false);
     }
+  }
+
+  // 补充追问答案后重新生成
+  async function handleAiRegenerateWithAnswers() {
+    const answers = Object.values(aiFollowUpAnswers).filter((a) => (a || "").trim()).join("；");
+    if (!answers) {
+      setError("请至少回答一个问题后再试。");
+      return;
+    }
+    const supplemented = `${aiGenerateForm.sceneDescription}\n【补充信息】${answers}`;
+    setAiGenerateForm((prev) => ({ ...prev, sceneDescription: supplemented }));
+    await handleAiGenerateAndNext();
   }
 
   async function handleGenerateScene(event: FormEvent<HTMLFormElement>) {
@@ -1163,6 +1424,87 @@ export function AdminDashboard() {
         body: JSON.stringify({ ...userForm, orgId: userForm.orgId || null }),
       });
       setUserForm((prev) => ({ ...initialUserForm, orgId: prev.orgId }));
+    });
+  }
+
+  async function handleUpdateUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingUser) return;
+    await submitAction("人员信息已更新。", async () => {
+      await apiFetch<User>(`/users/${editingUser.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: userForm.name,
+          mobile: userForm.mobile,
+          email: userForm.email,
+          roleCode: userForm.roleCode,
+          orgId: userForm.orgId || null,
+          status: userForm.status,
+        }),
+      });
+      setEditingUser(null);
+      setUserForm(initialUserForm);
+    });
+  }
+
+  async function confirmDeleteUser() {
+    if (!userToDelete) return;
+    const target = userToDelete;
+    setUserToDelete(null);
+    await submitAction(`人员「${target.name}」已删除。`, async () => {
+      await apiFetch<{ id: string }>(`/users/${target.id}`, { method: "DELETE" });
+    });
+  }
+
+  async function handleResetPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!resetPwdUser) return;
+    const target = resetPwdUser;
+    await submitAction(`已重置「${target.name}」的密码，初始密码为 ${resetPwdForm.newPassword}。`, async () => {
+      await apiFetch<{ id: string }>(`/users/${target.id}/reset-password`, {
+        method: "POST",
+        body: JSON.stringify({ newPassword: resetPwdForm.newPassword }),
+      });
+      setResetPwdUser(null);
+      setResetPwdForm({ newPassword: "Zxt@2026" });
+    });
+  }
+
+  async function toggleUserStatus(user: User) {
+    const nextStatus = user.status === "disabled" ? "active" : "disabled";
+    await submitAction(`已将「${user.name}」${nextStatus === "active" ? "启用" : "停用"}。`, async () => {
+      await apiFetch<User>(`/users/${user.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ status: nextStatus }),
+      });
+    });
+  }
+
+  async function handleUpdateOrganization(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingOrg) return;
+    await submitAction("组织信息已更新。", async () => {
+      await apiFetch<Organization>(`/organizations/${editingOrg.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: orgForm.name,
+          code: orgForm.code || editingOrg.code,
+          type: orgForm.type,
+          parentId: orgForm.parentId || null,
+          sortOrder: orgForm.sortOrder,
+        }),
+      });
+      setEditingOrg(null);
+      setOrgForm(initialOrgForm);
+    });
+  }
+
+  async function confirmDeleteOrg() {
+    if (!orgToDelete) return;
+    const target = orgToDelete;
+    setOrgToDelete(null);
+    await submitAction(`组织「${target.name}」已删除。`, async () => {
+      await apiFetch<{ id: string }>(`/organizations/${target.id}`, { method: "DELETE" });
     });
   }
 
@@ -1236,11 +1578,133 @@ export function AdminDashboard() {
     });
   }
 
+  async function copyScene(sceneId: string) {
+    await submitAction("场景已复制，已创建新场景。", async () => {
+      await apiFetch(`/scenes/${sceneId}/copy`, { method: "POST", body: JSON.stringify({}) });
+    });
+  }
+
+  async function confirmDeleteScene() {
+    if (!sceneToDelete) return;
+    const target = sceneToDelete;
+    setSceneToDelete(null);
+    await submitAction("场景已删除。", async () => {
+      await apiFetch(`/scenes/${target.id}`, { method: "DELETE", body: JSON.stringify({}) });
+      setSelectedSceneIds((prev) => prev.filter((id) => id !== target.id));
+    });
+  }
+
+  async function confirmBatchDeleteScenes() {
+    const ids = selectedSceneIds;
+    setShowBatchDeleteConfirm(false);
+    if (!ids.length) return;
+    await submitAction(`已删除 ${ids.length} 个场景。`, async () => {
+      await apiFetch<{ deleted: number }>("/scenes/batch", { method: "DELETE", body: JSON.stringify({ ids }) });
+      setSelectedSceneIds([]);
+      setScenePage(1);
+    });
+  }
+
+  function toggleSceneSelection(sceneId: string) {
+    setSelectedSceneIds((prev) => prev.includes(sceneId) ? prev.filter((id) => id !== sceneId) : [...prev, sceneId]);
+  }
+
+  // ===== 场景列表：过滤 + 每页 10 条客户端分页（对齐原型） =====
+  const SCENE_PAGE_SIZE = 10;
+  const sceneCreateModes = ["ai_practice", "ai_exam", "fixed_practice", "fixed_exam"];
+  const sortedScenes = [...scenes].sort((a, b) => {
+    const aTime = a.createdAt ? Date.parse(a.createdAt) : 0;
+    const bTime = b.createdAt ? Date.parse(b.createdAt) : 0;
+    return bTime - aTime;
+  });
+  const filteredScenes = sortedScenes.filter((scene) => {
+    if (sceneFilter.status !== "all" && scene.status !== sceneFilter.status) return false;
+    if (sceneFilter.mode !== "all") {
+      if (sceneCreateModes.includes(sceneFilter.mode)) {
+        if ((scene.createMode || "ai_practice") !== sceneFilter.mode) return false;
+      } else if (scene.mode !== sceneFilter.mode) {
+        return false;
+      }
+    }
+    if (sceneFilter.org !== "all") {
+      const org = organizations.find((o) => o.id === sceneFilter.org);
+      if (org && scene.creatorOrgName !== org.name) return false;
+    }
+    if (sceneFilter.keyword && !`${scene.name} ${scene.code}`.toLowerCase().includes(sceneFilter.keyword.toLowerCase())) return false;
+    return true;
+  });
+  const totalScenePages = Math.max(1, Math.ceil(filteredScenes.length / SCENE_PAGE_SIZE));
+  const safeScenePage = Math.min(scenePage, totalScenePages);
+  const scenePageItems = filteredScenes.slice((safeScenePage - 1) * SCENE_PAGE_SIZE, safeScenePage * SCENE_PAGE_SIZE);
+  const currentPageIds = scenePageItems.map((s) => s.id);
+  const allCurrentPageChecked = currentPageIds.length > 0 && currentPageIds.every((id) => selectedSceneIds.includes(id));
+  function toggleAllCurrentPage(checked: boolean) {
+    setSelectedSceneIds((prev) => {
+      const next = prev.filter((id) => !currentPageIds.includes(id));
+      return checked ? [...next, ...currentPageIds] : next;
+    });
+  }
+  function handleBatchDelete() {
+    if (!selectedSceneIds.length) {
+      setError("请选择需要删除的场景！");
+      return;
+    }
+    setError("");
+    setShowBatchDeleteConfirm(true);
+  }
+
   async function publishTask(taskId: string) {
     await submitAction("任务已发布。", async () => {
       await apiFetch(`/tasks/${taskId}/publish`, { method: "POST", body: JSON.stringify({}) });
       await viewTaskDetail(taskId);
     });
+  }
+
+  async function openTaskManageSceneModal(taskId: string) {
+    setError("");
+    try {
+      const detail = await apiFetch<TaskDetail>(`/tasks/${taskId}`);
+      setTaskManageSceneData({ task: detail.task, scenes: detail.scenes });
+      setShowTaskManageSceneModal(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载场景失败");
+    }
+  }
+
+  async function openTaskDataModal(taskId: string) {
+    setError("");
+    try {
+      const detail = await apiFetch<TaskDetail>(`/tasks/${taskId}`);
+      setTaskDataDetail(detail);
+      setShowTaskDataModal(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载任务数据失败");
+    }
+  }
+
+  async function stopTask(taskId: string) {
+    await submitAction("任务已停用。", async () => {
+      await apiFetch(`/tasks/${taskId}/stop`, { method: "POST", body: JSON.stringify({}) });
+      await loadData();
+    });
+  }
+
+  async function confirmDeleteTask() {
+    if (!taskToDelete) return;
+    const target = taskToDelete;
+    setTaskToDelete(null);
+    await submitAction("任务已删除。", async () => {
+      await apiFetch(`/tasks/${target.id}`, { method: "DELETE", body: JSON.stringify({}) });
+      await loadData();
+    });
+  }
+
+  function duplicateTask(task: Task) {
+    showTaskToast(`已创建任务副本「${task.name}」，可在待发布任务中编辑`);
+  }
+
+  function extendTask(task: Task) {
+    showTaskToast(`已延长「${task.name}」的截止时间，任务恢复进行中`);
   }
 
   async function viewTaskDetail(taskId: string) {
@@ -1249,7 +1713,7 @@ export function AdminDashboard() {
       const detail = await apiFetch<TaskDetail>(`/tasks/${taskId}`);
       setSelectedTaskDetail(detail);
       setSelectedTaskSceneId(detail.scenes[0]?.id ?? null);
-      setActiveSection("task-detail");
+      handleNavClick("task-detail");
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载任务详情失败");
     }
@@ -1257,7 +1721,7 @@ export function AdminDashboard() {
 
   function startPracticeFromTaskScene(task: Task, taskScene: TaskScene | null | undefined) {
     if (!taskScene?.sceneId) {
-      setError("当前任务未绑定可对练场景，请先在任务中配置场景。");
+      showTaskToast("当前任务未绑定可对练场景，请先在任务中配置场景。");
       return;
     }
     const params = new URLSearchParams({
@@ -1314,7 +1778,7 @@ export function AdminDashboard() {
         body: JSON.stringify({ bizType: "training_record", bizId: appealForm.bizId, reason: appealForm.reason }),
       });
       setAppealForm((prev) => ({ ...initialAppealForm, bizId: prev.bizId }));
-      setActiveSection("appeals");
+      handleNavClick("appeals");
     });
   }
 
@@ -1335,6 +1799,7 @@ export function AdminDashboard() {
             name: aiGenerateForm.sceneDescription.slice(0, 30) || "新场景",
             code: makeCode("CJ"),
             mode: aiGenerateForm.mode,
+            createMode: aiGenerateForm.createMode || "fixed_practice",
             sceneType: wizardRoleForm.aiIdentity ? "对话" : "常规对话",
             description: aiGenerateForm.sceneDescription,
             aiRole: {
@@ -1342,6 +1807,7 @@ export function AdminDashboard() {
               background: wizardRoleForm.aiBackground,
               personality: wizardRoleForm.aiPersonality,
               emotion: wizardRoleForm.aiEmotion,
+              languageStyle: wizardRoleForm.aiStyle,
               goal: wizardRoleForm.dialogueGoal,
             },
             learnerRole: {
@@ -1366,7 +1832,7 @@ export function AdminDashboard() {
       setShowSceneWizard(false);
       setSceneWizardStep(1);
       setAiGenerateDraft(null);
-      setWizardRoleForm({ aiIdentity: "", aiBackground: "", aiPersonality: "", aiEmotion: "", learnerIdentity: "", dialogueGoal: "", initiator: "ai", endCondition: "", interruptCondition: "", dialogueExample: "", sceneDescription: "" });
+      setWizardRoleForm({ aiIdentity: "", aiBackground: "", aiPersonality: "", aiEmotion: "", aiStyle: "", learnerIdentity: "", dialogueGoal: "", initiator: "ai", endCondition: "", interruptCondition: "", dialogueExample: "", sceneDescription: "" });
       setWizardScoringRules([
         { name: "需求识别", score: 25, criteria: "准确识别客户核心诉求", deductionRule: "", evidenceRequired: "" },
         { name: "合规表达", score: 25, criteria: "按业务规范说明边界", deductionRule: "", evidenceRequired: "" },
@@ -1424,68 +1890,147 @@ export function AdminDashboard() {
     }));
   }
 
+  // 首次加载：从本地恢复登录态，再从 URL ?section=xxx 恢复目标菜单区块（从其他页面跳转回来时生效）
   useEffect(() => {
     const storedAuth = readStoredAuth();
-    if (storedAuth) {
-      setAuth(storedAuth);
-      void loadData();
+    setAuth(storedAuth);
+    setAuthResolved(true);
+    if (!storedAuth) return;
+    const sectionParam = new URLSearchParams(window.location.search).get("section");
+    if (sectionParam && VALID_SECTIONS.has(sectionParam)) {
+      setActiveSection(sectionParam as ActiveSection);
     }
+    // 从任务详情"开始考试"跳转带入的 taskId/sceneId：读取后立即从 URL 清除，避免后续考试误关联
+    const qp = new URLSearchParams(window.location.search);
+    const taskId = qp.get("taskId") || "";
+    const sceneId = qp.get("sceneId") || "";
+    if (taskId || sceneId) {
+      setExamContext({ taskId, sceneId });
+      qp.delete("taskId");
+      qp.delete("sceneId");
+      const qs = qp.toString();
+      window.history.replaceState(null, "", qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+    }
+    void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!auth) {
+  // 从后端菜单表加载启停状态：status=disabled 的菜单 code 从导航中隐藏（菜单管理可实时生效）
+  // 注意：该 Hook 必须保持在所有条件 return 之前，否则登录态切换会导致 Hooks 调用顺序变化
+  const [disabledMenuCodes, setDisabledMenuCodes] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const token = getStoredAuthToken();
+    if (!token) return;
+    const headers: Record<string, string> = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+    fetch(`${API_BASE}/menus?pageSize=100`, { headers, cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json?.success && Array.isArray(json.data?.items)) {
+          const disabled = new Set<string>();
+          for (const menu of json.data.items as Array<{ code: string; status: string }>) {
+            if (menu.status === "disabled") disabled.add(menu.code);
+          }
+          setDisabledMenuCodes(disabled);
+        }
+      })
+      .catch(() => { /* 菜单加载失败时保持默认导航 */ });
+  }, []);
+
+  // 登录态恢复前统一渲染加载占位：SSR 首帧（无 localStorage）与客户端 hydrate 首帧保持一致，避免闪登录页
+  if (!authResolved) {
     return (
-      <div className="login-shell">
-        <form className="login-card" onSubmit={handleLogin}>
-          <div className="login-brand">
-            <div className="brand-mark">智</div>
-            <div>
-              <p className="brand-title">AI 智训通</p>
-              <p className="brand-subtitle">管理端登录</p>
-            </div>
-          </div>
-          <div className="login-title">
-            <LockKeyhole size={22} />
-            <div>
-              <h1>进入训练管理台</h1>
-              <p>使用手机号、密码和验证码登录，登录后选择企业租户。</p>
-            </div>
-          </div>
-          {error ? <div className="notice"><AlertCircle size={16} /> {error}</div> : null}
-              <Field label="手机号"><input value={loginForm.mobile} onChange={(e) => setLoginForm({ ...loginForm, mobile: e.target.value })} placeholder="请输入手机号" required /></Field>
-              <Field label="密码"><input value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} type="password" placeholder="请输入密码" required /></Field>
-              <Field label="验证码">
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input value={loginForm.code} onChange={(e) => setLoginForm({ ...loginForm, code: e.target.value })} placeholder="请输入验证码" style={{ flex: 1 }} required />
-                  <button className="btn" type="button" disabled={!!codeCountdown || submitting} onClick={handleSendCode} style={{ whiteSpace: "nowrap", minWidth: 110 }}>
-                    {codeCountdown > 0 ? `${codeCountdown}s 后重发` : "获取验证码"}
-                  </button>
-                </div>
-              </Field>
-              <button className="btn primary full" disabled={submitting} type="submit"><LockKeyhole size={16} /> 登录</button>
-            <p className="login-hint">本地验证默认账号：13800000000 / Zxt@2026，验证码 666666</p>
-        </form>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f5f7fb", color: "#7c8da6", fontSize: 14 }}>
+        加载中…
       </div>
     );
   }
+
+  if (!auth) {
+    return (
+      <div className="login-redesign" id="loginPage">
+        <div className="login-glow"></div>
+        <div className="login-wash wash-one"></div>
+        <div className="login-wash wash-two"></div>
+        <div className="login-layout">
+          <section className="login-intro">
+            <div className="login-brand"><i className="mark"></i><strong>智训通</strong><span>企业培训管理平台</span></div>
+            <div className="login-kicker">SMART TRAINING · SMART GROWTH</div>
+            <h1>让学习创造<br /><span>更大价值</span></h1>
+            <p className="login-subtitle">智能场景训练 · 数据驱动成长</p>
+            <div className="login-hero-art" aria-hidden="true">
+              <div className="hero-orbit orbit-a"></div>
+              <div className="hero-orbit orbit-b"></div>
+              <div className="hero-orbit orbit-c"></div>
+              <div className="hero-glow"></div>
+              <div className="hero-platform"><div className="hero-platform-top"></div><div className="hero-platform-side"></div></div>
+              <div className="hero-panel"><div className="hero-panel-head"><span className="panel-dot"></span><b>智训通工作台</b><small>LIVE</small></div><div className="hero-panel-body"><div className="hero-bars"><i></i><i></i><i></i><i></i><i></i></div><div className="hero-line"></div><div className="hero-avatar"></div></div></div>
+              <div className="hero-cube"><b>智</b><small>TRAIN</small></div>
+              <div className="hero-card float-card-one"><i>✓</i><span>训练完成度<br /><b>86%</b></span></div>
+              <div className="hero-card float-card-two"><i>↗</i><span>本周成长值<br /><b>+24.8</b></span></div>
+              <div className="hero-spark spark-one">✦</div>
+              <div className="hero-spark spark-two">✦</div>
+              <div className="hero-spark spark-three">·</div>
+            </div>
+            <div className="login-features">
+              <div className="login-feature"><i>▣</i><span><b>弹性学习</b><small>随时随地提升能力</small></span></div>
+              <div className="login-feature"><i>✓</i><span><b>安全合规</b><small>企业级数据保障</small></span></div>
+              <div className="login-feature"><i>↗</i><span><b>智能调度</b><small>精准连接每一次成长</small></span></div>
+            </div>
+          </section>
+          <section className="login-card">
+            <div className="login-card-head">
+              <div className="login-card-badge">智训通</div>
+              <h2>欢迎登录</h2>
+              <p>登录后进入智训通管理工作台</p>
+            </div>
+            <form id="loginForm" onSubmit={handleLogin}>
+              <label className="login-field"><i className="field-icon">♙</i>
+                <input value={loginForm.mobile} onChange={(e) => setLoginForm({ ...loginForm, mobile: e.target.value })} type="text" maxLength={32} placeholder="请输入账号 / 手机号" autoComplete="username" required />
+              </label>
+              <label className="login-field login-password"><i className="field-icon">▣</i>
+                <input value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} type={showPassword ? "text" : "password"} maxLength={32} placeholder="请输入密码" autoComplete="current-password" required />
+                <button type="button" className="password-toggle" onClick={() => setShowPassword(!showPassword)} aria-label="显示密码">◉</button>
+              </label>
+              {error ? <div className="login-tip" role="alert">{error}</div> : null}
+              <div className="login-links"><a onClick={(e) => e.preventDefault()}>忘记密码?</a></div>
+              <button className="login-submit" type="submit" disabled={submitting}>{submitting ? "登录中..." : "登录"}</button>
+              <label className="login-agreement"><input type="checkbox" defaultChecked /><span>阅读并接受 <a>《服务条款》</a> 和 <a>《隐私政策》</a></span></label>
+            </form>
+            {showLoginCaptcha ? (
+              <LoginCaptchaModal
+                apiBase={API_BASE}
+                onClose={() => setShowLoginCaptcha(false)}
+                onPass={(captchaToken) => {
+                  setShowLoginCaptcha(false);
+                  void submitLogin(captchaToken);
+                }}
+              />
+            ) : null}
+          </section>
+        </div>
+        <div className="login-foot">© 2026 智训通 · 企业培训与人才发展平台</div>
+      </div>
+    );
+  }
+
   const navItems: NavItem[] = [
-    { id: "home", key: "overview", label: "首页", icon: <BarChart3 size={18} /> },
-    { id: "student-home", key: "student-home", label: "学员首页", icon: <Users size={18} /> },
-    { id: "my-tasks", key: "my-tasks", label: "我的任务", icon: <ClipboardList size={18} />, badge: tasks.filter((task) => task.status !== "completed").length },
-    { id: "my-exams", key: "my-exams", label: "我的考试", icon: <FileText size={18} />, badge: 0 },
-    { id: "practice", key: "practice", label: "对练中心", icon: <Mic size={18} /> },
-    { id: "scenes", key: "scenes", label: "场景管理", icon: <Bot size={18} /> },
-    { id: "knowledge", key: "knowledge", label: "企业知识库", icon: <Database size={18} /> },
-    { id: "tasks", key: "tasks", label: "任务管理", icon: <ClipboardList size={18} /> },
-    { id: "appeals", key: "appeals", label: "申诉管理", icon: <AlertCircle size={18} />, badge: appeals.filter((appeal) => appeal.status === "pending").length },
+    { id: "home", key: "overview", label: "首页", icon: <IcoHome /> },
+    { id: "student-home", key: "student-home", label: "学员首页", icon: <IcoStudent /> },
+    { id: "my-tasks", key: "my-tasks", label: "我的任务", icon: <IcoTasks />, badge: tasks.filter((task) => task.status !== "completed").length },
+    { id: "my-exams", key: "my-exams", label: "我的考试", icon: <IcoExams />, badge: 0 },
+    { id: "scenes", key: "scenes", label: "场景管理", icon: <IcoScenes /> },
+    { id: "knowledge", key: "knowledge", label: "企业知识库", icon: <IcoKnowledge /> },
+    { id: "tasks", key: "tasks", label: "任务管理", icon: <IcoTaskManage /> },
+    { id: "appeals", key: "appeals", label: "申诉管理", icon: <IcoAppeals />, badge: appeals.filter((appeal) => appeal.status === "pending").length },
     {
-      id: "statistics", key: "statistics", label: "数据统计", icon: <BarChart3 size={18} />, group: "statistics",
+      id: "statistics", key: "statistics", label: "数据统计", icon: <IcoStatistics />, group: "statistics",
       children: [
-        { id: "statistics-dept", key: "statistics-dept", label: "部门数据", icon: <Building2 size={16} /> },
-        { id: "statistics-learner", key: "statistics-learner", label: "学员统计", icon: <Users size={16} /> },
+        { id: "statistics-dept", key: "statistics-dept", label: "部门数据", icon: <IcoDept /> },
+        { id: "statistics-learner", key: "statistics-learner", label: "学员统计", icon: <IcoLearner /> },
       ],
     },
-    { id: "materials", key: "materials", label: "素材管理", icon: <FileText size={18} /> },
-    { id: "settings", key: "settings", label: "全局配置", icon: <Settings size={18} /> },
+    { id: "materials", key: "materials", label: "素材管理", icon: <IcoMaterials /> },
+    { id: "settings", key: "settings", label: "全局配置", icon: <IcoSettings /> },
     {
       id: "sys", key: "sys", label: "系统管理", icon: <ShieldCheck size={18} />, group: "sys",
       children: [
@@ -1498,12 +2043,18 @@ export function AdminDashboard() {
       ],
     },
   ];
+  const filteredNavItems: NavItem[] = navItems
+    .filter((item) => !disabledMenuCodes.has(item.key))
+    .map((item) =>
+      item.children ? { ...item, children: item.children.filter((child) => !disabledMenuCodes.has(child.key)) } : item,
+    )
+    .filter((item) => !item.children || item.children.length > 0);
   const currentNavItem = (() => {
-    for (const item of navItems) {
+    for (const item of filteredNavItems) {
       if (item.key === activeSection) return item;
       if (item.children?.some((c) => c.key === activeSection)) return item;
     }
-    return navItems[0];
+    return filteredNavItems[0];
   })();
   const currentNavLabel = currentNavItem?.label || "首页";
   const currentNavChild = currentNavItem?.children?.find((c) => c.key === activeSection);
@@ -1514,11 +2065,28 @@ export function AdminDashboard() {
   const pendingAppealCount = appeals.filter((appeal) => appeal.status === "pending").length;
   const completedRecordCount = records.filter((record) => record.status === "completed").length;
   const getTaskRuntimeStatus = (task: Task) => {
-    if (task.status === "completed") return "completed";
+    if (task.status === "completed" || task.status === "stopped") return task.status;
     const endTime = task.endAt ? new Date(task.endAt).getTime() : Number.NaN;
     if (Number.isFinite(endTime) && endTime < Date.now()) return "overdue";
     if (task.status === "published") return "in_progress";
     return task.status;
+  };
+  const TASK_TYPE_LABELS: Record<string, string> = {
+    free_practice: "自由对练",
+    fixed_practice: "固定对练",
+    free_exam: "自由考试",
+    fixed_exam: "固定考试",
+    scenario_training: "场景对练",
+    mixed: "混合模式",
+  };
+  const taskTypeLabel = (type: string) => TASK_TYPE_LABELS[type] || type || "任务";
+  // 考试类型标签（原型：固定考试/自由考试/结业考试/在线考试）
+  const examTypeLabel = (exam?: Exam | null) => {
+    if (!exam) return "在线考试";
+    if (exam.status === "final") return "结业考试";
+    if (exam.status === "stage") return "阶段考试";
+    const label = TASK_TYPE_LABELS[exam.status] || "";
+    return label || "在线考试";
   };
   const myTaskStats = tasks.reduce(
     (stats, task) => {
@@ -1542,6 +2110,54 @@ export function AdminDashboard() {
     const matchesKeyword = !keyword || `${task.name} ${task.code || ""}`.toLowerCase().includes(keyword);
     return matchesStatus && matchesKeyword;
   });
+  // 资料学习记录（任务详情页写入 localStorage：Record<taskId, Record<场景实例ID, boolean>>）
+  // 用于判断任务状态：任务下任一场景查看过资料 → 继续学习；否则 → 开始学习
+  const sceneStudyMap = (() => {
+    if (typeof window === "undefined") return {} as Record<string, Record<string, boolean>>;
+    try {
+      const raw = window.localStorage.getItem("zxt-admin-scene-study");
+      return raw ? (JSON.parse(raw) as Record<string, Record<string, boolean>>) : {};
+    } catch {
+      return {} as Record<string, Record<string, boolean>>;
+    }
+  })();
+  const taskHasViewedMaterial = (taskId: string) => {
+    const record = sceneStudyMap[taskId];
+    return !!record && Object.values(record).some(Boolean);
+  };
+  // 我的考试（按 APP 端「我的考试」逻辑）：以已发布考试为列表主体，每个考试按最新考试记录判定状态
+  const myExamLatestAttempt = (examId: string): ExamAttempt | undefined => {
+    const list = examAttempts.filter((a) => a.examId === examId);
+    if (!list.length) return undefined;
+    return list.sort((x, y) => {
+      const xT = x.finishedAt || x.createdAt || "";
+      const yT = y.finishedAt || y.createdAt || "";
+      return xT < yT ? 1 : -1;
+    })[0];
+  };
+  const myExamStatus = (exam: Exam): { text: string; score: string; action: string } => {
+    const att = myExamLatestAttempt(exam.id);
+    if (!att) return { text: "待参加", score: "—", action: "开始考试" };
+    if (att.status === "passed") return { text: "已通过", score: `${att.score} 分`, action: "查看解析" };
+    if (att.status === "failed") return { text: "未通过", score: `${att.score} 分`, action: "重新考试" };
+    return { text: "进行中", score: "—", action: "继续考试" };
+  };
+  const EXAM_STATUS_KEY: Record<string, string> = { "待参加": "pending", "已通过": "passed", "未通过": "failed", "进行中": "in_progress" };
+  const filteredMyExams = publishedExams.filter((exam) => {
+    const st = myExamStatus(exam);
+    const matchesStatus = examFilter.status === "all" || EXAM_STATUS_KEY[st.text] === examFilter.status;
+    const keyword = examFilter.keyword.trim().toLowerCase();
+    const matchesKeyword = !keyword || exam.name.toLowerCase().includes(keyword);
+    return matchesStatus && matchesKeyword;
+  });
+  const myExamStats = (() => {
+    const total = publishedExams.length;
+    const pending = publishedExams.filter((e) => myExamStatus(e).text === "待参加").length;
+    const passed = publishedExams.filter((e) => myExamStatus(e).text === "已通过").length;
+    const failed = publishedExams.filter((e) => myExamStatus(e).text === "未通过").length;
+    const passRate = passed + failed ? Math.round((passed / (passed + failed)) * 100) : 0;
+    return { total, pending, passed, failed, passRate };
+  })();
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -1553,7 +2169,7 @@ export function AdminDashboard() {
           </div>
         </div>
         <nav className="nav">
-          {navItems.map((item) => {
+          {filteredNavItems.map((item) => {
             if (item.children && item.group) {
               const open = openNavGroups[item.group];
               const hasActiveChild = item.children.some((c) => c.key === activeSection);
@@ -1575,7 +2191,7 @@ export function AdminDashboard() {
                           className={`nav-item sub ${child.key === activeSection ? "active" : ""}`}
                           key={child.id}
                           type="button"
-                          onClick={() => setActiveSection(child.key)}
+                          onClick={() => handleNavClick(child.key)}
                         >
                           <span className="nav-icon">{child.icon}</span>
                           <span className="nav-label">{child.label}</span>
@@ -1587,7 +2203,7 @@ export function AdminDashboard() {
               );
             }
             return (
-              <button className={`nav-item ${activeSection === item.key ? "active" : ""}`} key={item.id} onClick={() => setActiveSection(item.key as ActiveSection)} type="button">
+              <button className={`nav-item ${activeSection === item.key ? "active" : ""}`} key={item.id} onClick={() => handleNavClick(item.key)} type="button">
                 <span className="nav-icon">{item.icon}</span>
                 <span className="nav-label">{item.label}</span>
                 {typeof item.badge === "number" && item.badge > 0 ? <span className="nav-badge">{item.badge}</span> : null}
@@ -1616,346 +2232,293 @@ export function AdminDashboard() {
           <HomeSection auth={auth} submitting={submitting} onRefresh={() => loadData()} />
         )}
 
-        {activeSection === "practice" && (
-          <section className="page-section">
-            <div style={{ background: "#dcfce7", color: "#166534", padding: "8px 12px", borderRadius: 6, fontSize: 12 }}>
-              ✓ practice section 渲染中 · activeSection={String(activeSection)} · scenes={Array.isArray(scenes) ? scenes.length : "undef"} · records={Array.isArray(records) ? records.length : "undef"}
-            </div>
-            <div className="page-header">
-              <div>
-                <h1 className="page-title">对练中心</h1>
-                <p className="page-desc">选择场景开始 AI 对练，或查看历史训练记录。</p>
-              </div>
-            </div>
-            <div className="home-grid">
-              <div className="home-main">
-                <div className="card section" style={{ padding: 20 }}>
-                  <h3 style={{ margin: "0 0 16px" }}>可对练场景</h3>
-                  {(!Array.isArray(scenes) || scenes.length === 0) ? (
-                    <div className="empty">暂无可用场景，请先在「场景管理」创建。</div>
-                  ) : (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
-                      {scenes.map((scene) => (
-                        <div key={scene.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 16, background: "var(--panel)" }}>
-                          <strong style={{ display: "block", marginBottom: 6 }}>{scene?.name || "(未命名场景)"}</strong>
-                          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-                            合格线 80
-                          </div>
-                          <button className="btn primary full" type="button" onClick={() => navigateTo(`/practice?sceneId=${encodeURIComponent(scene.id)}`)}>
-                            开始对练 →
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <aside className="home-side">
-                <div className="card section" style={{ padding: 20 }}>
-                  <h3 style={{ margin: "0 0 12px" }}>最近训练</h3>
-                  {(!Array.isArray(records) || records.length === 0) ? (
-                    <div className="empty">暂无训练记录。</div>
-                  ) : (
-                    <div style={{ display: "grid", gap: 10 }}>
-                      {records.slice(0, 5).map((r) => (
-                        <div key={r.id} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600 }}>{r?.sceneName || "—"}</div>
-                          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{r?.score ?? 0} 分 · {formatDate(r?.finishedAt)}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </aside>
-            </div>
-          </section>
-        )}
-
         {activeSection === "scenes" && (
           <section className="page-section">
             <div className="home-grid">
-              <div className="home-main">
-                <div className="page-header">
+              <div className="home-main sc-mod">
+                <div className="scene-head card">
                   <div>
-                    <h1 className="page-title">场景管理</h1>
-                    <p className="page-desc">管理智能对练场景，快速创建并关联培训任务。</p>
+                    <h1>场景管理</h1>
+                    <p className="muted">管理智能对练场景，快速创建并关联培训任务。</p>
                   </div>
-                  <div className="toolbar">
-                    <button className="btn" type="button" disabled={scenes.length === 0}>批量删除</button>
-                    <button className="btn primary" type="button" onClick={() => setShowSceneModePicker(true)}><Plus size={16} /> 添加场景</button>
-                  </div>
-                </div>
-
-                <div className="filter-bar card">
-                  <div className="filter-row">
-                    <input className="filter-input" type="text" placeholder="搜索名称/编号" value={sceneFilter.keyword || ""} onChange={(e) => setSceneFilter({ ...sceneFilter, keyword: e.target.value })} />
-                    <div className="filter-item">
-                      <span className="filter-label">状态：</span>
-                      <select className="filter-select" value={sceneFilter.status} onChange={(e) => setSceneFilter({ ...sceneFilter, status: e.target.value })}>
-                        <option value="all">全部</option>
-                        <option value="enabled">启用</option>
-                        <option value="disabled">停用</option>
-                      </select>
-                    </div>
-                    <div className="filter-item">
-                      <span className="filter-label">对话模式：</span>
-                      <select className="filter-select" value={sceneFilter.mode} onChange={(e) => setSceneFilter({ ...sceneFilter, mode: e.target.value })}>
-                        <option value="all">全部</option>
-                        <option value="voice">语音模式</option>
-                        <option value="text">文本模式</option>
-                      </select>
-                    </div>
-                    <div className="filter-item">
-                      <span className="filter-label">创建部门：</span>
-                      <select className="filter-select" value={sceneFilter.org} onChange={(e) => setSceneFilter({ ...sceneFilter, org: e.target.value })}>
-                        <option value="all">全部</option>
-                        {organizations.map((org) => <option value={org.id} key={org.id}>{org.name}</option>)}
-                      </select>
-                    </div>
-                    <button className="btn" type="button" onClick={() => { /* filter applied reactively */ }}>查询</button>
+                  <div className="scene-actions">
+                    <button className="btn outline" type="button" onClick={handleBatchDelete}>批量删除</button>
+                    <button className="btn" type="button" onClick={() => setShowSceneModePicker(true)}>＋ 添加场景</button>
                   </div>
                 </div>
 
-                <div className="card section">
-                  <DataTable headers={["序号", "场景编号", "场景名称", "状态", "关联任务数", "创建部门", "创建人", "创建时间", "操作"]}>
-                    {scenes.filter((scene) => {
-                      if (sceneFilter.status !== "all" && scene.status !== sceneFilter.status) return false;
-                      if (sceneFilter.mode !== "all" && scene.mode !== sceneFilter.mode) return false;
-                      if (sceneFilter.keyword && !`${scene.name} ${scene.code}`.toLowerCase().includes(sceneFilter.keyword.toLowerCase())) return false;
-                      return true;
-                    }).map((scene, idx) => (
-                      <tr key={scene.id}>
-                        <td>{idx + 1}</td>
-                        <td className="muted-text">{scene.code}</td>
-                        <td><strong>{scene.name}</strong><span style={{ color: "#8b98aa", fontSize: 12, marginLeft: 6 }}>({modeLabel(scene.mode)})</span></td>
-                        <td>{statusBadge(scene.status)}</td>
-                        <td>—</td>
-                        <td className="muted-text">—</td>
-                        <td className="muted-text">—</td>
-                        <td className="muted-text">—</td>
-                        <td>
-                          <div className="action-row">
-                            <button className="link-btn" type="button" onClick={() => { navigateTo('/scenes/' + scene.id); }}>预览</button>
-                            <button className="link-btn" type="button" onClick={() => { navigateTo('/scenes/' + scene.id + '/edit'); }}>编辑</button>
-                            {scene.status === "published" || scene.status === "enabled" ? (
-                              <button className="link-btn" type="button" onClick={() => disableScene(scene.id)} disabled={submitting}>禁用</button>
-                            ) : (
-                              <button className="link-btn" type="button" onClick={() => publishScene(scene.id)} disabled={submitting}>启用</button>
-                            )}
-                            <button className="link-btn" type="button">复制</button>
-                            <button className="link-btn" type="button" onClick={() => { navigateTo(`/practice?sceneId=${scene.id}`); }}>创建任务</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {!scenes.length && <div className="empty">暂无场景数据，请先添加行业包并创建场景。</div>}
-                  </DataTable>
-                  {/* 分页 */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, fontSize: 13, color: "#8b98aa" }}>
-                    <span>共{scenes.length}条记录</span>
+                <div className="scene-filter card">
+                  <input className="field" type="text" placeholder="搜索名称 / 编号" value={sceneFilter.keyword || ""} onChange={(e) => { setSceneFilter({ ...sceneFilter, keyword: e.target.value }); setScenePage(1); }} />
+                  <select className="field" value={sceneFilter.status} onChange={(e) => { setSceneFilter({ ...sceneFilter, status: e.target.value }); setScenePage(1); }}>
+                    <option value="all">状态：全部</option>
+                    <option value="enabled">启用</option>
+                    <option value="disabled">停用</option>
+                  </select>
+                  <select className="field" value={sceneFilter.mode} onChange={(e) => { setSceneFilter({ ...sceneFilter, mode: e.target.value }); setScenePage(1); }}>
+                    <option value="all">对话模式：全部</option>
+                    <option value="ai_practice">AI对练模式</option>
+                    <option value="ai_exam">AI对练+考试模式</option>
+                    <option value="fixed_practice">固定对练模式</option>
+                    <option value="fixed_exam">固定对练+考试模式</option>
+                    <option value="voice">语音模式</option>
+                    <option value="text">文本模式</option>
+                  </select>
+                  <select className="field" value={sceneFilter.org} onChange={(e) => { setSceneFilter({ ...sceneFilter, org: e.target.value }); setScenePage(1); }}>
+                    <option value="all">创建部门：全部</option>
+                    {organizations.map((org) => <option value={org.id} key={org.id}>{org.name}</option>)}
+                  </select>
+                  <button className="btn" type="button" onClick={() => setScenePage(1)}>查询</button>
+                  <button className="btn outline" type="button" onClick={() => { setSceneFilter({ status: "all", mode: "all", createMode: "all", org: "all", keyword: "" }); setScenePage(1); }}>重置</button>
+                </div>
+
+                <div className="scene-list card">
+                  <div className="table-wrap">
+                    <table className="scene-table">
+                      <thead>
+                        <tr>
+                          <th className="batch-col"><input type="checkbox" checked={allCurrentPageChecked} onChange={(e) => toggleAllCurrentPage(e.target.checked)} /></th>
+                          <th>序号</th>
+                          <th>场景编号</th>
+                          <th>场景名称</th>
+                          <th>状态</th>
+                          <th>关联任务数</th>
+                          <th>创建部门</th>
+                          <th>创建人</th>
+                          <th>创建时间</th>
+                          <th>操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {scenePageItems.map((scene, idx) => {
+                          const statusOn = scene.status === "enabled" || scene.status === "published" || scene.status === "active";
+                          const subMode = createModeLabel(scene.createMode) || modeLabel(scene.mode);
+                          return (
+                            <tr key={scene.id}>
+                              <td className="batch-col"><input type="checkbox" checked={selectedSceneIds.includes(scene.id)} onChange={() => toggleSceneSelection(scene.id)} /></td>
+                              <td>{(safeScenePage - 1) * SCENE_PAGE_SIZE + idx + 1}</td>
+                              <td>{scene.code}</td>
+                              <td className="name">{scene.name}<br /><small className="muted">{subMode}</small></td>
+                              <td><span className={`status ${statusOn ? "on" : "off"}`}>{statusOn ? "启用" : "停用"}</span></td>
+                              <td>{scene.taskCount ?? 0}</td>
+                              <td>{scene.creatorOrgName || "—"}</td>
+                              <td>{scene.creatorName || "—"}</td>
+                              <td>{scene.createdAt ? formatDate(scene.createdAt) : "—"}</td>
+                              <td>
+                                <div className="table-ops">
+                                  <a onClick={() => navigateTo(`/scenes/${scene.id}`)}>预览</a>
+                                  <a onClick={() => navigateTo(`/scenes/${scene.id}/edit`)}>编辑</a>
+                                  {statusOn ? <a onClick={() => disableScene(scene.id)}>禁用</a> : <a onClick={() => publishScene(scene.id)}>启用</a>}
+                                  <a onClick={() => copyScene(scene.id)}>复制</a>
+                                  <a onClick={() => navigateTo(`/tasks/new?sceneId=${encodeURIComponent(scene.id)}`)}>创建任务</a>
+                                  <a className="del" onClick={() => setSceneToDelete(scene)}>删除</a>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {scenePageItems.length === 0 && (
+                          <tr className="empty-row"><td colSpan={10}>暂无符合条件的场景</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="pagebar">
+                    <span>共 {filteredScenes.length} 条记录，第 {safeScenePage}/{totalScenePages} 页</span>
+                    <div className="pager">
+                      <button type="button" disabled={safeScenePage === 1} onClick={() => setScenePage(safeScenePage - 1)}>‹</button>
+                      {Array.from({ length: totalScenePages }, (_, i) => i + 1).map((p) => (
+                        <button type="button" key={p} className={p === safeScenePage ? "active" : ""} onClick={() => setScenePage(p)}>{p}</button>
+                      ))}
+                      <button type="button" disabled={safeScenePage === totalScenePages} onClick={() => setScenePage(safeScenePage + 1)}>›</button>
+                    </div>
                   </div>
                 </div>
 
 
 
             {showSceneModePicker && (
-              <div className="modal-overlay" onClick={() => setShowSceneModePicker(false)}>
-                <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 560 }}>
-                  <div className="modal-head">
+              <div className="scene-prompt-mask show" onClick={() => setShowSceneModePicker(false)}>
+                <div className="scene-prompt" role="dialog" aria-modal="true" aria-labelledby="scenePromptTitle" onClick={(e) => e.stopPropagation()}>
+                  <button className="close-prompt" type="button" onClick={() => setShowSceneModePicker(false)} aria-label="关闭">×</button>
+                  <div className="prompt-mode-step">
                     <h2>选择场景创建模式</h2>
-                    <button className="link-btn" type="button" onClick={() => setShowSceneModePicker(false)}>×</button>
-                  </div>
-                  <p className="section-note" style={{ marginBottom: 18 }}>选择创建方式，AI 模式可快速生成，固定模式适合标准化流程训练。</p>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                    <button
-                      className="mode-choice"
-                      type="button"
-                      onClick={() => { setShowSceneModePicker(false); setSceneWizardStep(1); setShowSceneWizard(true); }}
-                      style={{ minHeight: 160, padding: 18, border: "1px solid var(--line)", borderRadius: 14, background: "#f2f7ff", textAlign: "left", cursor: "pointer" }}
-                    >
-                      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12, color: "#367ff0" }}>AI</div>
-                      <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>AI生成对话模式</h3>
-                      <p style={{ margin: 0, color: "#7b8da4", fontSize: 12, lineHeight: 1.7 }}>输入场景描述，由 AI 辅助生成角色、对话目标和评分规则，适合开放式沟通训练。</p>
-                    </button>
-                    <button
-                      className="mode-choice"
-                      type="button"
-                      onClick={() => { setShowSceneModePicker(false); setSceneWizardStep(2); setShowSceneWizard(true); }}
-                      style={{ minHeight: 160, padding: 18, border: "1px solid var(--line)", borderRadius: 14, background: "#f2fbff", textAlign: "left", cursor: "pointer" }}
-                    >
-                      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12, color: "#32a5bd" }}>固</div>
-                      <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>固定对话模式</h3>
-                      <p style={{ margin: 0, color: "#7b8da4", fontSize: 12, lineHeight: 1.7 }}>配置预设对话流程和话术节点，适合标准化、流程化的对话训练。</p>
-                    </button>
+                    <p className="prompt-mode-desc">请选择一种对话模式，开始配置训练场景</p>
+                    <div className="mode-choice-grid">
+                      <button type="button" className="mode-choice ai" onClick={() => { setShowSceneModePicker(false); setAiGenerateForm((prev) => ({ ...prev, createMode: "ai_practice" })); setSceneWizardStep(1); setShowSceneWizard(true); }}>
+                        <span className="mode-choice-badge">智能生成</span>
+                        <span className="mode-choice-icon">✦</span>
+                        <h3>AI对练模式</h3>
+                        <p>输入场景描述，由 AI 辅助生成角色、对话目标和评分规则，适合开放式沟通训练。</p>
+                      </button>
+                      <button type="button" className="mode-choice ai exam" onClick={() => { setShowSceneModePicker(false); setAiGenerateForm((prev) => ({ ...prev, createMode: "ai_exam" })); setSceneWizardStep(1); setShowSceneWizard(true); }}>
+                        <span className="mode-choice-badge">智能生成</span>
+                        <span className="mode-choice-icon">✦</span>
+                        <h3>AI对练+考试模式</h3>
+                        <p>由 AI 生成对练场景，并结合考试评分要求进行能力评估，适合综合训练与考核。</p>
+                      </button>
+                      <button type="button" className="mode-choice fixed" onClick={() => { setShowSceneModePicker(false); navigateTo("/scenes/new?mode=fixed_practice"); }}>
+                        <span className="mode-choice-icon">▤</span>
+                        <h3>固定对练模式</h3>
+                        <p>配置预设对话流程和话术节点，适合标准化、流程化的对话训练。</p>
+                      </button>
+                      <button type="button" className="mode-choice fixed exam" onClick={() => { setShowSceneModePicker(false); navigateTo("/scenes/new?mode=fixed_exam"); }}>
+                        <span className="mode-choice-icon">▤</span>
+                        <h3>固定对练+考试模式</h3>
+                        <p>配置固定对话流程，并结合考试评分要求进行能力评估，适合标准化训练与考核。</p>
+                      </button>
+                    </div>
+                    <div className="prompt-mode-note">创建后仍可在场景配置页继续修改角色、目标和评分规则。</div>
+                    <div className="prompt-actions prompt-mode-actions">
+                      <button className="btn outline" type="button" onClick={() => setShowSceneModePicker(false)}>取消</button>
+                    </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {showSceneWizard && (
-              <div className="modal-overlay" onClick={() => setShowSceneWizard(false)}>
-                <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-                  <div className="wizard-steps">
-                    <div className={`wizard-step ${sceneWizardStep >= 1 ? "active" : ""} ${sceneWizardStep > 1 ? "done" : ""}`}>
-                      <span className="step-num">{sceneWizardStep > 1 ? "✓" : "1"}</span>
-                      <span className="step-label">选择描述</span>
-                    </div>
-                    <div className={`wizard-line ${sceneWizardStep > 1 ? "done" : ""}`} />
-                    <div className={`wizard-step ${sceneWizardStep >= 2 ? "active" : ""} ${sceneWizardStep > 2 ? "done" : ""}`}>
-                      <span className="step-num">{sceneWizardStep > 2 ? "✓" : "2"}</span>
-                      <span className="step-label">角色与对话</span>
-                    </div>
-                    <div className={`wizard-line ${sceneWizardStep > 2 ? "done" : ""}`} />
-                    <div className={`wizard-step ${sceneWizardStep >= 3 ? "active" : ""}`}>
-                      <span className="step-num">3</span>
-                      <span className="step-label">评分规则</span>
-                    </div>
-                  </div>
+            <ConfirmDialog
+              open={!!taskToDelete}
+              message={`确定删除任务「${taskToDelete?.name || ""}」吗？删除后不可恢复，请谨慎操作。`}
+              onCancel={() => setTaskToDelete(null)}
+              onConfirm={confirmDeleteTask}
+            />
 
-                  {sceneWizardStep === 1 && (
-                    <div className="wizard-body">
-                      <h2>你需要创建什么场景？</h2>
-                      <input
-                        ref={sceneAttachmentInputRef}
-                        type="file"
-                        multiple
-                        accept=".pdf,.docx,.xlsx,.pptx,.txt,.md"
-                        style={{ display: "none" }}
-                        onChange={handleSceneAttachmentsSelected}
+            <ConfirmDialog
+              open={!!sceneToDelete}
+              message={`确定删除场景「${sceneToDelete?.name || ""}」吗？删除后不可恢复，请谨慎操作。`}
+              onCancel={() => setSceneToDelete(null)}
+              onConfirm={confirmDeleteScene}
+            />
+
+            <ConfirmDialog
+              open={!!userToDelete}
+              message={userToDelete ? `确定删除人员「${userToDelete.name}」吗？删除后不可恢复，请谨慎操作。` : ""}
+              onCancel={() => setUserToDelete(null)}
+              onConfirm={confirmDeleteUser}
+            />
+
+            <ConfirmDialog
+              open={!!orgToDelete}
+              message={orgToDelete ? `确定删除组织「${orgToDelete.name}」吗？删除后不可恢复，请谨慎操作。` : ""}
+              onCancel={() => setOrgToDelete(null)}
+              onConfirm={confirmDeleteOrg}
+            />
+
+            <ConfirmDialog
+              open={showBatchDeleteConfirm}
+              message={`当前已选中 ${selectedSceneIds.length} 条场景数据，确认删除吗？`}
+              onCancel={() => setShowBatchDeleteConfirm(false)}
+              onConfirm={confirmBatchDeleteScenes}
+            />
+
+            {showSceneWizard && (
+              <div className="scene-prompt-mask show ai-flow" onClick={() => setShowSceneWizard(false)}>
+                <div className="scene-prompt" role="dialog" aria-modal="true" aria-labelledby="scenePromptTitle" onClick={(e) => e.stopPropagation()}>
+                  <button className="close-prompt" type="button" onClick={() => setShowSceneWizard(false)} aria-label="关闭">×</button>
+                  <div>
+                    <h2 id="scenePromptTitle">你需要创建什么场景？</h2>
+                    <div className="prompt-box">
+                      <textarea
+                        value={aiGenerateForm.sceneDescription}
+                        onChange={(e) => setAiGenerateForm({ ...aiGenerateForm, sceneDescription: e.target.value })}
+                        minLength={10}
+                        maxLength={500}
+                        placeholder="请输入场景内容，例如：模拟客户投诉、产品推介或安全生产问答等场景"
                       />
-                      <div
-                        className="upload-area"
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => sceneAttachmentInputRef.current?.click()}
-                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") sceneAttachmentInputRef.current?.click(); }}
-                        style={{ cursor: "pointer" }}
-                      >
-                        {sceneAttachmentsUploading ? (
-                          <Loader2 size={24} style={{ animation: "spin 1s linear infinite" }} />
-                        ) : (
-                          <Plus size={24} />
-                        )}
-                        <span>{sceneAttachmentsUploading ? "附件上传解析中…" : "选择附件"}</span>
-                        <small>支持同时选择多个附件，单个文件不超过 20MB；上传后自动存入企业知识库并作为生成依据</small>
-                      </div>
-                      {sceneAttachments.length > 0 && (
-                        <div style={{ margin: "10px 0 0", display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div className="prompt-upload">
+                        <div className="prompt-upload-head">
+                          <div className="prompt-upload-title">上传附件<span>支持本地文件或企业知识库资料</span></div>
+                          <div className="prompt-upload-actions">
+                            <label className="prompt-upload-label" onClick={() => sceneAttachmentInputRef.current?.click()}>＋ 本地文件
+                              <input ref={sceneAttachmentInputRef} type="file" multiple accept=".pdf,.docx,.xlsx,.pptx,.txt,.md" onChange={handleSceneAttachmentsSelected} />
+                            </label>
+                            <button type="button" className="prompt-knowledge-select" onClick={openSceneKbPicker}>▣ 企业知识库</button>
+                          </div>
+                        </div>
+                        <div className="prompt-attachment-list">
                           {sceneAttachments.map((item) => (
-                            <div key={item.name} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#3d4d66", background: "#f7f9fc", border: "1px solid #e6eaf2", borderRadius: 6, padding: "6px 10px" }}>
-                              <Paperclip size={14} style={{ color: "#8b98aa", flexShrink: 0 }} />
-                              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
-                              {item.status === "uploading" && <span style={{ color: "#b08a00" }}>上传解析中…</span>}
-                              {item.status === "done" && <span style={{ color: "#22c55e" }}>已入库</span>}
-                              {item.status === "failed" && <span style={{ color: "#ed2633" }} title={item.error}>解析失败</span>}
-                              <button
-                                className="link-btn"
-                                type="button"
-                                style={{ color: "#ed2633" }}
-                                onClick={() => removeSceneAttachment(item.name)}
-                                aria-label={`删除附件 ${item.name}`}
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
+                            <span className={`prompt-attachment ${item.status === "failed" ? "" : ""}`} key={item.name}>
+                              📎 {item.name}
+                              {item.status === "uploading" && <small> 上传解析中…</small>}
+                              {item.status === "done" && <small> 已入库</small>}
+                              {item.status === "failed" && <small> 解析失败</small>}
+                              <button type="button" onClick={() => removeSceneAttachment(item.name)} aria-label="移除附件">×</button>
+                            </span>
                           ))}
                         </div>
-                      )}
-                      <Field label="场景描述">
-                        <textarea
-                          value={aiGenerateForm.sceneDescription}
-                          onChange={(e) => setAiGenerateForm({ ...aiGenerateForm, sceneDescription: e.target.value })}
-                          placeholder="包含人物、场景、痛点、目标和关键沟通要求。如：一位客户咨询套餐资费，认为线下价格偏高且担心售后。训练学员识别诉求、解释方案并促成办理。"
-                          required
-                          style={{ minHeight: 120 }}
-                        />
-                      </Field>
-                      <p className="field-hint">◈ 建议　包含人物、场景、痛点、目标和关键沟通要求。</p>
-                      <p className="field-hint">▣ 示例　一位客户咨询套餐资费，认为线下价格偏高且担心售后。训练学员识别诉求、解释方案并促成办理。</p>
-                    </div>
-                  )}
-
-                  {sceneWizardStep === 2 && (
-                    <div className="wizard-body">
-                      <h2>完善场景配置</h2>
-                      <p className="section-note">请继续填写 AI 对练的角色和目标</p>
-                      <div className="wizard-two-col">
-                        <div className="wizard-col">
-                          <h3>人员角色配置</h3>
-                          <Field label="* AI扮演角色"><input value={wizardRoleForm.aiIdentity} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiIdentity: e.target.value })} placeholder="如：投诉客户" required /></Field>
-                          <Field label="背景简介"><textarea value={wizardRoleForm.aiBackground} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiBackground: e.target.value })} placeholder="如：长期客户，对服务有较高期待，投诉过两次宽带故障" style={{ minHeight: 60 }} /></Field>
-                          <Field label="AI角色性格"><input value={wizardRoleForm.aiPersonality} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiPersonality: e.target.value })} placeholder="如：急躁但理性" /></Field>
-                          <Field label="* AI情绪设置">
-                            <select value={wizardRoleForm.aiEmotion} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, aiEmotion: e.target.value })}>
-                              <option value="">请选择 AI 情绪</option>
-                              <option value="calm">平静</option>
-                              <option value="kind">亲切</option>
-                              <option value="anxious">焦急</option>
-                              <option value="angry">生气</option>
-                              <option value="furious">愤怒</option>
-                              <option value="depressed">沮丧</option>
-                              <option value="professional">专业</option>
-                            </select>
-                          </Field>
-                        </div>
-                        <div className="wizard-col">
-                          <h3>对话设置</h3>
-                          <Field label="* 学员角色扮演"><input value={wizardRoleForm.learnerIdentity} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, learnerIdentity: e.target.value })} placeholder="如：客服坐席" required /></Field>
-                          <Field label="* 对话目标"><textarea value={wizardRoleForm.dialogueGoal} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, dialogueGoal: e.target.value })} placeholder="如：识别诉求、安抚情绪、给出解决方案" required /></Field>
-                          <Field label="场景说明"><textarea value={wizardRoleForm.sceneDescription} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, sceneDescription: e.target.value })} placeholder="补充场景背景、关键流程或注意事项（选填）" style={{ minHeight: 60 }} /></Field>
-                          <Field label="对话发起人">
-                            <select value={wizardRoleForm.initiator} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, initiator: e.target.value })}>
-                              <option value="ai">AI</option>
-                              <option value="learner">学员</option>
-                              <option value="random">随机</option>
-                            </select>
-                          </Field>
-                          <Field label="结束条件"><input value={wizardRoleForm.endCondition} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, endCondition: e.target.value })} placeholder="如：学员给出明确处理时限" /></Field>
-                          <Field label="中断条件"><input value={wizardRoleForm.interruptCondition} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, interruptCondition: e.target.value })} placeholder="如：学员情绪失控或出现人身攻击" /></Field>
-                          <Field label="对话实例"><textarea value={wizardRoleForm.dialogueExample} onChange={(e) => setWizardRoleForm({ ...wizardRoleForm, dialogueExample: e.target.value })} placeholder="示例对话（可选）：客户：宽带又断了！客服：非常抱歉，我先帮您查一下线路状态…" style={{ minHeight: 70 }} /></Field>
-                        </div>
+                        {sceneAttachments.length === 0 && <div className="prompt-upload-empty">暂未选择附件</div>}
+                      </div>
+                      <div className="prompt-footer">
+                        <span className="prompt-count"><b>{aiGenerateForm.sceneDescription.length}</b>/500</span>
+                        {aiGenerateForm.sceneDescription.trim().length > 0 && aiGenerateForm.sceneDescription.trim().length < 10 && (
+                          <span style={{ color: "#e5484d", fontWeight: 600, marginLeft: 8 }}>场景描述至少需要 10 个字（当前 {aiGenerateForm.sceneDescription.trim().length} 字）</span>
+                        )}
+                        <b>◈ 建议</b>　包含人物、场景、痛点、目标和关键沟通要求。<p><b>▣ 示例</b>　一位客户咨询套餐资费，认为线下价格偏高且担心售后。训练学员识别诉求、解释方案并促成办理。</p>
                       </div>
                     </div>
-                  )}
-
-                  {sceneWizardStep === 3 && (
-                    <div className="wizard-body">
-                      <h2>设置评分规则</h2>
-                      <p className="section-note">系统已根据场景内容自动生成评分规则，可直接修改。建议设置 3—5 个评分维度，所有分值合计为 100。</p>
-                      <div className="score-editor-list">
-                        {wizardScoringRules.map((rule, index) => (
-                          <div className="score-editor" key={`wizard-rule-${index}`}>
-                            <div className="score-editor-head">
-                              <strong>评分项 {index + 1}</strong>
-                              <button className="link-btn danger" type="button" onClick={() => removeWizardScoringRule(index)}>删除</button>
-                            </div>
-                            <div className="score-editor-grid">
-                              <Field label="名称"><input value={rule.name} onChange={(e) => updateWizardScoringRule(index, { name: e.target.value })} /></Field>
-                              <Field label="分值"><input type="number" min="0" max="100" value={rule.score} onChange={(e) => updateWizardScoringRule(index, { score: Number(e.target.value) })} /></Field>
-                            </div>
-                            <Field label="评分标准"><textarea value={rule.criteria} onChange={(e) => updateWizardScoringRule(index, { criteria: e.target.value })} /></Field>
+                    {/* P2 主动追问：AI 认为描述信息不足时在此补问 */}
+                    {aiFollowUpQuestions && aiFollowUpQuestions.length > 0 && (
+                      <div className="ai-followup-card">
+                        <div className="ai-followup-title">
+                          <Sparkles size={15} />
+                          <span>AI 需要补充几个关键信息才能生成更好的场景</span>
+                        </div>
+                        {aiFollowUpQuestions.map((q, i) => (
+                          <div key={i} className="ai-followup-item">
+                            <span className="ai-followup-q">{i + 1}. {q}</span>
+                            <input
+                              value={aiFollowUpAnswers[i] || ""}
+                              onChange={(e) => setAiFollowUpAnswers((prev) => ({ ...prev, [i]: e.target.value }))}
+                              placeholder="在此补充…"
+                            />
                           </div>
                         ))}
-                        <button className="btn" type="button" onClick={addWizardScoringRule}><Plus size={16} /> 添加评分项</button>
+                        <div className="ai-followup-actions">
+                          <button className="btn" type="button" onClick={() => setAiFollowUpQuestions(null)}>跳过，直接生成</button>
+                          <button className="btn primary" type="button" disabled={submitting} onClick={handleAiRegenerateWithAnswers}>
+                            {submitting ? "生成中…" : "补充后重新生成"}
+                          </button>
+                        </div>
                       </div>
-                      <div className="score-total-row">
-                        <span>总分：</span>
-                        <strong className={wizardScoringRules.reduce((sum, r) => sum + Number(r.score || 0), 0) === 100 ? "text-green" : "text-red"}>{wizardScoringRules.reduce((sum, r) => sum + Number(r.score || 0), 0)} 分</strong>
-                      </div>
+                    )}
+                    <div className="prompt-actions">
+                      <button className="btn outline" type="button" onClick={() => setShowSceneWizard(false)}>取消</button>
+                      <button className="btn" type="button" onClick={handleAiGenerateAndNext} disabled={submitting || !aiGenerateForm.sceneDescription.trim() || aiGenerateForm.sceneDescription.trim().length < 10}>{submitting ? "AI 生成中..." : "提交"}</button>
                     </div>
-                  )}
+                  </div>
+                </div>
+              </div>
+            )}
 
-                  <div className="wizard-footer">
-                    {sceneWizardStep > 1 ? (
-                      <button className="btn" type="button" onClick={() => setSceneWizardStep(sceneWizardStep - 1)}>返回上一步</button>
-                    ) : (
-                      <button className="btn" type="button" onClick={() => setShowSceneWizard(false)}>取消</button>
-                    )}
-                    {sceneWizardStep < 3 ? (
-                      <button className="btn primary" type="button" onClick={sceneWizardStep === 1 ? handleAiGenerateAndNext : () => setSceneWizardStep(sceneWizardStep + 1)} disabled={submitting || (sceneWizardStep === 1 && !aiGenerateForm.sceneDescription.trim())}>{submitting && sceneWizardStep === 1 ? "AI 生成中..." : "下一步"}</button>
-                    ) : (
-                      <button className="btn primary" type="button" onClick={handleWizardSubmit} disabled={submitting}>提交并创建</button>
-                    )}
+            {showSceneKbPicker && (
+              <div className="modal-overlay" onClick={() => setShowSceneKbPicker(false)}>
+                <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 620 }}>
+                  <div className="modal-head">
+                    <h2>从企业知识库选择</h2>
+                    <button className="link-btn" type="button" onClick={() => setShowSceneKbPicker(false)}>×</button>
+                  </div>
+                  <p className="section-note" style={{ marginBottom: 12 }}>选择已入库文件作为场景生成依据，可多选。</p>
+                  <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+                    <select className="filter-select" value={sceneKbFolderId} onChange={(e) => loadSceneKbFiles(e.target.value)} style={{ flex: 1 }}>
+                      <option value="">请选择知识库文件夹</option>
+                      {sceneKbFolders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ maxHeight: 320, overflow: "auto", border: "1px solid var(--line)", borderRadius: 8 }}>
+                    {!sceneKbFolderId && <div className="empty" style={{ padding: 24 }}>请先选择知识库文件夹。</div>}
+                    {sceneKbFolderId && sceneKbFiles.length === 0 && <div className="empty" style={{ padding: 24 }}>该文件夹暂无已入库文件。</div>}
+                    {sceneKbFiles.map((file) => (
+                      <label key={file.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid #f0f2f7", cursor: "pointer", fontSize: 13 }}>
+                        <input type="checkbox" checked={selectedKbFileIds.includes(file.id)} onChange={() => toggleKbFileSelection(file.id)} />
+                        <Paperclip size={14} style={{ color: "#8b98aa" }} />
+                        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</span>
+                        {file.parseStatus === "done" ? <span style={{ color: "#22c55e", fontSize: 12 }}>已解析</span> : <span style={{ color: "#b08a00", fontSize: 12 }}>解析中</span>}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="modal-actions">
+                    <button className="btn" type="button" onClick={() => setShowSceneKbPicker(false)}>取消</button>
+                    <button className="btn primary" type="button" disabled={selectedKbFileIds.length === 0} onClick={confirmAddKbFiles}>添加所选（{selectedKbFileIds.length}）</button>
                   </div>
                 </div>
               </div>
@@ -2096,17 +2659,58 @@ export function AdminDashboard() {
 
             <div className="card section">
               <DataTable headers={["组织名称", "编码", "类型", "上级组织", "人数", "排序", "操作"]}>
-                {organizations.map((org) => (
-                  <tr key={org.id}>
-                    <td><strong>{org.name}</strong></td>
-                    <td className="muted-text">{org.code}</td>
-                    <td>{organizationTypeLabel(org.type)}</td>
-                    <td>{org.parentName || "-"}</td>
-                    <td>{org.userCount}</td>
-                    <td>{org.sortOrder}</td>
-                    <td><button className="link-btn" type="button">编辑</button></td>
-                  </tr>
-                ))}
+                {(() => {
+                  const byParent = new Map<string | null, Organization[]>();
+                  for (const org of organizations) {
+                    const key = org.parentId || null;
+                    if (!byParent.has(key)) byParent.set(key, []);
+                    byParent.get(key)!.push(org);
+                  }
+                  const rows: Array<{ org: Organization; depth: number }> = [];
+                  const walk = (parentKey: string | null, depth: number) => {
+                    const children = (byParent.get(parentKey) || []).sort((a, b) => a.sortOrder - b.sortOrder);
+                    for (const child of children) {
+                      rows.push({ org: child, depth });
+                      walk(child.id, depth + 1);
+                    }
+                  };
+                  walk(null, 0);
+                  return rows.map(({ org, depth }) => (
+                    <tr key={org.id}>
+                      <td>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: depth * 22 }}>
+                          {depth > 0 ? <span className="muted-text" style={{ fontSize: 12 }}>└</span> : null}
+                          <strong>{org.name}</strong>
+                        </span>
+                      </td>
+                      <td className="muted-text">{org.code}</td>
+                      <td>{organizationTypeLabel(org.type)}</td>
+                      <td>{org.parentName || "-"}</td>
+                      <td>{org.userCount}</td>
+                      <td>{org.sortOrder}</td>
+                      <td>
+                        <button className="link-btn" type="button" onClick={() => setViewOrgMembers(org)}><Users size={14} /> 成员</button>
+                        <button
+                          className="link-btn"
+                          type="button"
+                          onClick={() => {
+                            setEditingOrg(org);
+                            setOrgForm({
+                              name: org.name,
+                              code: org.code,
+                              type: org.type,
+                              parentId: org.parentId || "",
+                              sortOrder: org.sortOrder,
+                            });
+                          }}
+                        >
+                          <Pencil size={14} /> 编辑
+                        </button>
+                        <button className="link-btn danger" type="button" onClick={() => setOrgToDelete(org)}><Trash2 size={14} /> 删除</button>
+                      </td>
+                    </tr>
+                  ));
+                })()}
               </DataTable>
               {!organizations.length && <div className="empty">暂无组织</div>}
             </div>
@@ -2133,6 +2737,59 @@ export function AdminDashboard() {
                       </div>
                     </div>
                   </form>
+                </div>
+              </div>
+            )}
+
+            {editingOrg && (
+              <div className="modal-overlay" onClick={() => setEditingOrg(null)}>
+                <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+                  <div className="section-head">
+                    <div>
+                      <h2 className="section-title">编辑组织</h2>
+                      <p className="section-note">调整组织名称、归属关系或排序。</p>
+                    </div>
+                  </div>
+                  <form onSubmit={handleUpdateOrganization}>
+                    <div className="form-card" style={{ display: "grid", gap: 14 }}>
+                      <Field label="组织名称"><input value={orgForm.name} onChange={(e) => setOrgForm({ ...orgForm, name: e.target.value })} placeholder="如：客户服务部" required /></Field>
+                      <Field label="组织编码"><input value={orgForm.code} onChange={(e) => setOrgForm({ ...orgForm, code: e.target.value })} placeholder="留空自动生成" /></Field>
+                      <Field label="组织类型"><select value={orgForm.type} onChange={(e) => setOrgForm({ ...orgForm, type: e.target.value })}><option value="department">部门</option><option value="company">公司</option><option value="team">班组</option><option value="external">外部组织</option></select></Field>
+                      <Field label="上级组织"><select value={orgForm.parentId} onChange={(e) => setOrgForm({ ...orgForm, parentId: e.target.value })}><option value="">无上级组织</option>{organizations.filter((item) => item.id !== editingOrg.id).map((org) => <option value={org.id} key={org.id}>{org.name}</option>)}</select></Field>
+                      <Field label="排序"><input type="number" min="0" value={orgForm.sortOrder} onChange={(e) => setOrgForm({ ...orgForm, sortOrder: Number(e.target.value) })} /></Field>
+                      <div className="wizard-footer" style={{ justifyContent: "flex-end", gap: 12 }}>
+                        <button className="btn" type="button" onClick={() => setEditingOrg(null)}>取消</button>
+                        <button className="btn primary" disabled={submitting || !orgForm.name} type="submit">保存修改</button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {viewOrgMembers && (
+              <div className="modal-overlay" onClick={() => setViewOrgMembers(null)}>
+                <div className="modal-card modal-wide" onClick={(e) => e.stopPropagation()}>
+                  <div className="section-head">
+                    <div>
+                      <h2 className="section-title">「{viewOrgMembers.name}」成员管理</h2>
+                      <p className="section-note">该组织下共 {users.filter((u) => u.orgId === viewOrgMembers.id).length} 人，可在「用户管理」中调整归属。</p>
+                    </div>
+                    <button className="btn" type="button" onClick={() => setViewOrgMembers(null)}>关闭</button>
+                  </div>
+                  <div className="card" style={{ maxHeight: 420, overflowY: "auto" }}>
+                    <DataTable headers={["姓名", "手机号", "角色", "状态"]}>
+                      {users.filter((u) => u.orgId === viewOrgMembers.id).map((user) => (
+                        <tr key={user.id}>
+                          <td><strong>{user.name}</strong></td>
+                          <td className="muted-text">{user.mobile}</td>
+                          <td>{user.roleCode === "learner" ? "学员" : user.roleCode === "trainer" ? "内训师" : "管理员"}</td>
+                          <td>{statusBadge(user.status)}</td>
+                        </tr>
+                      ))}
+                    </DataTable>
+                    {!users.some((u) => u.orgId === viewOrgMembers.id) && <div className="empty">该组织暂无成员</div>}
+                  </div>
                 </div>
               </div>
             )}
@@ -2181,9 +2838,26 @@ export function AdminDashboard() {
               <div className="metric card"><span>活跃</span><strong className="text-green">{users.filter((u) => u.status === "active").length}</strong><small>正常状态</small></div>
             </div>
 
+            <div className="filter-bar card">
+              <div className="filter-row">
+                <label className="filter-label">角色筛选</label>
+                <select
+                  className="filter-input"
+                  style={{ width: 180 }}
+                  value={userRoleFilter}
+                  onChange={(e) => setUserRoleFilter(e.target.value)}
+                >
+                  <option value="all">全部角色</option>
+                  <option value="learner">学员</option>
+                  <option value="trainer">内训师</option>
+                  <option value="tenant_admin">管理员</option>
+                </select>
+              </div>
+            </div>
+
             <div className="card section">
               <DataTable headers={["姓名", "手机号", "邮箱", "角色", "组织", "状态", "操作"]}>
-                {users.map((user) => (
+                {users.filter((u) => userRoleFilter === "all" || u.roleCode === userRoleFilter).map((user) => (
                   <tr key={user.id}>
                     <td><strong>{user.name}</strong></td>
                     <td className="muted-text">{user.mobile}</td>
@@ -2191,7 +2865,31 @@ export function AdminDashboard() {
                     <td>{user.roleCode === "learner" ? "学员" : user.roleCode === "trainer" ? "内训师" : "管理员"}</td>
                     <td>{user.orgName || "未分配"}</td>
                     <td>{statusBadge(user.status)}</td>
-                    <td><button className="link-btn" type="button">编辑</button></td>
+                    <td>
+                      <button
+                        className="link-btn"
+                        type="button"
+                        onClick={() => {
+                          setEditingUser(user);
+                          setUserForm({
+                            name: user.name,
+                            mobile: user.mobile,
+                            email: user.email || "",
+                            roleCode: (user.roleCode === "tenant_admin" || user.roleCode === "trainer" || user.roleCode === "learner" ? user.roleCode : "learner"),
+                            orgId: user.orgId || "",
+                            initialPassword: "Zxt@2026",
+                            status: (user.status === "disabled" ? "disabled" : "active") as "active" | "disabled",
+                          });
+                        }}
+                      >
+                        <Pencil size={14} /> 编辑
+                      </button>
+                      <button className="link-btn" type="button" onClick={() => { setResetPwdUser(user); setResetPwdForm({ newPassword: "Zxt@2026" }); }}><KeyRound size={14} /> 重置密码</button>
+                      <button className="link-btn" type="button" onClick={() => toggleUserStatus(user)}>
+                        {user.status === "disabled" ? <><Play size={14} /> 启用</> : <><Ban size={14} /> 停用</>}
+                      </button>
+                      <button className="link-btn danger" type="button" onClick={() => setUserToDelete(user)}><Trash2 size={14} /> 删除</button>
+                    </td>
                   </tr>
                 ))}
               </DataTable>
@@ -2218,6 +2916,70 @@ export function AdminDashboard() {
                       <div className="wizard-footer" style={{ justifyContent: "flex-end", gap: 12 }}>
                         <button className="btn" type="button" onClick={() => setShowUserCreate(false)}>取消</button>
                         <button className="btn primary" disabled={submitting} type="submit"><Plus size={16} /> 保存人员</button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {editingUser && (
+              <div className="modal-overlay" onClick={() => setEditingUser(null)}>
+                <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+                  <div className="section-head">
+                    <div>
+                      <h2 className="section-title">编辑人员</h2>
+                      <p className="section-note">更新人员基本信息和所属组织，密码不在此处修改。</p>
+                    </div>
+                  </div>
+                  <form onSubmit={handleUpdateUser}>
+                    <div className="form-card" style={{ display: "grid", gap: 14 }}>
+                      <Field label="姓名"><input value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value })} placeholder="如：李明" required /></Field>
+                      <Field label="手机号"><input value={userForm.mobile} onChange={(e) => setUserForm({ ...userForm, mobile: e.target.value })} placeholder="用于登录或唯一识别" required /></Field>
+                      <Field label="邮箱"><input value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} placeholder="选填" /></Field>
+                      <Field label="所属组织"><select value={userForm.orgId} onChange={(e) => setUserForm({ ...userForm, orgId: e.target.value })}><option value="">未分配</option>{organizations.map((org) => <option value={org.id} key={org.id}>{org.name}</option>)}</select></Field>
+                      <Field label="角色"><select value={userForm.roleCode} onChange={(e) => setUserForm({ ...userForm, roleCode: e.target.value })}><option value="learner">学员</option><option value="trainer">内训师</option><option value="tenant_admin">管理员</option></select></Field>
+                      <Field label="状态">
+                        <select value={userForm.status} onChange={(e) => setUserForm({ ...userForm, status: e.target.value as "active" | "disabled" })}>
+                          <option value="active">有效</option>
+                          <option value="disabled">停用</option>
+                        </select>
+                      </Field>
+                      <div className="wizard-footer" style={{ justifyContent: "flex-end", gap: 12 }}>
+                        <button className="btn" type="button" onClick={() => setEditingUser(null)}>取消</button>
+                        <button className="btn primary" disabled={submitting} type="submit">保存修改</button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {resetPwdUser && (
+              <div className="modal-overlay" onClick={() => setResetPwdUser(null)}>
+                <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+                  <div className="section-head">
+                    <div>
+                      <h2 className="section-title">重置密码</h2>
+                      <p className="section-note">为「{resetPwdUser.name}」设置新密码，保存后该用户需用新密码登录。</p>
+                    </div>
+                  </div>
+                  <form onSubmit={handleResetPassword}>
+                    <div className="form-card" style={{ display: "grid", gap: 14 }}>
+                      <Field label="新密码">
+                        <input
+                          value={resetPwdForm.newPassword}
+                          onChange={(e) => setResetPwdForm({ ...resetPwdForm, newPassword: e.target.value })}
+                          type="text"
+                          minLength={8}
+                          required
+                        />
+                      </Field>
+                      <div className="wizard-footer" style={{ justifyContent: "flex-end", gap: 12 }}>
+                        <button className="btn" type="button" onClick={() => setResetPwdUser(null)}>取消</button>
+                        <button className="btn primary" disabled={submitting || resetPwdForm.newPassword.length < 8} type="submit">
+                          <KeyRound size={14} /> 确认重置
+                        </button>
                       </div>
                     </div>
                   </form>
@@ -2251,257 +3013,197 @@ export function AdminDashboard() {
         {activeSection === "tasks" && (
           <section className="page-section">
             <div className="home-grid">
-              <div className="home-main">
-                <div className="page-header">
+              <div className="home-main tm-mod">
+                <div className="module-head card">
                   <div>
-                    <h1 className="page-title">任务管理</h1>
-                    <p className="page-desc">发布和管理企业培训、对练及考试任务。</p>
+                    <h1>任务管理</h1>
+                    <p className="muted">发布和管理企业培训、对练及考试任务。</p>
                   </div>
-                  <div className="toolbar">
-                    <button className="btn" type="button" onClick={loadData} disabled={submitting}><RefreshCcw size={16} /> 刷新数据</button>
-                    <button className="btn primary" type="button" onClick={() => setShowTaskCreate(true)}><Plus size={16} /> 发布任务</button>
-                  </div>
-                </div>
-
-                <div className="stats prototype-stats stats-4">
-                  <div className="metric card"><span>任务总数</span><strong>12</strong><small>本年度已创建</small></div>
-                  <div className="metric card"><span>进行中</span><strong>6</strong><small>正在执行</small></div>
-                  <div className="metric card"><span>已完成</span><strong>4</strong><small>完成率33.3%</small></div>
-                  <div className="metric card"><span>待发布</span><strong>2</strong><small>等待确认</small></div>
-                </div>
-
-                <div className="filter-bar card">
-                  <div className="filter-row">
-                    <div className="filter-item">
-                      <select className="filter-select" value={taskFilter.status} onChange={(e) => setTaskFilter({ ...taskFilter, status: e.target.value })}>
-                        <option value="all">全部任务状态</option>
-                        <option value="in_progress">进行中</option>
-                        <option value="draft">待发布</option>
-                        <option value="completed">已完成</option>
-                        <option value="stopped">已停用</option>
-                      </select>
-                    </div>
-                    <div className="filter-item">
-                      <select className="filter-select" value={taskFilter.type} onChange={(e) => setTaskFilter({ ...taskFilter, type: e.target.value })}>
-                        <option value="all">全部任务类型</option>
-                        <option value="scenario_training">课程学习</option>
-                        <option value="exam">在线考试</option>
-                        <option value="mixed">情景对练</option>
-                      </select>
-                    </div>
-                    <input className="filter-input" placeholder="搜索任务名称" value={taskFilter.keyword ?? ""} onChange={(e) => setTaskFilter({ ...taskFilter, keyword: e.target.value })} />
-                    <button className="btn primary" type="button" onClick={loadData} disabled={submitting}>查询</button>
+                  <div className="module-actions">
+                    <button className="btn outline" type="button" onClick={loadData} disabled={submitting}>刷新数据</button>
+                    <button className="btn" type="button" onClick={() => navigateTo("/tasks/new")}>＋ 创建任务</button>
                   </div>
                 </div>
 
-                <div className="card section">
-                  <DataTable headers={["任务名称", "任务类型", "参与人数", "截止时间", "状态", "创建人", "操作"]}>
-                    {[
-                      { name: "安全生产基础知识培训", type: "课程学习", people: "86人", deadline: "2026-08-05", status: "进行中", statusClass: "info", creator: "李明", actions: ["详情", "停用"] },
-                      { name: "客户服务沟通技巧", type: "在线考试", people: "64人", deadline: "2026-08-05", status: "进行中", statusClass: "info", creator: "王芳", actions: ["详情", "停用"] },
-                      { name: "新员工业务流程对练", type: "情景对练", people: "32人", deadline: "2026-08-02", status: "待发布", statusClass: "amber", creator: "陈静", actions: ["编辑", "发布"] },
-                      { name: "新员工入职培训", type: "课程学习", people: "118人", deadline: "2026-07-28", status: "已完成", statusClass: "green", creator: "赵强", actions: ["详情"] },
-                    ].map((row, i) => (
-                      <tr key={i}>
-                        <td><strong>{row.name}</strong></td>
-                        <td>{row.type}</td>
-                        <td>{row.people}</td>
-                        <td className="muted-text">{row.deadline}</td>
-                        <td><span className={`badge ${row.statusClass}`}>{row.status}</span></td>
-                        <td className="muted-text">{row.creator}</td>
-                        <td>
-                          <div className="action-row">
-                            {row.actions.map((a, j) => <button key={j} className="link-btn" type="button">{a}</button>)}
-                          </div>
-                        </td>
+                <div className="summary-grid">
+                  <div className="summary-card card">
+                    <label>任务总数</label>
+                    <strong>{tasks.length}</strong>
+                    <small className="muted">本年度已创建</small>
+                  </div>
+                  <div className="summary-card card">
+                    <label>进行中</label>
+                    <strong className="blue">{tasks.filter((t) => getTaskRuntimeStatus(t) === "in_progress").length}</strong>
+                    <small className="muted">正在执行</small>
+                  </div>
+                  <div className="summary-card card">
+                    <label>已完成</label>
+                    <strong style={{ color: "#31a877" }}>{tasks.filter((t) => getTaskRuntimeStatus(t) === "completed").length}</strong>
+                    <small className="muted">完成率 {tasks.length ? Math.round((tasks.filter((t) => getTaskRuntimeStatus(t) === "completed").length / tasks.length) * 100) : 0}%</small>
+                  </div>
+                  <div className="summary-card card">
+                    <label>待发布</label>
+                    <strong style={{ color: "#e49a38" }}>{tasks.filter((t) => getTaskRuntimeStatus(t) === "draft").length}</strong>
+                    <small className="muted">等待确认</small>
+                  </div>
+                </div>
+
+                <div className="module-filter card">
+                  <select className="field" value={taskFilter.status} onChange={(e) => setTaskFilter({ ...taskFilter, status: e.target.value })}>
+                    <option value="all">全部任务状态</option>
+                    <option value="in_progress">进行中</option>
+                    <option value="draft">待发布</option>
+                    <option value="completed">已完成</option>
+                    <option value="overdue">已逾期</option>
+                    <option value="stopped">已停用</option>
+                  </select>
+                  <select className="field" value={taskFilter.type} onChange={(e) => setTaskFilter({ ...taskFilter, type: e.target.value })}>
+                    <option value="all">全部任务类型</option>
+                    <option value="free_practice">自由对练</option>
+                    <option value="fixed_practice">固定对练</option>
+                    <option value="free_exam">自由考试</option>
+                    <option value="fixed_exam">固定考试</option>
+                  </select>
+                  <input className="field" placeholder="搜索任务名称" value={taskFilter.keyword ?? ""} onChange={(e) => setTaskFilter({ ...taskFilter, keyword: e.target.value })} />
+                  <button className="btn" type="button" onClick={() => setTaskFilter({ ...taskFilter })}>查询</button>
+                </div>
+
+                <div className="card" style={{ overflow: "hidden" }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>任务名称</th>
+                        <th>任务类型</th>
+                        <th>包含场景</th>
+                        <th>参与人数</th>
+                        <th>截止时间</th>
+                        <th>状态</th>
+                        <th>创建人</th>
+                        <th>操作</th>
                       </tr>
-                    ))}
-                  </DataTable>
+                    </thead>
+                    <tbody>
+                      {tasks
+                        .filter((task) => {
+                          const runtimeStatus = getTaskRuntimeStatus(task);
+                          const matchStatus = taskFilter.status === "all" || runtimeStatus === taskFilter.status;
+                          const typeLabel = taskTypeLabel(task.type);
+                          const matchType = taskFilter.type === "all" || typeLabel === taskTypeLabel(taskFilter.type) || task.type === taskFilter.type;
+                          const keyword = taskFilter.keyword.trim().toLowerCase();
+                          const matchKeyword = !keyword || `${task.name} ${task.code || ""}`.toLowerCase().includes(keyword);
+                          return matchStatus && matchType && matchKeyword;
+                        })
+                        .map((task) => {
+                          const runtimeStatus = getTaskRuntimeStatus(task);
+                          const statusMeta: Record<string, { label: string; cls: string }> = {
+                            in_progress: { label: "进行中", cls: "blue" },
+                            draft: { label: "待发布", cls: "orange" },
+                            completed: { label: "已完成", cls: "green" },
+                            overdue: { label: "已逾期", cls: "red" },
+                            stopped: { label: "已停用", cls: "red" },
+                          };
+                          const meta = statusMeta[runtimeStatus] || { label: runtimeStatus, cls: "blue" };
+                          return (
+                            <tr key={task.id} data-task-scene-ids={(task.sceneCount ?? 0)}>
+                              <td><strong>{task.name}</strong></td>
+                              <td>{taskTypeLabel(task.type)}</td>
+                              <td className="task-scene-cell">
+                                <button aria-label="查看包含场景" className="task-scene-toggle" type="button" onClick={() => openTaskManageSceneModal(task.id)}>{task.sceneCount ?? 0}</button>
+                              </td>
+                              <td>{task.participantCount ?? 0} 人</td>
+                              <td>{task.endAt ? formatDate(task.endAt) : "—"}</td>
+                              <td><span className={`tag ${meta.cls}`}>{meta.label}</span></td>
+                              <td>{task.creatorName || "—"}</td>
+                              <td className="task-actions">
+                                {(runtimeStatus === "in_progress" || runtimeStatus === "completed" || runtimeStatus === "overdue" || runtimeStatus === "stopped") && (
+                                  <a onClick={() => openTaskDataModal(task.id)}>查看数据</a>
+                                )}
+                                <a onClick={() => viewTaskDetail(task.id)}>详情</a>
+                                {runtimeStatus === "in_progress" && <a onClick={() => stopTask(task.id)}>停用</a>}
+                                 {runtimeStatus === "stopped" && <a className="del" onClick={() => setTaskToDelete(task)}>删除</a>}
+                                 {runtimeStatus === "draft" && <a onClick={() => showTaskToast("请在创建任务页完善并发布该任务")}>编辑</a>}
+                                {runtimeStatus === "draft" && <a onClick={() => publishTask(task.id)}>发布</a>}
+                                {(runtimeStatus === "completed" || runtimeStatus === "stopped") && <a onClick={() => duplicateTask(task)}>复制</a>}
+                                {runtimeStatus === "overdue" && <a onClick={() => extendTask(task)}>延长时间</a>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      {tasks.filter((task) => {
+                        const runtimeStatus = getTaskRuntimeStatus(task);
+                        const matchStatus = taskFilter.status === "all" || runtimeStatus === taskFilter.status;
+                        const keyword = taskFilter.keyword.trim().toLowerCase();
+                        const matchKeyword = !keyword || `${task.name} ${task.code || ""}`.toLowerCase().includes(keyword);
+                        return matchStatus && matchKeyword;
+                      }).length === 0 && (
+                        <tr><td colSpan={8} style={{ textAlign: "center", color: "#97a5b6", padding: 30 }}>暂无符合条件的任务</td></tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
 
-                {showTaskCreate && (
-                  <div className="modal-overlay" onClick={() => setShowTaskCreate(false)}>
-                    <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-                      <div className="section-head">
+                {showTaskManageSceneModal && taskManageSceneData && (
+                  <div className="modal-mask show" onClick={() => setShowTaskManageSceneModal(false)}>
+                    <div className="modal task-manage-scene-modal" onClick={(e) => e.stopPropagation()}>
+                      <div className="task-manage-scene-modal-head">
+                        <h3>包含场景</h3>
+                        <button aria-label="关闭" className="task-manage-scene-close" type="button" onClick={() => setShowTaskManageSceneModal(false)}>×</button>
+                      </div>
+                      <p className="task-manage-scene-modal-desc">当前任务包含以下场景</p>
+                      <div className="task-manage-scene-modal-list">
+                        {taskManageSceneData.scenes.map((scene) => (
+                          <a key={scene.id} className="task-manage-scene-modal-item" onClick={() => navigateTo(`/scenes/${scene.sceneId}`)}>
+                            <span>{scene.sceneName || scene.sceneCode || "未命名场景"}</span>
+                            <b>›</b>
+                          </a>
+                        ))}
+                        {taskManageSceneData.scenes.length === 0 && <div className="task-manage-scene-modal-empty">暂未配置场景</div>}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {showTaskDataModal && taskDataDetail && (
+                  <div className="modal-mask show" onClick={() => setShowTaskDataModal(false)}>
+                    <div className="modal task-data-modal" onClick={(e) => e.stopPropagation()}>
+                      <div className="task-data-modal-head">
                         <div>
-                          <h2 className="section-title">创建训练任务</h2>
-                          <p className="section-note">按向导完成基础信息、业务场景、回答形式与参与学员配置。</p>
+                          <h3 id="taskDataModalTitle">{taskDataDetail.task.name}</h3>
+                          <p id="taskDataModalSub">实时查看任务执行情况</p>
+                        </div>
+                        <button aria-label="关闭" className="task-manage-scene-close" type="button" onClick={() => setShowTaskDataModal(false)}>×</button>
+                      </div>
+                      <div className="task-data-kpis">
+                        <div><small>参与人数</small><strong>{taskDataDetail.task.participantCount ?? 0}</strong></div>
+                        <div><small>完成率</small><strong>{taskDataDetail.task.status === "completed" ? "100%" : `${taskDataDetail.task.progressPercent ?? 0}%`}</strong></div>
+                        <div><small>平均分</small><strong>{taskDataDetail.task.status === "completed" ? "88.6" : "82.5"}</strong></div>
+                        <div><small>待跟进</small><strong>{taskDataDetail.task.status === "completed" ? "0" : "12"}</strong></div>
+                      </div>
+                      <div className="task-data-section">
+                        <div className="task-data-section-title">
+                          <b>场景完成情况</b>
+                          <span>{taskDataDetail.scenes.length} 个场景</span>
+                        </div>
+                        <div className="task-data-scene-rows">
+                          {taskDataDetail.scenes.map((scene) => {
+                            const pct = scene.requiredTrainTimes > 0 ? Math.min(100, Math.round(((scene.completedTrainCount ?? 0) / scene.requiredTrainTimes) * 100)) : 0;
+                            return (
+                              <div key={scene.id} className="task-data-scene-row">
+                                <b>{scene.sceneName || scene.sceneCode || "未命名场景"}</b>
+                                <span className="line"><i style={{ width: `${pct}%` }} /></span>
+                                <span className="pct">{pct}%</span>
+                              </div>
+                            );
+                          })}
+                          {taskDataDetail.scenes.length === 0 && <div className="task-data-empty">暂未配置场景</div>}
                         </div>
                       </div>
-
-                      {/* 4 步进度条 */}
-                      <div className="wizard-steps">
-                        <div className={`wizard-step ${taskWizardStep >= 1 ? "active" : ""} ${taskWizardStep > 1 ? "done" : ""}`}>
-                          <span className="step-num">{taskWizardStep > 1 ? "✓" : "1"}</span>
-                          <span className="step-label">基础信息</span>
-                        </div>
-                        <div className={`wizard-line ${taskWizardStep > 1 ? "done" : ""}`} />
-                        <div className={`wizard-step ${taskWizardStep >= 2 ? "active" : ""} ${taskWizardStep > 2 ? "done" : ""}`}>
-                          <span className="step-num">{taskWizardStep > 2 ? "✓" : "2"}</span>
-                          <span className="step-label">配置业务场景</span>
-                        </div>
-                        <div className={`wizard-line ${taskWizardStep > 2 ? "done" : ""}`} />
-                        <div className={`wizard-step ${taskWizardStep >= 3 ? "active" : ""} ${taskWizardStep > 3 ? "done" : ""}`}>
-                          <span className="step-num">{taskWizardStep > 3 ? "✓" : "3"}</span>
-                          <span className="step-label">回答形式</span>
-                        </div>
-                        <div className={`wizard-line ${taskWizardStep > 3 ? "done" : ""}`} />
-                        <div className={`wizard-step ${taskWizardStep >= 4 ? "active" : ""}`}>
-                          <span className="step-num">4</span>
-                          <span className="step-label">参与学员</span>
-                        </div>
-                      </div>
-
-                      <form onSubmit={handleCreateTask}>
-                        {taskWizardStep === 1 && (
-                          <div className="wizard-body">
-                            <h2>基础信息</h2>
-                            <p className="field-hint">先填写任务的基本信息，后续可继续配置场景和学员。</p>
-                            <div className="form-card" style={{ display: "grid", gap: 14 }}>
-                              <Field label="任务名称"><input value={taskForm.name} onChange={(e) => setTaskForm({ ...taskForm, name: e.target.value })} placeholder="如：客服投诉处理专项训练" required /></Field>
-                              <div className="score-editor-grid">
-                                <Field label="任务类型"><select value={taskForm.type} onChange={(e) => setTaskForm({ ...taskForm, type: e.target.value })}><option value="scenario_training">课程学习</option><option value="exam">在线考试</option><option value="mixed">学练考混合</option></select></Field>
-                                <Field label="任务编码"><input value={taskForm.code} onChange={(e) => setTaskForm({ ...taskForm, code: e.target.value })} placeholder="留空自动生成" /></Field>
-                              </div>
-                              <div className="score-editor-grid">
-                                <Field label="开始时间"><input type="datetime-local" value={taskForm.startAt} onChange={(e) => setTaskForm({ ...taskForm, startAt: e.target.value })} /></Field>
-                                <Field label="截止时间"><input type="datetime-local" value={taskForm.endAt} onChange={(e) => setTaskForm({ ...taskForm, endAt: e.target.value })} /></Field>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {taskWizardStep === 2 && (
-                          <div className="wizard-body">
-                            <h2>配置业务场景</h2>
-                            <p className="field-hint">添加任务所需的业务场景，并为每个场景配置对应的 AI 对练。</p>
-                            <div className="check-list">
-                              {scenes.map((scene) => (
-                                <label key={scene.id} className="check-row">
-                                  <input type="checkbox" checked={taskForm.sceneIds.includes(scene.id)} onChange={() => toggleTaskScene(scene.id)} />
-                                  <span>{scene.name}</span>
-                                  {statusBadge(scene.status)}
-                                </label>
-                              ))}
-                              {!scenes.length ? <div className="empty">请先在场景管理里创建场景</div> : null}
-                            </div>
-                            <button className="btn" type="button" onClick={() => setShowSceneWizard(true)}><Plus size={16} /> 添加业务场景</button>
-                            <p className="field-hint">已添加 {taskForm.sceneIds.length} 个场景</p>
-                          </div>
-                        )}
-
-                        {taskWizardStep === 3 && (
-                          <div className="wizard-body">
-                            <h2>回答形式</h2>
-                            <p className="field-hint">选择学员在本任务中的作答方式，场景默认语音模式。</p>
-                            <div className="score-editor-grid">
-                              <label className={`check-row solo ${taskForm.answerForm === "voice" ? "active-option" : ""}`} style={{ padding: 16, border: "1px solid var(--line)", borderRadius: 12, cursor: "pointer" }}>
-                                <input type="radio" name="answerForm" checked={taskForm.answerForm === "voice"} onChange={() => setTaskForm({ ...taskForm, answerForm: "voice" })} />
-                                <span><strong>语音对练</strong> — 学员通过语音与 AI 角色实时对话，自动语音识别与合成。</span>
-                              </label>
-                              <label className={`check-row solo ${taskForm.answerForm === "text" ? "active-option" : ""}`} style={{ padding: 16, border: "1px solid var(--line)", borderRadius: 12, cursor: "pointer" }}>
-                                <input type="radio" name="answerForm" checked={taskForm.answerForm === "text"} onChange={() => setTaskForm({ ...taskForm, answerForm: "text" })} />
-                                <span><strong>文本对练</strong> — 学员通过文字输入与 AI 角色对话，适合文字考核场景。</span>
-                              </label>
-                            </div>
-                          </div>
-                        )}
-
-                        {taskWizardStep === 4 && (
-                          <div className="wizard-body">
-                            <h2>参与学员</h2>
-                            <p className="field-hint">选择参与本次任务的学员或组织，也可一键选择全部学员。</p>
-                            <div className="check-list">
-                              <div style={{ display: "flex", gap: 10, marginBottom: 6 }}>
-                                <button className="btn" type="button" onClick={() => {
-                                  const allLearners = users.filter((u) => u.roleCode === "learner");
-                                  setTaskForm({ ...taskForm, participantUserIds: allLearners.map((u) => u.id) });
-                                }}>选全员</button>
-                                <button className="btn" type="button" onClick={() => setShowImportModal(true)}>导入名单</button>
-                                <span className="field-hint" style={{ alignSelf: "center" }}>已选 {taskForm.participantUserIds.length} 名学员 / {taskForm.participantOrgIds.length} 个组织</span>
-                              </div>
-                              {users.filter((user) => user.roleCode === "learner").map((user) => (
-                                <label key={user.id} className="check-row">
-                                  <input type="checkbox" checked={taskForm.participantUserIds.includes(user.id)} onChange={() => toggleTaskParticipant(user.id)} />
-                                  <span>{user.name} · {user.mobile}</span>
-                                </label>
-                              ))}
-                              {!users.filter((user) => user.roleCode === "learner").length ? <div className="empty">请先在人员管理里新增学员</div> : null}
-                            </div>
-                            <div className="check-list">
-                              <span className="field-label">选择组织（可空）</span>
-                              {organizations.map((org) => (
-                                <label key={org.id} className="check-row">
-                                  <input type="checkbox" checked={taskForm.participantOrgIds.includes(org.id)} onChange={() => toggleTaskOrg(org.id)} />
-                                  <span>{org.name} · {organizationTypeLabel(org.type)}</span>
-                                  <span className="muted-text">{org.userCount}人</span>
-                                </label>
-                              ))}
-                            </div>
-                            <label className="check-row solo"><input type="checkbox" checked={taskForm.publishNow} onChange={(e) => setTaskForm({ ...taskForm, publishNow: e.target.checked })} /> 创建后立即发布</label>
-                          </div>
-                        )}
-
-                        <div className="wizard-footer">
-                          <div style={{ display: "flex", gap: 10 }}>
-                            <button className="btn" type="button" onClick={() => setShowTaskCreate(false)}>取消</button>
-                            {taskWizardStep > 1 && (
-                              <button className="btn" type="button" onClick={() => setTaskWizardStep(taskWizardStep - 1)}>上一步</button>
-                            )}
-                          </div>
-                          {taskWizardStep < 4 ? (
-                            <button className="btn primary" type="button" disabled={taskWizardStep === 1 && !taskForm.name.trim()} onClick={() => setTaskWizardStep(taskWizardStep + 1)}>下一步</button>
-                          ) : (
-                            <button className="btn primary" type="submit" disabled={submitting || !taskForm.sceneIds.length || (!taskForm.participantUserIds.length && !taskForm.participantOrgIds.length)}><Send size={16} /> 保存任务</button>
-                          )}
-                        </div>
-                      </form>
+                      <div className="task-data-tip">数据每 5 分钟自动更新</div>
                     </div>
                   </div>
                 )}
 
-                {/* 导入名单弹窗 */}
-                {showImportModal && (
-                  <div className="modal-overlay" onClick={() => { setShowImportModal(false); setImportText(""); }}>
-                    <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 520 }}>
-                      <div className="modal-head">
-                        <h2>导入名单</h2>
-                        <button className="link-btn" type="button" onClick={() => { setShowImportModal(false); setImportText(""); }}>×</button>
-                      </div>
-                      <p className="section-note" style={{ marginBottom: 14 }}>粘贴学员手机号或姓名（每行一个），系统自动匹配学员。未匹配的将忽略。</p>
-                      <textarea
-                        value={importText}
-                        onChange={(e) => setImportText(e.target.value)}
-                        placeholder={"13800000000\n王小明\n13912345678"}
-                        style={{ width: "100%", minHeight: 140, border: "1px solid var(--line)", borderRadius: 10, padding: 12, fontSize: 13, resize: "vertical" }}
-                      />
-                      <div className="modal-actions">
-                        <button className="btn" type="button" onClick={() => { setShowImportModal(false); setImportText(""); }}>取消</button>
-                        <button
-                          className="btn primary"
-                          type="button"
-                          onClick={() => {
-                            const lines = importText.split("\n").map((l) => l.trim()).filter(Boolean);
-                            const learners = users.filter((u) => u.roleCode === "learner");
-                            const matched: string[] = [];
-                            const notMatched: string[] = [];
-                            for (const line of lines) {
-                              const found = learners.find((u) => u.mobile === line || u.name === line);
-                              if (found) matched.push(found.id);
-                              else notMatched.push(line);
-                            }
-                            setTaskForm((prev) => ({ ...prev, participantUserIds: Array.from(new Set([...prev.participantUserIds, ...matched])) }));
-                            setImportText("");
-                            setShowImportModal(false);
-                            setMessage(`已导入 ${matched.length} 名学员${notMatched.length ? `，${notMatched.length} 条未匹配（${notMatched.slice(0, 3).join("、")}${notMatched.length > 3 ? "…" : ""}）` : ""}。`);
-                          }}
-                        >
-                          确认添加
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                <div className={`task-toast${taskToast ? " show" : ""}`}>{taskToast}</div>
               </div>
 
               <aside className="right-rail">
@@ -2688,71 +3390,93 @@ export function AdminDashboard() {
           />
         )}
         {activeSection === "student-home" && overview && (
-          <section className="page-section">
+          <section className="page-section student-home-section home-dashboard">
             <div className="home-grid">
               <div className="home-main">
-                {/* 学习空间横幅 */}
-                <section className="hero-card card" style={{ marginBottom: 24 }}>
-                  <div style={{ position: "relative", zIndex: 1, flex: 1 }}>
-                    <p>我的学习空间</p>
-                    <h1>早上好，{auth.user.name}</h1>
-                    <p style={{ marginTop: 8, opacity: 0.85 }}>持续学习，提升专业能力，今天也向目标迈进一步。</p>
-                  </div>
-                  <div style={{ position: "relative", zIndex: 1, textAlign: "center", marginLeft: "auto" }}>
-                    <div style={{ width: 100, height: 100, borderRadius: "50%", border: "6px solid rgba(255,255,255,0.5)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 8px", position: "relative" }}>
-                      <span style={{ fontSize: 28, fontWeight: 700, color: "#fff" }}>{overview.monthProgress ?? 0}%</span>
+                {/* 学员 Hero（原型 .studenthero） */}
+                <div className="studenthero card">
+                  <small>我的学习空间</small>
+                  <h1>早上好，{auth.user.name}</h1>
+                  <p>持续学习，提升专业能力。今天也向目标迈进一步。</p>
+                  <div className="studentprogress">
+                    <div className="ring">{overview.monthProgress ?? 0}%</div>
+                    <div>
+                      <b>本月学习进度</b>
+                      <br />
+                      <small style={{ opacity: 0.85 }}>已完成 {overview.completedTaskCount ?? 0} 个学习任务，还差 {Math.max((overview.publishedTaskCount ?? 0) - (overview.completedTaskCount ?? 0), 0)} 个</small>
                     </div>
-                    <strong style={{ color: "#fff" }}>本月学习进度</strong>
-                    <p style={{ fontSize: 12, color: "rgba(255,255,255,0.8)", marginTop: 4 }}>已完成 {overview.points ? Math.round(overview.points / 10) : 0} 个学习任务</p>
                   </div>
-                </section>
-
-                {/* 3统计卡 */}
-                <div className="stats prototype-stats" style={{ marginBottom: 24 }}>
-                  <div className="metric card"><span>待完成任务</span><strong style={{ color: "#e6a23c" }}>{overview.pendingTaskCount ?? 0}</strong><small>含即将到期</small></div>
-                  <div className="metric card"><span>累计学习时长</span><strong><span className="text-blue">{(overview.studyDurationHours ?? 0).toFixed(1)}</span> <span style={{ fontSize: 16, color: "#8b98aa" }}>小时</span></strong><small>较上月持续增长</small></div>
-                  <div className="metric card"><span>学习积分</span><strong>{overview.points ?? 0}</strong><small>本月持续积累</small></div>
                 </div>
 
-                {/* 待完成学习任务 + 学习日历 并排 */}
-                <div className="home-bottom-grid">
+                {/* 3 指标卡（原型 .studentcards） */}
+                <div className="studentcards">
+                  <div className="metric card">
+                    <label>待完成任务</label>
+                    <strong style={{ color: "#e49a38" }}>{overview.pendingTaskCount ?? 0}</strong>
+                    <small className="muted">含即将到期任务</small>
+                  </div>
+                  <div className="metric card">
+                    <label>累计学习时长</label>
+                    <strong className="blue">{(overview.studyDurationHours ?? 0).toFixed(1)}<em style={{ fontSize: 13, fontStyle: "normal", fontWeight: 600 }}> 小时</em></strong>
+                    <small className="muted">较上月持续增长</small>
+                  </div>
+                  <div className="metric card">
+                    <label>学习积分</label>
+                    <strong>{overview.points ?? 0}</strong>
+                    <small className="muted">本月持续积累</small>
+                  </div>
+                </div>
+
+                {/* 双卡：待完成学习任务 + 学习日历（原型 .studentgrid） */}
+                <div className="studentgrid">
                   {/* 待完成学习任务 */}
-                  <section className="card section" style={{ padding: 20 }}>
-                    <div className="section-head compact" style={{ marginBottom: 12 }}>
-                      <h2 className="section-title">待完成学习任务</h2>
-                      <button className="link-btn" type="button" onClick={() => setActiveSection("my-tasks")}>查看全部 ›</button>
+                  <div className="studycard card">
+                    <div className="row">
+                      <h3>待完成学习任务</h3>
+                      <span className="muted" onClick={() => handleNavClick("my-tasks")}>查看全部　›</span>
                     </div>
-                    {tasks.slice(0, 3).map((task) => (
-                      <div key={task.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid var(--border)" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          <div style={{ width: 40, height: 40, borderRadius: 10, background: "#4080ff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                            <svg width="20" height="20" fill="none" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z" fill="#fff"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="#fff" strokeWidth="2" fill="none"/></svg>
+                    {(() => {
+                      const items = tasks.slice(0, 3);
+                      const icons = ["", "linear-gradient(135deg,#ecae65,#ea7b7b)", "linear-gradient(135deg,#b58df4,#657de9)"];
+                      const glyphs = ["▣", "✓", "◎"];
+                      const actions = ["继续学习", "开始考试", "去对练"];
+                      if (items.length > 0) {
+                        return items.map((task, i) => (
+                          <div className="learnitem" key={task.id}>
+                            <div className="courseicon" style={i > 0 ? { background: icons[i] } : undefined}>{glyphs[i]}</div>
+                            <div>
+                              <b>{task.name}</b>
+                              <small>{task.type === "scenario_training" ? "固定对练" : task.type === "exam" ? "固定考试" : "学习任务"} · {task.status === "published" ? "进行中" : "待开始"}</small>
+                            </div>
+                            <button className="btn" type="button" onClick={() => viewTaskDetail(task.id)}>{actions[i]}</button>
                           </div>
+                        ));
+                      }
+                      return [
+                        { name: "安全生产基础知识培训", note: "固定对练 · 剩余 45 分钟", action: "继续学习" },
+                        { name: "客户服务沟通技巧", note: "固定考试 · 截止至 08-05 23:59", action: "开始考试" },
+                        { name: "新员工业务流程对练", note: "自由对练 · 3 个场景", action: "去对练" },
+                      ].map((d, i) => (
+                        <div className="learnitem" key={d.name}>
+                          <div className="courseicon" style={i > 0 ? { background: icons[i] } : undefined}>{glyphs[i]}</div>
                           <div>
-                            <strong style={{ display: "block" }}>{task.name}</strong>
-                            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{task.type === "scenario_training" ? "情景对练" : task.type} · {task.status === "published" ? "进行中" : "待开始"}</span>
+                            <b>{d.name}</b>
+                            <small>{d.note}</small>
                           </div>
+                          <button className="btn" type="button" onClick={() => handleNavClick("my-tasks")}>{d.action}</button>
                         </div>
-                        <button className="btn" type="button" style={{ background: "#4080ff", color: "#fff", border: "none", borderRadius: 4, padding: "6px 16px", cursor: "pointer" }} onClick={() => viewTaskDetail(task.id)}>查看任务</button>
-                      </div>
-                    ))}
-                    {tasks.length === 0 && (
-                      <div style={{ padding: "20px 0", color: "var(--text-muted)", fontSize: 13 }}>暂无待办任务</div>
-                    )}
-                  </section>
+                      ));
+                    })()}
+                  </div>
 
                   {/* 学习日历 */}
-                  <section className="card section" style={{ padding: 20 }}>
-                    <div className="section-head compact" style={{ marginBottom: 12 }}>
-                      <h2 className="section-title">学习日历</h2>
-                      <span style={{ color: "#8b98aa", fontSize: 13 }}>{new Date().getFullYear()}年{new Date().getMonth() + 1}月</span>
+                  <div className="studycard card">
+                    <div className="row">
+                      <h3>学习日历</h3>
+                      <span className="muted">{new Date().getFullYear()}年{new Date().getMonth() + 1}月</span>
                     </div>
-                    {/* 日历表头 */}
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", textAlign: "center", fontSize: 12, color: "#8b98aa", marginBottom: 4 }}>
-                      <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
-                    </div>
-                    {/* 日历日期 */}
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", textAlign: "center", fontSize: 13, gap: 4 }}>
+                    <div className="calendar">
+                      <i>一</i><i>二</i><i>三</i><i>四</i><i>五</i><i>六</i><i>日</i>
                       {(() => {
                         const now = new Date();
                         const year = now.getFullYear();
@@ -2761,7 +3485,6 @@ export function AdminDashboard() {
                         const daysInMonth = new Date(year, month + 1, 0).getDate();
                         const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
                         const today = now.getDate();
-                        // 学习日集合：任务截止日 + 训练记录完成日
                         const studyDays = new Set<number>();
                         tasks.forEach((t) => {
                           if (t.endAt) {
@@ -2777,158 +3500,139 @@ export function AdminDashboard() {
                         });
                         return Array.from({ length: totalCells }, (_, i) => {
                           const dayNum = i - firstDay + 1;
-                          if (dayNum < 1 || dayNum > daysInMonth) return <div key={i} style={{ padding: 6 }} />;
-                          const isToday = dayNum === today;
-                          const isGreen = studyDays.has(dayNum);
-                          return (
-                            <div key={i} style={{ padding: 6, borderRadius: 6, background: isToday ? "#4080ff" : isGreen ? "#e8f5e9" : "transparent", color: isToday ? "#fff" : "#333" }}>
-                              {dayNum}
-                            </div>
-                          );
+                          if (dayNum < 1 || dayNum > daysInMonth) return <i key={i} />;
+                          const cls = dayNum === today ? "today" : studyDays.has(dayNum) ? "done" : "";
+                          return <i key={i} className={cls}>{dayNum}</i>;
                         });
                       })()}
                     </div>
-                    {/* 推荐课程 */}
-                    <div style={{ marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 14 }}>
-                      <h3 style={{ fontSize: 14, margin: "0 0 10px" }}>推荐课程</h3>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        {materials.slice(0, 3).map((m) => (
-                          <span key={m.id} style={{ color: "#5a6b80", fontSize: 13 }}>{m.name}</span>
-                        ))}
-                        {materials.length === 0 && (
-                          <span style={{ color: "#5a6b80", fontSize: 13 }}>暂无推荐课程</span>
-                        )}
-                      </div>
+                    <div className="recommend">
+                      <b>推荐课程</b>
+                      <p>
+                        {materials.slice(0, 2).map((m) => `《${m.name}》`).join("") || "《职场沟通与协作》\n《信息安全意识培训》".split("\n").map((s) => s).join("")}
+                      </p>
                     </div>
-                  </section>
+                  </div>
                 </div>
               </div>
 
-              {/* 右侧3卡 — 独立通栏 */}
+              {/* 右侧3卡（原型 .right：个人资料 / 培训概况 / 通知消息） */}
               <aside className="right-rail">
-                <div className="profile card">
-                  <span className="avatar large" />
-                  <div>
-                    <h2>{auth.user.name}</h2>
-                    <p>企业管理员</p>
-                    <p>培训负责人</p>
+                <section className="profile card">
+                  <div className="profilehead">
+                    <div className="pic" />
+                    <div>
+                      <h3>{auth.user.name}</h3>
+                      <span className="tag">企业管理员</span>　<span className="tag">培训负责人</span>
+                    </div>
                   </div>
-                </div>
-                <div className="sidecard card">
-                  <div className="sidecard-head"><h2>培训概况</h2><span>本年度</span></div>
-                  <strong>{completedRecordCount}</strong>
-                  <p>已完成培训任务</p>
-                  <div className="mini-stats"><span>对练<b>{records.length}</b></span><span>考试<b>0</b></span><span>合格率<b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></span></div>
-                </div>
-                <div className="sidecard card">
-                  <h2>通知消息</h2>
-                  <p>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息，系统将及时推送任务派发、培训安排及学习进度提醒。"}</p>
-                </div>
+                </section>
+                <section className="sidecard card">
+                  <div className="row"><h3>培训概况</h3><span className="muted">本年度</span></div>
+                  <div className="score">{completedRecordCount.toLocaleString()}</div>
+                  <span className="muted">已完成培训任务</span>
+                  <div className="minis">
+                    <div><span className="muted">对练</span><b>{records.length.toLocaleString()}</b></div>
+                    <div><span className="muted">考试</span><b>{examAttempts.length.toLocaleString()}</b></div>
+                    <div><span className="muted">合格率</span><b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></div>
+                  </div>
+                </section>
+                <section className="sidecard card">
+                  <h3>通知消息</h3>
+                  <p className="muted" style={{ lineHeight: 1.8 }}>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息。系统将及时推送任务派发、培训安排及学习进度提醒。"}</p>
+                </section>
               </aside>
             </div>
           </section>
         )}
         {activeSection === "my-tasks" && (
-          <section className="page-section">
+          <section className="page-section my-tasks-mod home-dashboard">
             <div className="home-grid">
               <div className="home-main">
-                <div className="page-header">
-                  <div>
-                    <h1 className="page-title">我的任务</h1>
-                    <p className="page-desc">集中查看个人培训、对练和考试任务，合理安排学习进度。</p>
+                {/* 任务头 + 4 统计（原型 .taskhead） */}
+                <div className="taskhead card">
+                  <h1>我的任务</h1>
+                  <p className="muted">集中查看个人培训、对练和考试任务，合理安排学习进度。</p>
+                  <div className="taskcounts">
+                    <div><span className="muted">全部任务</span><b>{myTaskStats.total}</b></div>
+                    <div><span className="muted">已逾期</span><b style={{ color: "#e49a38" }}>{myTaskStats.overdue}</b></div>
+                    <div><span className="muted">已完成</span><b style={{ color: "#31a877" }}>{myTaskStats.completed}</b></div>
+                    <div><span className="muted">进行中</span><b className="blue">{myTaskStats.inProgress}</b></div>
                   </div>
                 </div>
 
-                {/* 4统计卡 */}
-                <div className="stats prototype-stats stats-4" style={{ marginBottom: 24 }}>
-                  <div className="metric card"><span>全部任务</span><strong>{myTaskStats.total}</strong><small>本年度累计</small></div>
-                  <div className="metric card"><span>已逾期</span><strong style={{ color: "#e6a23c" }}>{myTaskStats.overdue}</strong><small>需尽快处理</small></div>
-                  <div className="metric card"><span>已完成</span><strong className="text-green">{myTaskStats.completed}</strong><small>学习完成</small></div>
-                  <div className="metric card"><span>进行中</span><strong className="text-blue">{myTaskStats.inProgress}</strong><small>正在执行</small></div>
+                {/* 筛选区（原型 .query） */}
+                <div className="query card">
+                  <select className="field" value={taskFilter.status === "all" ? "" : taskFilter.status} onChange={(e) => setTaskFilter({ ...taskFilter, status: e.target.value || "all" })}>
+                    <option value="">全部任务状态</option>
+                    <option value="in_progress">进行中</option>
+                    <option value="not_started">待开始</option>
+                    <option value="overdue">已逾期</option>
+                    <option value="completed">已完成</option>
+                  </select>
+                  <input className="field" type="text" placeholder="请输入任务名称" value={taskFilter.keyword || ""} onChange={(e) => setTaskFilter({ ...taskFilter, keyword: e.target.value })} />
+                  <button className="btn" type="button">搜索</button>
+                  <button className="btn gray" type="button" onClick={() => { setTaskFilter({ status: "all", type: "all", keyword: "" }); }}>重置</button>
                 </div>
 
-                {/* 筛选区 */}
-                <div className="filter-bar card">
-                  <div className="filter-row">
-                    <div className="filter-item">
-                      <select className="filter-select" value={taskFilter.status === "all" ? "" : taskFilter.status} onChange={(e) => setTaskFilter({ ...taskFilter, status: e.target.value || "all" })}>
-                        <option value="">全部任务状态</option>
-                        <option value="published">进行中</option>
-                        <option value="completed">已完成</option>
-                        <option value="overdue">已逾期</option>
-                      </select>
-                    </div>
-                    <input className="filter-input" type="text" placeholder="请输入任务名称" value={taskFilter.keyword || ""} onChange={(e) => setTaskFilter({ ...taskFilter, keyword: e.target.value })} />
-                    <button className="btn primary" type="button" onClick={() => { /* filter applied reactively */ }}>搜索</button>
-                    <button className="btn" type="button" onClick={() => { setTaskFilter({ status: "all", type: "all", keyword: "" }); }}>重置</button>
-                  </div>
-                </div>
-
-                <div className="card section" style={{ padding: 0 }}>
-                  {/* 任务卡片列表 */}
+                {/* 任务列表（原型 .tasks > .task） */}
+                <div className="tasks card">
                   {filteredMyTasks.length === 0 && <div className="empty" style={{ padding: 40 }}>暂无任务</div>}
                   {filteredMyTasks.map((task, idx) => {
                     const runtimeStatus = getTaskRuntimeStatus(task);
                     const isOverdue = runtimeStatus === "overdue";
                     const isCompleted = runtimeStatus === "completed";
-                    const categoryColors = ["#e6a23c", "#4080ff", "#8b62e8", "#52c41a"];
-                    const categoryLabels = ["安全培训", "客户沟通", "业务对练", "入职课程"];
-                    const catColor = categoryColors[idx % categoryColors.length];
-                    const catLabel = categoryLabels[idx % categoryLabels.length];
-                    const statusLabel = isCompleted ? "已完成" : isOverdue ? "已逾期" : "进行中";
-                    const statusBg = isCompleted ? "#f6ffed" : isOverdue ? "#fff7e6" : "#e6f4ff";
-                    const statusColor = isCompleted ? "#52c41a" : isOverdue ? "#e6a23c" : "#4080ff";
-                    const actionLabel = isCompleted ? "查看记录" : idx === 0 ? "继续学习" : "开始学习";
+                    const categoryGradients = ["linear-gradient(135deg,#f3a75c,#e87072)", "linear-gradient(135deg,#6a9bef,#6b70e8)", "linear-gradient(135deg,#9b82ed,#657de9)", "linear-gradient(135deg,#60c8a1,#4e9cd8)"];
+                    const categoryLabels = ["安全\n培训", "客户\n沟通", "业务\n对练", "入职\n课程"];
+                    const progress = isCompleted ? 100 : (task.progressPercent ?? (isCompleted ? 100 : 0));
+                    // 任务状态：已完成→查看记录；任务下已有场景查看过资料→继续学习；否则（未查看任何资料）→开始学习
+                    const actionLabel = isCompleted ? "查看记录" : taskHasViewedMaterial(task.id) ? "继续学习" : "开始学习";
                     return (
-                      <div key={task.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 20px", borderBottom: idx < tasks.length - 1 ? "1px solid var(--border)" : "none" }}>
-                        {/* 左侧分类图标 */}
-                        <div style={{ width: 52, height: 52, borderRadius: 10, background: catColor, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#fff", fontSize: 12, fontWeight: 700, textAlign: "center", lineHeight: 1.2 }}>
-                          {catLabel}
+                      <article className="task" key={task.id}>
+                        <div className="taskicon" style={{ background: categoryGradients[idx % 4] }}>{categoryLabels[idx % 4]}</div>
+                        <div>
+                          <h3>{task.name}</h3>
+                          <p>常规对话　|　{task.answerForm === "text" ? "文本形式" : "语音形式"}　|　场景数：{task.sceneCount ?? 1}　|　完成进度：{progress}%</p>
+                          <div className="meta">
+                            <span>任务编号：{task.code || task.id}</span>
+                            <span>{isCompleted ? "完成时间" : "截止时间"}：{formatDateTimeFull(task.endAt)}</span>
+                          </div>
                         </div>
-                        {/* 中间任务信息 */}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <strong style={{ display: "block", fontSize: 15, marginBottom: 4 }}>{task.name}</strong>
-                          <span style={{ fontSize: 12, color: "#8b98aa", display: "block", marginBottom: 2 }}>
-                            常规对话 | 语音形式 | 场景数：1 | 完成进度：{isCompleted ? "100" : "68"}%
-                          </span>
-                          <span style={{ fontSize: 12, color: "#8b98aa" }}>
-                            任务编号：{task.code || task.id}{"   "}
-                            {isCompleted ? "完成时间" : "截止时间"}：{isCompleted ? formatDate(task.endAt || "—") : formatDate(task.endAt)}
-                          </span>
+                        <div className="action">
+                          {isCompleted ? <span className="tag green">已完成</span> : isOverdue ? <span className="overdue">已逾期</span> : taskHasViewedMaterial(task.id) ? <span className="tag blue">进行中</span> : <span className="tag">待开始</span>}
+                          <a onClick={() => { navigateTo("/tasks/" + task.id); }}>{actionLabel}　›</a>
                         </div>
-                        {/* 右侧状态+操作 */}
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
-                          <span style={{ padding: "2px 10px", borderRadius: 4, background: statusBg, color: statusColor, fontSize: 12, fontWeight: 600 }}>{statusLabel}</span>
-                          <button className="link-btn" type="button" style={{ color: "#4080ff", fontSize: 13, fontWeight: 600 }} onClick={() => { navigateTo('/tasks/' + task.id); }}>
-                            {actionLabel} &gt;
-                          </button>
-                        </div>
-                      </div>
+                      </article>
                     );
                   })}
                 </div>
               </div>
 
-              {/* 右侧3卡 */}
+              {/* 右侧栏（原型 .right：个人资料 / 培训概况 / 通知消息） */}
               <aside className="right-rail">
-                <div className="profile card">
-                  <span className="avatar large" />
-                  <div>
-                    <h2>{auth.user.name}</h2>
-                    <p>企业管理员</p>
-                    <p>培训负责人</p>
+                <section className="profile card">
+                  <div className="profilehead">
+                    <div className="pic" />
+                    <div>
+                      <h3>{auth.user.name}</h3>
+                      <span className="tag">企业管理员</span>　<span className="tag">培训负责人</span>
+                    </div>
                   </div>
-                </div>
-                <div className="sidecard card">
-                  <div className="sidecard-head"><h2>培训概况</h2><span>本年度</span></div>
-                  <strong>{completedRecordCount}</strong>
-                  <p>已完成培训任务</p>
-                  <div className="mini-stats"><span>对练<b>{records.length}</b></span><span>考试<b>0</b></span><span>合格率<b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></span></div>
-                </div>
-                <div className="sidecard card">
-                  <h2>通知消息</h2>
-                  <p>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息，系统将及时推送任务派发、培训安排及学习进度提醒。"}</p>
-                </div>
+                </section>
+                <section className="sidecard card">
+                  <div className="row"><h3>培训概况</h3><span className="muted">本年度</span></div>
+                  <div className="score">{completedRecordCount.toLocaleString()}</div>
+                  <span className="muted">已完成培训任务</span>
+                  <div className="minis">
+                    <div><span className="muted">对练</span><b>{records.length.toLocaleString()}</b></div>
+                    <div><span className="muted">考试</span><b>{examAttempts.length.toLocaleString()}</b></div>
+                    <div><span className="muted">合格率</span><b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></div>
+                  </div>
+                </section>
+                <section className="sidecard card">
+                  <h3>通知消息</h3>
+                  <p className="muted" style={{ lineHeight: 1.8 }}>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息。系统将及时推送任务派发、培训安排及学习进度提醒。"}</p>
+                </section>
               </aside>
             </div>
           </section>
@@ -2964,7 +3668,7 @@ export function AdminDashboard() {
                     <p className="page-desc">任务编号: {task.code || task.id}</p>
                   </div>
                   <div className="toolbar">
-                    <button className="btn" type="button" onClick={() => setActiveSection("my-tasks")}>返回我的任务</button>
+                    <button className="btn" type="button" onClick={() => handleNavClick("my-tasks")}>返回我的任务</button>
                   </div>
                 </div>
 
@@ -2990,7 +3694,7 @@ export function AdminDashboard() {
                         key={scene.id}
                         onClick={() => setSelectedTaskSceneId(scene.id)}
                         style={{
-                          border: active ? "1px solid #4080ff" : "1px solid var(--border)",
+                          border: active ? "1px solid #4e63f0" : "1px solid var(--border)",
                           borderRadius: 8,
                           padding: 16,
                           marginBottom: 12,
@@ -3001,7 +3705,7 @@ export function AdminDashboard() {
                           gap: 12,
                         }}
                       >
-                        <span style={{ width: 28, height: 28, borderRadius: 6, background: active ? "#4080ff" : "#c0c4cc", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>{i + 1}</span>
+                        <span style={{ width: 28, height: 28, borderRadius: 6, background: active ? "#4e63f0" : "#c0c4cc", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>{i + 1}</span>
                         <strong>{scene.sceneName || "场景名称"}</strong>
                         <span className="badge info" style={{ marginLeft: "auto" }}>进行中</span>
                       </div>
@@ -3052,7 +3756,7 @@ export function AdminDashboard() {
                           <span style={{ color: "#8b98aa", fontSize: 13 }}>{currentScene.sceneName || "场景名称"}</span>
                         </div>
                         <div style={{ display: "flex", gap: 16, borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
-                          <button className="link-btn" type="button" style={{ color: "#4080ff", fontWeight: 600, borderBottom: "2px solid #4080ff", paddingBottom: 8 }}>对练记录</button>
+                          <button className="link-btn" type="button" style={{ color: "#4e63f0", fontWeight: 600, borderBottom: "2px solid #4e63f0", paddingBottom: 8 }}>对练记录</button>
                           <button className="link-btn" type="button">考试记录</button>
                         </div>
                         <div className="empty" style={{ padding: 24 }}>完成AI对练后显示对练记录</div>
@@ -3087,81 +3791,89 @@ export function AdminDashboard() {
           );
         })()}
         {activeSection === "my-exams" && (
-          <section className="page-section">
+          <section className="page-section my-exams-mod home-dashboard">
             <div className="home-grid">
               <div className="home-main">
-                <div className="page-header">
+                {/* 模块头（原型 .module-head） */}
+                <div className="module-head card">
                   <div>
-                    <h1 className="page-title">我的考试</h1>
-                    <p className="page-desc">查看待参加、进行中和已完成的考试记录。</p>
+                    <h1>我的考试</h1>
+                    <p className="muted">参加已发布考试，查看历史成绩与解析。</p>
+                  </div>
+                  <div className="module-actions">
+                    <button className="btn outline" type="button">导出记录</button>
                   </div>
                 </div>
 
-                {/* 4统计卡 */}
-                <div className="stats prototype-stats stats-4" style={{ marginBottom: 24 }}>
-                  <div className="metric card"><span>全部考试</span><strong>5</strong><small>本年度累计</small></div>
-                  <div className="metric card"><span>待参加</span><strong style={{ color: "#e6a23c" }}>2</strong><small>请按时完成</small></div>
-                  <div className="metric card"><span>已通过</span><strong className="text-green">2</strong><small>通过率66.7%</small></div>
-                  <div className="metric card"><span>平均成绩</span><strong>78<span style={{ fontSize: 16 }}> 分</span></strong><small>近12个月</small></div>
+                {/* 4统计卡（对齐 APP 端：全部/待参加/已通过/未通过） */}
+                <div className="summary-grid">
+                  <div className="summary-card card"><label>全部考试</label><strong>{myExamStats.total}</strong><small className="muted">已发布累计</small></div>
+                  <div className="summary-card card"><label>待参加</label><strong style={{ color: "#e49a38" }}>{myExamStats.pending}</strong><small className="muted">请按时完成</small></div>
+                  <div className="summary-card card"><label>已通过</label><strong className="blue">{myExamStats.passed}</strong><small className="muted">通过率 {myExamStats.passRate}%</small></div>
+                  <div className="summary-card card"><label>未通过</label><strong style={{ color: "#dc7662" }}>{myExamStats.failed}</strong><small className="muted">建议重新学习</small></div>
                 </div>
 
-                {/* 筛选区 */}
-                <div className="filter-bar card">
-                  <div className="filter-row">
-                    <div className="filter-item">
-                      <select className="filter-select" defaultValue="">
-                        <option value="">全部考试状态</option>
-                        <option value="pending">待参加</option>
-                        <option value="passed">已通过</option>
-                        <option value="failed">未通过</option>
-                      </select>
-                    </div>
-                    <input className="filter-input" type="text" placeholder="搜索考试名称" />
-                    <button className="btn primary" type="button">查询</button>
-                  </div>
+                {/* 筛选区（原型 .module-filter） */}
+                <div className="module-filter card">
+                  <select className="field" value={examFilter.status === "all" ? "" : examFilter.status} onChange={(e) => setExamFilter({ ...examFilter, status: e.target.value || "all" })}>
+                    <option value="">全部考试状态</option>
+                    <option value="pending">待参加</option>
+                    <option value="passed">已通过</option>
+                    <option value="failed">未通过</option>
+                  </select>
+                  <input className="field" type="text" placeholder="搜索考试名称" value={examFilter.keyword || ""} onChange={(e) => setExamFilter({ ...examFilter, keyword: e.target.value })} />
+                  <button className="btn" type="button">查询</button>
+                  <button className="btn outline" type="button" onClick={() => setExamFilter({ status: "all", keyword: "" })}>重置</button>
                 </div>
 
-                {/* 考试表格 */}
-                <div className="card section">
-                  <DataTable headers={["考试名称", "考试类型", "考试时间", "成绩", "状态", "操作"]}>
-                    {examAttempts.length > 0 ? examAttempts.slice(0, 20).map((attempt, i) => {
-                      const statusLabel = attempt.status === "passed" ? "已通过" : attempt.status === "failed" ? "未通过" : "待参加";
-                      const statusClass = attempt.status === "passed" ? "green" : attempt.status === "failed" ? "red" : "amber";
-                      const scoreText = attempt.score != null && attempt.totalScore ? `${attempt.score}分` : "—";
-                      const actionLabel = attempt.status === "passed" ? "查看解析" : attempt.status === "failed" ? "重新考试" : "开始考试";
-                      const exam = exams.find((e) => e.id === attempt.examId);
-                      return (
-                        <tr key={attempt.id || i}>
-                          <td><strong>{attempt.examName || exam?.name || "考试"}</strong></td>
-                          <td>{exam?.status === "stage" ? "阶段考试" : exam?.status === "final" ? "结业考试" : "在线考试"}</td>
-                          <td className="muted-text">{attempt.startedAt ? new Date(attempt.startedAt).toLocaleString("zh-CN", { hour12: false }).slice(0, 16) : "—"}</td>
-                          <td>{scoreText}</td>
-                          <td><span className={`badge ${statusClass}`}>{statusLabel}</span></td>
-                          <td>
-                            {attempt.status === "passed" ? (
-                              <button className="link-btn" type="button" onClick={() => setViewingExamResult(attempt)}>查看解析</button>
-                            ) : (
-                              <button className="link-btn" type="button" disabled={submitting} onClick={() => { if (exam) void createExamAttemptAndStart(exam); else void resumeExamAttempt(attempt.examId); }}>{actionLabel}</button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    }) : [
-                      { name: "客户服务沟通技巧", type: "在线考试", time: "2026-08-05 09:00—23:59", score: "—", status: "待参加", statusClass: "amber", action: "开始考试" },
-                      { name: "安全生产基础知识", type: "阶段考试", time: "2026-07-28 14:00—15:00", score: "86分", status: "已通过", statusClass: "green", action: "查看解析" },
-                      { name: "新员工入职培训考试", type: "结业考试", time: "2026-07-25 10:00—11:00", score: "58分", status: "未通过", statusClass: "red", action: "重新考试" },
-                      { name: "信息安全意识培训", type: "在线考试", time: "2026-07-18 09:00—23:59", score: "90分", status: "已通过", statusClass: "green", action: "查看解析" },
-                    ].map((row, i) => (
-                      <tr key={i}>
-                        <td><strong>{row.name}</strong></td>
-                        <td>{row.type}</td>
-                        <td className="muted-text">{row.time}</td>
-                        <td>{row.score}</td>
-                        <td><span className={`badge ${row.statusClass}`}>{row.status}</span></td>
-                        <td><button className="link-btn" type="button">{row.action}</button></td>
+                {/* 考试表格（原型 .data-table） */}
+                <div className="card" style={{ overflow: "hidden" }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>考试名称</th>
+                        <th>考试类型</th>
+                        <th>考试时间</th>
+                        <th>成绩</th>
+                        <th>状态</th>
+                        <th>操作</th>
                       </tr>
-                    ))}
-                  </DataTable>
+                    </thead>
+                    <tbody>
+                      {filteredMyExams.length > 0 ? filteredMyExams.map((exam) => {
+                        const st = myExamStatus(exam);
+                        const statusClass = st.text === "已通过" ? "green" : st.text === "未通过" ? "red" : st.text === "进行中" ? "blue" : "orange";
+                        const att = myExamLatestAttempt(exam.id);
+                        const examTime = att?.startedAt
+                          ? new Date(att.startedAt).toLocaleString("zh-CN", { hour12: false }).slice(0, 16)
+                          : exam.startAt
+                            ? new Date(exam.startAt).toLocaleString("zh-CN", { hour12: false }).slice(0, 16)
+                            : "—";
+                        return (
+                          <tr key={exam.id}>
+                            <td><strong>{exam.name}</strong></td>
+                            <td>{examTypeLabel(exam)}</td>
+                            <td>{examTime}</td>
+                            <td>{st.score === "—" ? "—" : st.score}</td>
+                            <td><span className={`tag ${statusClass}`}>{st.text}</span></td>
+                            <td>
+                              {st.text === "已通过" && att ? (
+                                <a onClick={() => setViewingExamResult(att)}>查看解析</a>
+                              ) : st.text === "进行中" ? (
+                                <a onClick={() => void resumeExamAttempt(exam.id)}>继续考试</a>
+                              ) : (
+                                <a onClick={() => void createExamAttemptAndStart(exam)}>{st.action}</a>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      }) : (
+                        <tr>
+                          <td colSpan={6} className="empty" style={{ padding: 40 }}>暂无考试，请联系管理员发布考试</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
 
                 {/* 查看解析弹窗（学员成绩报告） */}
@@ -3196,26 +3908,31 @@ export function AdminDashboard() {
                 )}
               </div>
 
-              {/* 右侧3卡 */}
+              {/* 右侧栏（原型 .right：个人资料 / 培训概况 / 通知消息） */}
               <aside className="right-rail">
-                <div className="profile card">
-                  <span className="avatar large" />
-                  <div>
-                    <h2>{auth.user.name}</h2>
-                    <p>企业管理员</p>
-                    <p>培训负责人</p>
+                <section className="profile card">
+                  <div className="profilehead">
+                    <div className="pic" />
+                    <div>
+                      <h3>{auth.user.name}</h3>
+                      <span className="tag">企业管理员</span>　<span className="tag">培训负责人</span>
+                    </div>
                   </div>
-                </div>
-                <div className="sidecard card">
-                  <div className="sidecard-head"><h2>培训概况</h2><span>本年度</span></div>
-                  <strong>{completedRecordCount}</strong>
-                  <p>已完成培训任务</p>
-                  <div className="mini-stats"><span>对练<b>{records.length}</b></span><span>考试<b>0</b></span><span>合格率<b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></span></div>
-                </div>
-                <div className="sidecard card">
-                  <h2>通知消息</h2>
-                  <p>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息，系统将及时推送任务派发、培训安排及学习进度提醒。"}</p>
-                </div>
+                </section>
+                <section className="sidecard card">
+                  <div className="row"><h3>培训概况</h3><span className="muted">本年度</span></div>
+                  <div className="score">{completedRecordCount.toLocaleString()}</div>
+                  <span className="muted">已完成培训任务</span>
+                  <div className="minis">
+                    <div><span className="muted">对练</span><b>{records.length.toLocaleString()}</b></div>
+                    <div><span className="muted">考试</span><b>{examAttempts.length.toLocaleString()}</b></div>
+                    <div><span className="muted">合格率</span><b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></div>
+                  </div>
+                </section>
+                <section className="sidecard card">
+                  <h3>通知消息</h3>
+                  <p className="muted" style={{ lineHeight: 1.8 }}>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息。系统将及时推送任务派发、培训安排及学习进度提醒。"}</p>
+                </section>
               </aside>
             </div>
           </section>
@@ -3236,7 +3953,7 @@ export function AdminDashboard() {
             completedRecordCount={completedRecordCount}
             pendingAppealCount={pendingAppealCount}
             recordsCount={records.length}
-            onSwitchTab={(section) => setActiveSection(section)}
+            onSwitchTab={(section) => handleNavClick(section)}
             onRefresh={loadData}
           />
         )}
@@ -3367,7 +4084,7 @@ export function AdminDashboard() {
           <section className="page-section">
             <div className="home-grid">
               <div className="home-main">
-                <SysMenusSection navItems={navItems} />
+                <SysMenusSection />
               </div>
               <aside className="right-rail">
                 <div className="profile card">
@@ -3442,6 +4159,13 @@ export function AdminDashboard() {
                     <p className="section-note">本地 SQLite 保存租户套餐、到期时间和资源额度。</p>
                   </div>
                 </div>
+                {(() => {
+                  if (!tenantForm.expireAt) return null;
+                  const days = Math.ceil((new Date(tenantForm.expireAt).getTime() - Date.now()) / 86400000);
+                  if (days < 0) return <div className="notice error">租户已到期 {Math.abs(days)} 天，请尽快续费，否则功能将受限。</div>;
+                  if (days <= 30) return <div className="notice">租户将在 {days} 天后到期，请提前安排续费。</div>;
+                  return null;
+                })()}
                 <Field label="租户名称"><input value={tenantForm.name} onChange={(e) => setTenantForm({ ...tenantForm, name: e.target.value })} required /></Field>
                 <Field label="套餐版本"><select value={tenantForm.planCode} onChange={(e) => setTenantForm({ ...tenantForm, planCode: e.target.value })}><option value="trial">试用版</option><option value="standard">标准版</option><option value="professional">专业版</option><option value="enterprise">企业版</option></select></Field>
                 <Field label="到期时间"><input type="datetime-local" value={tenantForm.expireAt} onChange={(e) => setTenantForm({ ...tenantForm, expireAt: e.target.value })} /></Field>
@@ -3452,6 +4176,10 @@ export function AdminDashboard() {
                 <div className="score-editor-grid">
                   <Field label="STT 秒数"><input type="number" min="0" value={tenantForm.resourceQuota.sttSeconds} onChange={(e) => setTenantForm({ ...tenantForm, resourceQuota: { ...tenantForm.resourceQuota, sttSeconds: Number(e.target.value) } })} /></Field>
                   <Field label="TTS 字符"><input type="number" min="0" value={tenantForm.resourceQuota.ttsCharacters} onChange={(e) => setTenantForm({ ...tenantForm, resourceQuota: { ...tenantForm.resourceQuota, ttsCharacters: Number(e.target.value) } })} /></Field>
+                </div>
+                <div className="score-editor-grid">
+                  <Field label="用户数上限"><input type="number" min="0" value={tenantForm.resourceQuota.userLimit} onChange={(e) => setTenantForm({ ...tenantForm, resourceQuota: { ...tenantForm.resourceQuota, userLimit: Number(e.target.value) } })} /></Field>
+                  <Field label="存储空间 (MB)"><input type="number" min="0" value={tenantForm.resourceQuota.storageMb} onChange={(e) => setTenantForm({ ...tenantForm, resourceQuota: { ...tenantForm.resourceQuota, storageMb: Number(e.target.value) } })} /></Field>
                 </div>
                 <button className="btn primary full" disabled={submitting || !tenantForm.name} type="submit"><Save size={16} /> 保存租户配置</button>
               </form>
@@ -3466,6 +4194,8 @@ export function AdminDashboard() {
                   <div className="todo"><div><strong>租户编码</strong><span>zxt-demo</span></div>{statusBadge("active")}</div>
                   <div className="todo"><div><strong>套餐版本</strong><span>{tenantForm.planCode}</span></div>{statusBadge("active")}</div>
                   <div className="todo"><div><strong>场景额度</strong><span>{tenantForm.resourceQuota.sceneLimit}</span></div>{statusBadge("active")}</div>
+                  <div className="todo"><div><strong>用户数上限</strong><span>{tenantForm.resourceQuota.userLimit}</span></div>{statusBadge("active")}</div>
+                  <div className="todo"><div><strong>存储空间</strong><span>{(tenantForm.resourceQuota.storageMb / 1024).toFixed(1)} GB</span></div>{statusBadge("active")}</div>
                 </div>
               </div>
             </div>
@@ -3722,10 +4452,135 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function LoginCaptchaModal({
+  apiBase,
+  onClose,
+  onPass,
+}: {
+  apiBase: string;
+  onClose: () => void;
+  onPass: (captchaToken: string) => void;
+}) {
+  const [challenge, setChallenge] = useState<CaptchaChallenge | null>(null);
+  const [pos, setPos] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const startX = useRef(0);
+  const lastPos = useRef(0);
 
+  async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(`${apiBase}${path}`, {
+      ...init,
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers || {}),
+      },
+    });
+    const payload = (await response.json()) as ApiResponse<T>;
+    if (!payload.success) throw new Error(payload.message || payload.code);
+    return payload.data;
+  }
 
+  async function loadChallenge() {
+    setLoading(true);
+    setError("");
+    setDone(false);
+    setPos(0);
+    lastPos.current = 0;
+    try {
+      const next = await requestJson<CaptchaChallenge>("/auth/captcha");
+      setChallenge(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "图形验证码加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }
 
+  useEffect(() => {
+    void loadChallenge();
+  }, []);
 
+  function handleDown(event: React.PointerEvent) {
+    if (done || loading || !challenge) return;
+    startX.current = event.clientX - lastPos.current;
+    setDragging(true);
+    (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
+  }
+
+  function handleMove(event: React.PointerEvent) {
+    if (!dragging || done || !challenge) return;
+    const nextPos = Math.max(0, Math.min(event.clientX - startX.current, challenge.trackMax));
+    lastPos.current = nextPos;
+    setPos(nextPos);
+  }
+
+  async function handleUp() {
+    if (!dragging || done || !challenge) return;
+    setDragging(false);
+    const finalPos = Math.round(lastPos.current);
+    if (Math.abs(finalPos - challenge.targetX) > 16) {
+      setError("拼图未对齐，请再试一次");
+      setPos(0);
+      lastPos.current = 0;
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await requestJson<{ captchaToken: string; expiresIn: number }>("/auth/captcha", {
+        method: "POST",
+        body: JSON.stringify({ captchaId: challenge.captchaId, positionX: finalPos }),
+      });
+      setDone(true);
+      setError("");
+      window.setTimeout(() => onPass(result.captchaToken), 300);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "图形验证码校验失败");
+      await loadChallenge();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="login-captcha-mask" role="dialog" aria-modal="true" aria-label="图形验证码">
+      <div className="login-captcha-panel">
+        <div className="login-captcha-head">
+          <div>
+            <h3>安全验证</h3>
+            <p>拖动滑块，将拼图放入缺口后自动登录。</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="关闭">×</button>
+        </div>
+        <div className="login-captcha-image">
+          <div className="login-captcha-piece" style={{ left: `${12 + pos}px` }} />
+          {challenge ? <div className="login-captcha-target" style={{ left: `${12 + challenge.targetX}px` }} /> : null}
+        </div>
+        <div className={`login-captcha-track ${done ? "done" : ""}`}>
+          <span>{done ? "验证通过" : error || (loading ? "加载中..." : "拖动滑块完成验证")}</span>
+          <div
+            className="login-captcha-handle"
+            style={{ left: `${pos}px` }}
+            onPointerDown={handleDown}
+            onPointerMove={handleMove}
+            onPointerUp={handleUp}
+            onPointerCancel={handleUp}
+            aria-label="拖动滑块"
+          >
+            ›
+          </div>
+        </div>
+        <button className="login-captcha-refresh" type="button" onClick={() => void loadChallenge()} disabled={loading}>
+          刷新验证码
+        </button>
+      </div>
+    </div>
+  );
+}
 
 
 

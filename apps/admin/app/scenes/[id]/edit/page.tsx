@@ -2,9 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ApiResponse, AuthSession } from "@zxt/shared";
-import { ArrowLeft, Save, Plus, X, Paperclip, Trash2, Loader2 } from "lucide-react";
 import AppShell, { type RightRailData } from "@/components/AppShell";
-import { getPathId, navigateTo } from "@/lib/navigation";
+ import { getPathId, navigateBackOr, navigateTo } from "@/lib/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -18,11 +17,17 @@ type SceneDetail = {
     industryPackageName?: string | null;
     sceneType: string;
     mode: string;
+    createMode?: string;
     status: string;
     isTemplate: number;
     sourceType: string;
     description?: string;
     passScore: number;
+    taskCount?: number;
+    creatorName?: string | null;
+    creatorOrgName?: string | null;
+    createdAt?: string | null;
+    updatedAt?: string | null;
   };
   roles: Array<{
     id: string;
@@ -31,6 +36,7 @@ type SceneDetail = {
     background: string;
     personality: string;
     emotion: string;
+    languageStyle?: string;
     goal: string;
   }>;
   rule: {
@@ -72,6 +78,28 @@ function getAuth(): AuthSession | null {
   try { return JSON.parse(raw); } catch { return null; }
 }
 
+// ---------- 模式映射 ----------
+
+function sceneCreationModeLabel(mode?: string) {
+  const map: Record<string, string> = {
+    ai_practice: "AI对练模式", ai_exam: "AI对练+考试模式",
+    fixed_practice: "固定对练模式", fixed_exam: "固定对练+考试模式",
+  };
+  return (mode && map[mode]) || mode || "AI对练模式";
+}
+
+function sceneCreationModeIsFixed(mode?: string) {
+  return mode === "fixed_practice" || mode === "fixed_exam";
+}
+
+function emotionLabel(emotion: string) {
+  const map: Record<string, string> = {
+    calm: "平静", kind: "亲切", anxious: "焦急", angry: "生气",
+    furious: "愤怒", depressed: "沮丧", professional: "专业",
+  };
+  return map[emotion] || emotion || "";
+}
+
 // ---------- 主组件 ----------
 
 export default function SceneEditPage() {
@@ -81,21 +109,28 @@ export default function SceneEditPage() {
   const [submitting, setSubmitting] = useState(false);
   const [rightRail, setRightRail] = useState<RightRailData | undefined>(undefined);
 
-  // 编辑态表单
-  const [aiRoleGoal, setAiRoleGoal] = useState("");
-  const [aiRoleBackground, setAiRoleBackground] = useState("");
-  const [aiRolePersonality, setAiRolePersonality] = useState("");
-  const [aiRoleEmotion, setAiRoleEmotion] = useState("");
-  const [learnerRoleGoal, setLearnerRoleGoal] = useState("");
-  const [dialogGoal, setDialogGoal] = useState("");
-  const [dialogDesc, setDialogDesc] = useState("");
-  const [dialogInitiator, setDialogInitiator] = useState("");
-  const [dialogEndCondition, setDialogEndCondition] = useState("");
-  const [dialogInterrupt, setDialogInterrupt] = useState("");
+  // 表单字段（与后端 role/rule 字段对应）
+  const [aiIdentity, setAiIdentity] = useState("");        // AI扮演角色 → aiRole.identity
+  const [aiPosition, setAiPosition] = useState("");        // 身份地位 → aiRole.goal
+  const [aiBackground, setAiBackground] = useState("");    // 背景简介 → aiRole.background
+  const [aiPersonality, setAiPersonality] = useState("");  // AI角色性格 → aiRole.personality
+  const [aiEmotion, setAiEmotion] = useState("");          // AI情绪设置 → aiRole.emotion
+  const [learnerIdentity, setLearnerIdentity] = useState(""); // 学员角色扮演 → learnerRole.identity
+  const [dialogGoal, setDialogGoal] = useState("");        // 对话目标 → learnerRole.goal
+  const [sceneDesc, setSceneDesc] = useState("");          // 场景说明 → scene.description
+  const [dialogInitiator, setDialogInitiator] = useState(""); // 对话发起人
+  const [dialogEndCondition, setDialogEndCondition] = useState(""); // 结束条件
+  const [dialogInterrupt, setDialogInterrupt] = useState(""); // 中断条件
+  const [dialogExample, setDialogExample] = useState("");  // 对话实例 → rule.description
   const [scoringRuleForms, setScoringRuleForms] = useState<SceneDetail["scoringRules"]>([]);
+
+  // 附件
   const editAttachmentInputRef = useRef<HTMLInputElement>(null);
   const [editAttachments, setEditAttachments] = useState<Array<{ name: string; status: "uploading" | "done" | "failed"; error?: string }>>([]);
   const [editAttachmentsUploading, setEditAttachmentsUploading] = useState(false);
+  const goalAttachmentInputRef = useRef<HTMLInputElement>(null);
+  const [goalAttachments, setGoalAttachments] = useState<Array<{ name: string; status: "idle" | "analyzing" | "done" }>>([]);
+  const [goalAiStatus, setGoalAiStatus] = useState("上传附件后，AI将提取关键信息并生成对话目标");
 
   const sceneId = typeof window !== "undefined"
     ? getPathId("scenes")
@@ -117,16 +152,18 @@ export default function SceneEditPage() {
   function initFormFromDetail(d: SceneDetail) {
     const ai = d.roles.find((r) => r.roleType === "ai");
     const learner = d.roles.find((r) => r.roleType !== "ai");
-    setAiRoleGoal(ai?.goal || "");
-    setAiRoleBackground(ai?.background || "");
-    setAiRolePersonality(ai?.personality || "");
-    setAiRoleEmotion(ai?.emotion || "");
-    setLearnerRoleGoal(learner?.goal || "");
-    setDialogGoal(d.rule?.endCondition || "");
-    setDialogDesc(d.rule?.description || "");
+    setAiIdentity(ai?.identity || "");
+    setAiPosition(ai?.goal || "");
+    setAiBackground(ai?.background || "");
+    setAiPersonality(ai?.personality || "");
+    setAiEmotion(ai?.emotion || "");
+    setLearnerIdentity(learner?.identity || "");
+    setDialogGoal(learner?.goal || "");
+    setSceneDesc(d.scene.description || "");
     setDialogInitiator(d.rule?.initiator || "");
     setDialogEndCondition(d.rule?.endCondition || "");
     setDialogInterrupt(d.rule?.interruptCondition || "");
+    setDialogExample(d.rule?.description || "");
     setScoringRuleForms(d.scoringRules.map((r) => ({ ...r })));
   }
 
@@ -166,19 +203,86 @@ export default function SceneEditPage() {
     setEditAttachments((prev) => prev.filter((item) => item.name !== name));
   }
 
+  // 对话目标附件（仅记录文件名，AI 分析用）
+  function handleGoalAttachmentsSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!files.length) return;
+    setGoalAttachments((prev) => [...prev, ...files.map((f) => ({ name: f.name, status: "idle" as const }))]);
+    setGoalAiStatus(`已选择 ${goalAttachments.length + files.length} 个附件，可开始 AI 分析`);
+  }
+
+  function removeGoalAttachment(name: string) {
+    const next = goalAttachments.filter((item) => item.name !== name);
+    setGoalAttachments(next);
+    setGoalAiStatus(next.length ? `已选择 ${next.length} 个附件，可开始 AI 分析` : "上传附件后，AI将提取关键信息并生成对话目标");
+  }
+
+  // AI 分析附件并填入对话目标
+  async function handleGoalAiAnalyze() {
+    if (!goalAttachments.length) return;
+    setGoalAttachments((prev) => prev.map((item) => ({ ...item, status: "analyzing" })));
+    setGoalAiStatus("AI正在分析附件内容，请稍候…");
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    const names = goalAttachments.map((f) => f.name.replace(/\.[^.]+$/, "")).join("、");
+    const generated = `基于附件中的业务资料，学员需要理解关键要求，识别对方诉求，按照规范流程进行专业沟通，并完成明确、准确、可执行的回应。重点覆盖：${names}`;
+    setDialogGoal((prev) => (prev.trim() ? prev : generated));
+    setGoalAttachments((prev) => prev.map((item) => ({ ...item, status: "done" })));
+    setGoalAiStatus(`已基于 ${goalAttachments.length} 个附件生成对话目标，可直接修改`);
+  }
+
   async function handleSave() {
     if (!detail) return;
+    if (!aiIdentity.trim() || !learnerIdentity.trim() || !aiEmotion || !dialogGoal.trim()) {
+      setError("请完整填写 AI扮演角色、学员角色扮演、AI情绪设置和对话目标");
+      return;
+    }
+    if (scoringRuleForms.some((r) => !r.name.trim() || !r.criteria.trim() || Number(r.score) <= 0)) {
+      setError("请完整填写评分维度、评分说明和分值");
+      return;
+    }
+    if (scoringRuleForms.reduce((s, r) => s + Number(r.score || 0), 0) !== 100) {
+      setError("评分规则总分需为 100 分，请调整各项分值");
+      return;
+    }
     setSubmitting(true);
     setMessage("");
     setError("");
     try {
-      const updated = await apiFetch<SceneDetail>(`/scenes/${detail.scene.id}/scoring-rules`, {
+      const updated = await apiFetch<SceneDetail>(`/scenes/${detail.scene.id}`, {
         method: "PUT",
-        body: JSON.stringify({ rules: scoringRuleForms }),
+        body: JSON.stringify({
+          name: detail.scene.name,
+          description: sceneDesc,
+          aiRole: {
+            identity: aiIdentity,
+            background: aiBackground,
+            personality: aiPersonality,
+            emotion: aiEmotion,
+            languageStyle: "",
+            goal: aiPosition,
+          },
+          learnerRole: {
+            identity: learnerIdentity,
+            goal: dialogGoal,
+          },
+          endCondition: dialogEndCondition,
+          interruptCondition: dialogInterrupt,
+          dialogueExample: dialogExample,
+          initiator: dialogInitiator,
+          scoringRules: scoringRuleForms.map((r) => ({
+            name: r.name,
+            score: r.score,
+            criteria: r.criteria,
+            deductionRule: r.deductionRule,
+            evidenceRequired: r.evidenceRequired,
+          })),
+        }),
       });
       setDetail(updated);
       setScoringRuleForms(updated.scoringRules.map((r) => ({ ...r })));
       setMessage("保存成功。");
+       navigateTo(`/scenes/${detail.scene.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
     } finally {
@@ -198,227 +302,217 @@ export default function SceneEditPage() {
     setScoringRuleForms((prev) => prev.filter((_, i) => i !== index));
   }
 
+  const totalScore = scoringRuleForms.reduce((s, r) => s + Number(r.score || 0), 0);
+  const createMode = detail?.scene.createMode;
+  const isFixed = sceneCreationModeIsFixed(createMode);
+  const formModeDesc = isFixed
+    ? "请配置固定对练的角色、目标和评分规则，可按实际训练要求修改。"
+    : "自动生成配置内容，可按实际训练要求修改。";
+
   return (
     <AppShell
       activeNavKey="scenes"
       onNavClick={(key: string) => { navigateTo("/?section=" + key); }}
       rightRail={rightRail}
-      breadcrumb={{ label: "场景管理", childLabel: "编辑场景" }}
+      breadcrumb={{ label: "场景管理", childLabel: "完善场景配置" }}
     >
-      {error && <div className="notice">{error}</div>}
-      {message && <div className="success">{message}</div>}
+      <div className="page-section sc-mod">
+        {error && <div className="notice">{error}</div>}
+        {message && <div className="success">{message}</div>}
 
-      {!detail ? (
-        <div className="empty" style={{ padding: 40 }}>加载中...</div>
-      ) : (
-        <div className="page-section">
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-
-            {/* 标题栏 */}
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "20px 28px", borderBottom: "1px solid rgba(115,131,154,0.1)",
-            }}>
+        {!detail ? (
+          <div className="empty" style={{ padding: 40 }}>加载中...</div>
+        ) : (
+          <div className="scene-form">
+            {/* 头部 */}
+            <div className="scene-form-head">
               <div>
-                <h2 style={{ margin: 0, fontSize: 20, color: "#0f3168" }}>完善场景配置</h2>
-                <p style={{ margin: "4px 0 0", color: "#73839a", fontSize: 14 }}>自动生成配置内容，可按实际训练要求修改</p>
+                <h1>完善场景配置</h1>
+                <span className={`form-mode-badge${isFixed ? " fixed" : ""}`}>{sceneCreationModeLabel(createMode)}</span>
+                <p className="muted">{formModeDesc}</p>
               </div>
-              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <span style={{ color: "#73839a", fontSize: 13 }}>*为必填项</span>
-                <button className="btn" type="button" onClick={() => navigateTo('/scenes/' + sceneId)}>
-                  <ArrowLeft size={16} /> 取消
+              <div className="scene-form-actions">
+                 <button className="btn outline" type="button" onClick={() => navigateBackOr(`/scenes/${detail.scene.id}`)} disabled={submitting}>
+                  取消
                 </button>
-                <button className="btn primary" type="button" disabled={submitting} onClick={handleSave}>
-                  <Save size={16} /> 保存
+                <button className="btn" type="button" disabled={submitting} onClick={handleSave}>
+                  {submitting ? "保存中…" : "保存"}
                 </button>
               </div>
             </div>
 
             {/* 01 人员角色配置 */}
-            <div style={{ padding: "24px 28px 8px" }}>
-              <h3 style={{ margin: "0 0 4px", fontSize: 16, color: "#0f3168", fontWeight: 700 }}>01 人员角色配置</h3>
-              <p style={{ margin: "0 0 16px", color: "#73839a", fontSize: 13 }}>配置 AI 与学员的角色信息，增强训练沉浸感</p>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px 48px" }}>
-                {/* 左列 */}
-                <div style={{ display: "grid", gap: 14 }}>
-                  <div className="field">
-                    <span className="field-label">*AI扮演角色</span>
-                    <input value={aiRoleGoal} onChange={(e) => setAiRoleGoal(e.target.value)} placeholder="如：业务客户" />
-                  </div>
-                  <div className="field">
-                    <span className="field-label">背景简介</span>
-                    <textarea value={aiRoleBackground} onChange={(e) => setAiRoleBackground(e.target.value)} placeholder="描述 AI 角色的背景信息" style={{ minHeight: 72 }} />
-                  </div>
-                  <div className="field">
-                    <span className="field-label">*AI语速设置</span>
-                    <select value={aiRoleEmotion} onChange={(e) => setAiRoleEmotion(e.target.value)}>
-                      <option value="calm">正常语速</option>
-                      <option value="slow">慢速</option>
-                      <option value="fast">快速</option>
-                    </select>
-                  </div>
-                  <div className="field">
-                    <span className="field-label">上传附件</span>
-                    <input
-                      ref={editAttachmentInputRef}
-                      type="file"
-                      multiple
-                      accept=".pdf,.docx,.xlsx,.pptx,.txt,.md"
-                      style={{ display: "none" }}
-                      onChange={handleEditAttachmentsSelected}
-                    />
-                    <button className="btn" type="button" style={{ width: "auto" }} onClick={() => editAttachmentInputRef.current?.click()} disabled={editAttachmentsUploading}>
-                      {editAttachmentsUploading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite", verticalAlign: "middle", marginRight: 4 }} /> : <Paperclip size={14} style={{ verticalAlign: "middle", marginRight: 4 }} />}
-                      {editAttachmentsUploading ? "上传解析中…" : "选择附件"}
-                    </button>
-                    <span style={{ marginLeft: 8, color: "#8b98aa", fontSize: 12 }}>支持多文件，单文件≤20MB；上传后自动存入企业知识库</span>
-                    {editAttachments.length > 0 && (
-                      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-                        {editAttachments.map((item) => (
-                          <div key={item.name} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#3d4d66", background: "#f7f9fc", border: "1px solid #e6eaf2", borderRadius: 6, padding: "6px 10px" }}>
-                            <Paperclip size={14} style={{ color: "#8b98aa", flexShrink: 0 }} />
-                            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
-                            {item.status === "uploading" && <span style={{ color: "#b08a00" }}>上传解析中…</span>}
-                            {item.status === "done" && <span style={{ color: "#22c55e" }}>已入库</span>}
-                            {item.status === "failed" && <span style={{ color: "#ed2633" }} title={item.error}>解析失败</span>}
-                            <button className="link-btn" type="button" style={{ color: "#ed2633" }} onClick={() => removeEditAttachment(item.name)} aria-label={`删除附件 ${item.name}`}>
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+            <div className="form-section config-section">
+              <div className="form-section-heading">
+                <span className="section-number">01</span>
+                <div>
+                  <h2>人员角色配置</h2>
+                  <p>配置 AI 与学员的角色信息、情绪和训练资料</p>
                 </div>
-                {/* 右列 */}
-                <div style={{ display: "grid", gap: 14 }}>
-                  <div className="field">
-                    <span className="field-label">身份地位</span>
-                    <input value={aiRolePersonality} onChange={(e) => setAiRolePersonality(e.target.value)} placeholder="描述 AI 角色的身份地位" />
-                  </div>
-                  <div className="field">
-                    <span className="field-label">AI角色性格</span>
-                    <input value={aiRoleEmotion} onChange={(e) => setAiRoleEmotion(e.target.value)} placeholder="描述 AI 角色性格特征" />
-                  </div>
-                  <div className="field">
-                    <span className="field-label">*学员角色扮演</span>
-                    <textarea value={learnerRoleGoal} onChange={(e) => setLearnerRoleGoal(e.target.value)} placeholder="描述学员扮演的角色" style={{ minHeight: 72 }} />
+              </div>
+              <div className="form-grid config-grid">
+                <div className="form-item role-item">
+                  <label><i>*</i>AI扮演角色</label>
+                  <textarea className="field" maxLength={200} value={aiIdentity} onChange={(e) => setAiIdentity(e.target.value)} placeholder="请输入 AI 扮演的角色" style={{ minHeight: 100, resize: "vertical" }} />
+                  <div className="field-count"><span>{aiIdentity.length}</span>/200</div>
+                </div>
+                <div className="form-item">
+                  <label>身份地位</label>
+                  <input className="field" maxLength={100} value={aiPosition} onChange={(e) => setAiPosition(e.target.value)} placeholder="例如：客户经理、部门负责人" />
+                </div>
+                <div className="form-item">
+                  <label>背景简介</label>
+                  <textarea className="field" maxLength={300} value={aiBackground} onChange={(e) => setAiBackground(e.target.value)} placeholder="请输入角色的背景信息" style={{ minHeight: 100, resize: "vertical" }} />
+                  <div className="field-count"><span>{aiBackground.length}</span>/300</div>
+                </div>
+                <div className="form-item">
+                  <label>AI角色性格</label>
+                  <textarea className="field" maxLength={200} value={aiPersonality} onChange={(e) => setAiPersonality(e.target.value)} placeholder="例如：专业、耐心、善于倾听" style={{ minHeight: 100, resize: "vertical" }} />
+                  <div className="field-count"><span>{aiPersonality.length}</span>/200</div>
+                </div>
+                <div className="form-item emotion-item">
+                  <label><i>*</i>AI情绪设置</label>
+                  <select className="field" value={aiEmotion} onChange={(e) => setAiEmotion(e.target.value)}>
+                    <option value="">请选择 AI 情绪</option>
+                    <option value="calm">平静</option>
+                    <option value="kind">亲切</option>
+                    <option value="anxious">焦急</option>
+                    <option value="angry">生气</option>
+                    <option value="furious">愤怒</option>
+                    <option value="depressed">沮丧</option>
+                    <option value="professional">专业</option>
+                  </select>
+                </div>
+                <div className="form-item role-item">
+                  <label><i>*</i>学员角色扮演</label>
+                  <textarea className="field" maxLength={200} value={learnerIdentity} onChange={(e) => setLearnerIdentity(e.target.value)} placeholder="请输入学员扮演的角色、身份和任务" style={{ minHeight: 100, resize: "vertical" }} />
+                  <div className="field-count"><span>{learnerIdentity.length}</span>/200</div>
+                </div>
+                <div className="form-item full">
+                  <label>上传附件</label>
+                  <div className="upload-box">
+                    <div className="upload-main">
+                      <input ref={editAttachmentInputRef} type="file" multiple accept=".pdf,.docx,.xlsx,.pptx,.txt,.md" style={{ display: "none" }} onChange={handleEditAttachmentsSelected} />
+                      <label className="upload-trigger" onClick={() => editAttachmentInputRef.current?.click()}>
+                        {editAttachmentsUploading ? "上传解析中…" : "选择附件"}
+                      </label>
+                      <span className="upload-tip">支持同时选择多个附件，单个文件不超过 20MB</span>
+                    </div>
+                    <div className="attachment-list">
+                      {editAttachments.map((item) => (
+                        <span key={item.name} className="attachment-chip">
+                          📎 {item.name}
+                          {item.status === "uploading" && "（解析中…）"}
+                          {item.status === "failed" && "（失败）"}
+                          <button type="button" style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer", marginLeft: 4 }} onClick={() => removeEditAttachment(item.name)} aria-label={`删除附件 ${item.name}`}>×</button>
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-
-            <Divider />
 
             {/* 02 对话设置 */}
-            <div style={{ padding: "24px 28px 8px" }}>
-              <h3 style={{ margin: "0 0 4px", fontSize: 16, color: "#0f3168", fontWeight: 700 }}>02 对话设置</h3>
-              <p style={{ margin: "0 0 16px", color: "#73839a", fontSize: 13 }}>配置对话目标、流程和结束要求</p>
-              <div style={{ display: "grid", gap: 14 }}>
-                <div className="field">
-                  <span className="field-label">*对话目标</span>
-                  <textarea value={dialogGoal} onChange={(e) => setDialogGoal(e.target.value)} placeholder="描述本次训练的对话目标" style={{ minHeight: 72 }} />
+            <div className="form-section dialogue-section">
+              <div className="form-section-heading">
+                <span className="section-number">02</span>
+                <div>
+                  <h2>对话设置</h2>
+                  <p>配置对话目标、流程和结束要求</p>
                 </div>
-                <div className="field">
-                  <span className="field-label">场景说明</span>
-                  <textarea value={dialogDesc} onChange={(e) => setDialogDesc(e.target.value)} placeholder="描述场景背景和训练重点" style={{ minHeight: 72 }} />
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px 48px" }}>
-                  <div className="field">
-                    <span className="field-label">对话发起人</span>
-                    <select value={dialogInitiator} onChange={(e) => setDialogInitiator(e.target.value)}>
-                      <option value="ai">AI 发起</option>
-                      <option value="learner">学员发起</option>
-                    </select>
+                <span className="section-required"><i>*</i> 对话目标为必填项</span>
+              </div>
+              <div className="form-grid dialogue-grid">
+                <div className="form-item full goal-row">
+                  <label><i>*</i>对话目标</label>
+                  <div className="form-block-field">
+                    <textarea className="field" maxLength={500} value={dialogGoal} onChange={(e) => setDialogGoal(e.target.value)} placeholder="请输入希望学员通过对练达成的目标，例如：识别客户诉求，解释资费方案并完成有效回应。" style={{ minHeight: 125, resize: "vertical" }} />
+                    <div className="field-count"><span>{dialogGoal.length}</span>/500</div>
+                    <div className="goal-ai-upload">
+                      <div className="goal-ai-upload-main">
+                        <input ref={goalAttachmentInputRef} type="file" multiple accept=".txt,.md,.csv,.json,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,image/*" style={{ display: "none" }} onChange={handleGoalAttachmentsSelected} />
+                        <label className="goal-upload-trigger" onClick={() => goalAttachmentInputRef.current?.click()}>📎 上传附件</label>
+                        <button type="button" className="btn outline goal-ai-button" id="goalAiAnalyze" disabled={!goalAttachments.length} onClick={handleGoalAiAnalyze}>✦ AI分析并填入</button>
+                        <span>上传附件后，AI将提取关键信息并生成对话目标</span>
+                      </div>
+                      <div className="goal-attachment-list">
+                        {goalAttachments.map((item) => (
+                          <span key={item.name} className="goal-attachment-chip" title={item.name}>
+                            📎 {item.name} {item.status === "analyzing" && "（分析中…）"}
+                            <button type="button" aria-label="移除附件" onClick={() => removeGoalAttachment(item.name)}>×</button>
+                          </span>
+                        ))}
+                      </div>
+                      <div className="goal-ai-upload-actions">
+                        <small>{goalAiStatus}</small>
+                      </div>
+                    </div>
                   </div>
-                  <div className="field">
-                    <span className="field-label">结束条件</span>
-                    <input value={dialogEndCondition} onChange={(e) => setDialogEndCondition(e.target.value)} placeholder="对话结束的触发条件" />
-                  </div>
                 </div>
-                <div className="field">
-                  <span className="field-label">中断条件</span>
-                  <input value={dialogInterrupt} onChange={(e) => setDialogInterrupt(e.target.value)} placeholder="对话中断的触发条件" />
+                <div className="form-item full">
+                  <label>场景说明</label>
+                  <textarea className="field" maxLength={500} value={sceneDesc} onChange={(e) => setSceneDesc(e.target.value)} placeholder="补充场景背景、关键流程或注意事项（选填）" style={{ minHeight: 90, resize: "vertical" }} />
+                  <div className="field-count"><span>{sceneDesc.length}</span>/500</div>
+                </div>
+                <div className="form-item">
+                  <label>对话发起人</label>
+                  <select className="field" value={dialogInitiator} onChange={(e) => setDialogInitiator(e.target.value)}>
+                    <option value="">请选择对话发起人</option>
+                    <option value="ai">AI</option>
+                    <option value="learner">学员</option>
+                    <option value="random">随机</option>
+                  </select>
+                </div>
+                <div className="form-item">
+                  <label>结束条件</label>
+                  <textarea className="field" maxLength={300} value={dialogEndCondition} onChange={(e) => setDialogEndCondition(e.target.value)} placeholder="例如：学员完成目标回应，双方达成一致" style={{ minHeight: 90, resize: "vertical" }} />
+                  <div className="field-count"><span>{dialogEndCondition.length}</span>/300</div>
+                </div>
+                <div className="form-item full">
+                  <label>中断条件</label>
+                  <textarea className="field" maxLength={300} value={dialogInterrupt} onChange={(e) => setDialogInterrupt(e.target.value)} placeholder="请输入触发中断对话的判断条件" style={{ minHeight: 90, resize: "vertical" }} />
+                  <div className="field-count"><span>{dialogInterrupt.length}</span>/300</div>
+                </div>
+                <div className="form-item full">
+                  <label>对话实例</label>
+                  <textarea className="field" maxLength={500} value={dialogExample} onChange={(e) => setDialogExample(e.target.value)} placeholder={"请输入示例对话内容，例如：AI：您好，请问有什么可以帮您？\n学员：我想咨询套餐资费。"} style={{ minHeight: 90, resize: "vertical" }} />
+                  <div className="field-count"><span>{dialogExample.length}</span>/500</div>
                 </div>
               </div>
             </div>
 
-            <Divider />
-
-            {/* 03 设置评分规则 */}
-            <div style={{ padding: "24px 28px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                <h3 style={{ margin: 0, fontSize: 16, color: "#0f3168", fontWeight: 700 }}>03 设置评分规则</h3>
-                <span style={{ color: "#73839a", fontSize: 13 }}>
-                  总分满为 <strong className={scoringRuleForms.reduce((s, r) => s + Number(r.score || 0), 0) === 100 ? "text-green" : "text-red"}>
-                    {scoringRuleForms.reduce((s, r) => s + Number(r.score || 0), 0)}
-                  </strong> 分
-                </span>
+            {/* 评分规则 */}
+            <div className="form-scoring">
+              <div className="form-scoring-head">
+                <div>
+                  <h2>设置评分规则</h2>
+                  <p className="muted">系统已根据场景内容自动生成评分规则，可直接修改</p>
+                </div>
+                <span className="form-required-tip">总分需为 100 分</span>
               </div>
-              <p style={{ margin: "0 0 16px", color: "#73839a", fontSize: 13 }}>
-                系统已根据场景内容自动生成评分规则，可直接修改。评分规则用于评估学员在对话中的表现，建议设置 3-5 个评分维度，所有分值合计为 100 分。
-              </p>
-
-              <div style={{ display: "grid", gap: 12 }}>
+              <div className="scoring-intro">评分规则用于评估学员在对练中的表现。建议设置 3—5 个评分维度，所有分值合计为 100 分。</div>
+              <div id="formScoringList" className="scoring-list">
                 {scoringRuleForms.map((rule, index) => (
-                  <div key={`${rule.id || "new"}-${index}`} style={{
-                    display: "grid", gridTemplateColumns: "1fr 2fr 100px 32px",
-                    gap: "12px 16px", alignItems: "center",
-                    padding: "14px 18px", borderRadius: 10,
-                    border: "1px solid rgba(115,131,154,0.12)", background: "#fff",
-                  }}>
-                    <div className="field" style={{ gap: 4 }}>
-                      <span className="field-label" style={{ fontSize: 12 }}>评分项名称</span>
-                      <input value={rule.name} onChange={(e) => updateScoringRuleForm(index, { name: e.target.value })} />
+                  <div key={`${rule.id || "new"}-${index}`} className="scoring-row">
+                    <input value={rule.name} maxLength={30} placeholder="评分维度" onChange={(e) => updateScoringRuleForm(index, { name: e.target.value })} />
+                    <input value={rule.criteria} maxLength={100} placeholder="评分说明" onChange={(e) => updateScoringRuleForm(index, { criteria: e.target.value })} />
+                    <div className="scoring-score">
+                      <input type="number" min={1} max={100} value={rule.score || ""} placeholder="分值" onChange={(e) => updateScoringRuleForm(index, { score: Number(e.target.value) })} />
+                      <span>分</span>
                     </div>
-                    <div className="field" style={{ gap: 4 }}>
-                      <span className="field-label" style={{ fontSize: 12 }}>评分项说明</span>
-                      <input value={rule.criteria} onChange={(e) => updateScoringRuleForm(index, { criteria: e.target.value })} />
-                    </div>
-                    <div className="field" style={{ gap: 4 }}>
-                      <span className="field-label" style={{ fontSize: 12 }}>分值</span>
-                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        <button className="btn" type="button" style={{ padding: "0 8px", minHeight: 32 }} onClick={() => updateScoringRuleForm(index, { score: Math.max(0, rule.score - 5) })}>−</button>
-                        <input type="number" min="0" max="100" value={rule.score} onChange={(e) => updateScoringRuleForm(index, { score: Number(e.target.value) })} style={{ width: 48, textAlign: "center" }} />
-                        <button className="btn" type="button" style={{ padding: "0 8px", minHeight: 32 }} onClick={() => updateScoringRuleForm(index, { score: Math.min(100, rule.score + 5) })}>+</button>
-                      </div>
-                    </div>
-                    <button className="link-btn danger" type="button" onClick={() => removeScoringRuleForm(index)} style={{ textAlign: "center" }}>
-                      <X size={16} />
-                    </button>
+                    <button type="button" className="scoring-remove" title="删除评分项" onClick={() => removeScoringRuleForm(index)}>×</button>
                   </div>
                 ))}
               </div>
-
-              <button className="btn" type="button" onClick={addScoringRuleForm} style={{ marginTop: 14 }}>
-                <Plus size={16} /> 添加评分项
-              </button>
+              <button type="button" className="scoring-add" id="formScoringAdd" onClick={addScoringRuleForm}>＋ 添加评分项</button>
+              <div className="scoring-total">总分：<b id="formScoringTotal">{totalScore}</b> 分</div>
             </div>
-
-            {/* 底部操作栏 */}
-            <div style={{
-              display: "flex", justifyContent: "flex-end", gap: 10,
-              padding: "16px 28px", borderTop: "1px solid rgba(115,131,154,0.1)",
-            }}>
-              <button className="btn" type="button" onClick={() => navigateTo('/scenes/' + sceneId)} disabled={submitting}>
-                取消
-              </button>
-              <button className="btn primary" type="button" disabled={submitting} onClick={handleSave}>
-                <Save size={16} /> 保存
-              </button>
-            </div>
-
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </AppShell>
   );
-}
-
-// ---------- 分隔线 ----------
-
-function Divider() {
-  return <div style={{ height: 1, background: "rgba(115,131,154,0.1)", margin: "0 28px" }} />;
 }
 
 // ---------- 右侧面板数据 ----------

@@ -1,626 +1,161 @@
-// 企业知识库区块：调用真实后端 API 加载文件夹列表，统计卡用真实数据，支持新建/查看/删除文件夹
-// 点击"查看"在文件夹列表下方展开文件详情面板（原型设计）
 "use client";
 
-import { Plus, Folder, Eye, Trash2, ChevronUp } from "lucide-react";
+import { Folder, MoreHorizontal, Plus, Search, Upload, X } from "lucide-react";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
-import { DataTable, Field, type AuthSession, type TrainingRecord } from "./dashboard-shared";
+import { type AuthSession, type TrainingRecord } from "./dashboard-shared";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
-
 const PAGE_SIZE = 10;
 
-type KnowledgeProps = {
-  auth: AuthSession;
-  records: TrainingRecord[];
-  completedRecordCount: number;
-  pendingAppealCount: number;
-};
+type KnowledgeProps = { auth: AuthSession; records: TrainingRecord[]; completedRecordCount: number; pendingAppealCount: number };
+type FolderData = { id: string; name: string; description: string; fileCount: number; totalSize: number; creatorName: string | null; createdAt: string; updatedAt: string };
+type KnowledgeFile = { id: string; folderId: string; name: string; mimeType: string; size: number; content: string; summary: string; parseStatus: "parsing" | "done" | "failed"; parseError: string; uploaderName: string | null; createdAt: string };
+type DialogMode = "create" | "upload" | "rename" | null;
 
-type Folder = {
-  id: string;
-  name: string;
-  description: string;
-  fileCount: number;
-  totalSize: number;
-  createdBy: string | null;
-  creatorName: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-// 知识库文件（对接后端 knowledge_files 表）
-type KnowledgeFile = {
-  id: string;
-  folderId: string;
-  fileId: string;
-  name: string;
-  mimeType: string;
-  size: number;
-  content: string;
-  summary: string;
-  parseStatus: "parsing" | "done" | "failed"; // parsing / done / failed
-  parseError: string;
-  uploaderName: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-// MIME -> 展示用文件类型标签
-function fileTypeLabel(mimeType: string): string {
-  if (mimeType === "application/pdf") return "PDF";
-  if (mimeType === "text/plain" || mimeType === "text/markdown") return "TXT";
-  if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return "Word";
-  if (mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") return "Excel";
-  if (mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation") return "PPT";
-  return "文件";
+function getToken() {
+  try { return JSON.parse(window.localStorage.getItem("zxt-admin-auth") || "{}").token || ""; } catch { return ""; }
 }
-
-// MIME -> 文件类型图标缩写（用于文件行左侧色块）
-function fileIconLabel(mimeType: string): string {
-  switch (mimeType) {
-    case "application/pdf": return "PDF";
-    case "text/plain":
-    case "text/markdown": return "TXT";
-    case "application/vnd.openxmlformats-officedocument.wordprocessingml.document": return "DOC";
-    case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": return "XLS";
-    case "application/vnd.openxmlformats-officedocument.presentationml.presentation": return "PPT";
-    default: return "FILE";
-  }
-}
-
-// 解析状态徽标（parsing 黄 / failed 红+title 提示 / done 绿）
-function renderParseStatusBadge(file: KnowledgeFile) {
-  if (file.parseStatus === "parsing") {
-    return (
-      <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 4, background: "#fff7e6", color: "#fa8c16", fontSize: 12 }}>解析中</span>
-    );
-  }
-  if (file.parseStatus === "failed") {
-    return (
-      <span title={file.parseError || "解析失败"} style={{ display: "inline-block", padding: "2px 8px", borderRadius: 4, background: "#ffeceb", color: "#ed2633", fontSize: 12 }}>解析失败</span>
-    );
-  }
-  return (
-    <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 4, background: "#e8f8ee", color: "#2fb95d", fontSize: 12 }}>已解析</span>
-  );
-}
-
-function getStoredAuthToken() {
-  if (typeof window === "undefined") return "";
-  try {
-    const raw = window.localStorage.getItem("zxt-admin-auth");
-    if (!raw) return "";
-    const parsed = JSON.parse(raw) as { token?: string };
-    return parsed.token || "";
-  } catch {
-    return "";
-  }
-}
-
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getStoredAuthToken();
-  // multipart 请求（FormData body）不设置 Content-Type，由浏览器自动生成 boundary
-  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    cache: "no-store",
-    headers: {
-      ...(isFormData ? {} : { "Content-Type": "application/json" }),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers || {}),
-    },
-  });
-  const payload = (await response.json()) as { success: boolean; message?: string; code?: string; data: T };
-  if (!payload.success) {
-    throw new Error(payload.message || payload.code);
-  }
+  const isFormData = init?.body instanceof FormData;
+  const response = await fetch(`${API_BASE}${path}`, { ...init, cache: "no-store", headers: { ...(isFormData ? {} : { "Content-Type": "application/json" }), ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}), ...init?.headers } });
+  const payload = await response.json() as { success: boolean; data: T; message?: string; code?: string };
+  if (!payload.success) throw new Error(payload.message || payload.code || "请求失败");
   return payload.data;
 }
-
-function formatSize(bytes: number): string {
+function formatSize(bytes: number) {
   if (!bytes) return "0 KB";
-  const units = ["B", "KB", "MB", "GB"];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
+  const units = ["B", "KB", "MB", "GB"]; let value = bytes; let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
   return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
 }
-
-function formatTime(iso: string): string {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
+function formatTime(value: string) {
+  const date = new Date(value); if (Number.isNaN(date.getTime())) return "—";
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
-
-const emptyForm = { name: "", description: "" };
+function typeLabel(mimeType: string) {
+  if (mimeType.startsWith("video/")) return "视频";
+  if (mimeType === "application/pdf") return "PDF";
+  if (mimeType.includes("word")) return "Word";
+  if (mimeType.includes("spreadsheet")) return "Excel";
+  if (mimeType.includes("presentation")) return "PPT";
+  if (mimeType.includes("text")) return "TXT";
+  return "文件";
+}
+function typeIcon(mimeType: string) { return mimeType.startsWith("video/") ? "▶" : typeLabel(mimeType) === "Word" ? "DOC" : typeLabel(mimeType) === "Excel" ? "XLS" : typeLabel(mimeType); }
 
 export function KnowledgeSection({ auth, records, completedRecordCount, pendingAppealCount }: KnowledgeProps) {
-  const [folders, setFolders] = useState<Folder[]>([]);
+  const [folders, setFolders] = useState<FolderData[]>([]);
+  const [activeFolder, setActiveFolder] = useState<FolderData | null>(null);
+  const [files, setFiles] = useState<KnowledgeFile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [folderKeyword, setFolderKeyword] = useState("");
+  const [folderFilter, setFolderFilter] = useState("all");
+  const [fileKeyword, setFileKeyword] = useState("");
+  const [page, setPage] = useState(1);
+  const [dialog, setDialog] = useState<DialogMode>(null);
+  const [folderMenu, setFolderMenu] = useState<string | null>(null);
+  const [form, setForm] = useState({ name: "", description: "" });
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [showModal, setShowModal] = useState(false);
-  const [expandedFolder, setExpandedFolder] = useState<Folder | null>(null);
-  const [fileSearchText, setFileSearchText] = useState("");
-  const [form, setForm] = useState(emptyForm);
-
-  // 文件列表（真实 API 数据）
-  const [files, setFiles] = useState<KnowledgeFile[]>([]);
-  const [filesLoading, setFilesLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  // 文件预览
-  const [previewFile, setPreviewFile] = useState<KnowledgeFile | null>(null);
-  // 删除确认（弹窗化）
-  const [confirmTarget, setConfirmTarget] = useState<{ type: "file" | "folder"; id: string; name: string } | null>(null);
-
-  // Search & filter state
-  const [searchText, setSearchText] = useState("");
-  const [filterFolder, setFilterFolder] = useState("all");
-
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
+  const [preview, setPreview] = useState<KnowledgeFile | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<{ type: "folder" | "file"; id: string; name: string } | null>(null);
+  const uploadInput = useRef<HTMLInputElement>(null);
 
   async function loadFolders() {
-    setError("");
-    try {
-      const data = await apiFetch<{ items: Folder[] }>("/knowledge?pageSize=100");
-      setFolders(data.items);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "加载知识库失败");
-    } finally {
-      setLoading(false);
-    }
+    try { setError(""); setLoading(true); const data = await apiFetch<{ items: FolderData[] }>("/knowledge?pageSize=100"); setFolders(data.items); }
+    catch (e) { setError(e instanceof Error ? e.message : "加载知识库失败"); }
+    finally { setLoading(false); }
   }
-
-  useEffect(() => {
-    void loadFolders();
-  }, []);
-
-  const totalFiles = folders.reduce((sum, folder) => sum + (folder.fileCount || 0), 0);
-  const totalSize = folders.reduce((sum, folder) => sum + (folder.totalSize || 0), 0);
-
-  // Filtered & paged data
-  const filtered = folders.filter((f) => {
-    if (searchText) {
-      const q = searchText.toLowerCase();
-      if (!f.name.toLowerCase().includes(q) && !f.description.toLowerCase().includes(q)) return false;
-    }
-    if (filterFolder !== "all" && f.id !== filterFolder) return false;
-    return true;
-  });
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(currentPage, totalPages);
-  const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-
-  // Reset page when filter changes
-  useEffect(() => { setCurrentPage(1); }, [searchText, filterFolder]);
-
-  function openCreate() {
-    setForm(emptyForm);
-    setShowModal(true);
-  }
-
-  function handleView(folder: Folder) {
-    if (expandedFolder?.id === folder.id) {
-      setExpandedFolder(null); // 收起
-      setFiles([]);
-    } else {
-      setExpandedFolder(folder);
-      setFileSearchText("");
-      void loadFiles(folder.id);
-    }
-  }
-
   async function loadFiles(folderId: string) {
-    setFilesLoading(true);
-    setError("");
+    try { setFilesLoading(true); const data = await apiFetch<KnowledgeFile[]>(`/knowledge/files?folderId=${encodeURIComponent(folderId)}`); setFiles(data); }
+    catch (e) { setError(e instanceof Error ? e.message : "加载文件失败"); setFiles([]); }
+    finally { setFilesLoading(false); }
+  }
+  useEffect(() => { void loadFolders(); }, []);
+  useEffect(() => { setPage(1); }, [folderKeyword, folderFilter]);
+
+  const filteredFolders = folders.filter((folder) => (folderFilter === "all" || folder.id === folderFilter) && (!folderKeyword || `${folder.name}${folder.description}`.toLowerCase().includes(folderKeyword.toLowerCase())));
+  const totalPages = Math.max(1, Math.ceil(filteredFolders.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const visibleFolders = filteredFolders.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const visibleFiles = files.filter((file) => !fileKeyword || file.name.toLowerCase().includes(fileKeyword.toLowerCase()));
+  const totalFiles = folders.reduce((total, folder) => total + folder.fileCount, 0);
+  const totalSize = folders.reduce((total, folder) => total + folder.totalSize, 0);
+
+  function chooseFolder(folder: FolderData) { setActiveFolder(folder); setFileKeyword(""); setFolderMenu(null); void loadFiles(folder.id); }
+  function resetFilters() { setFolderKeyword(""); setFolderFilter("all"); }
+  function openCreate() { setForm({ name: "", description: "" }); setSelectedFiles([]); setDialog("create"); }
+  function openRename(folder: FolderData) { setActiveFolder(folder); setForm({ name: folder.name, description: folder.description || "" }); setFolderMenu(null); setDialog("rename"); }
+  function chooseFiles(event: ChangeEvent<HTMLInputElement>) { setSelectedFiles(Array.from(event.target.files || [])); }
+  async function uploadFiles(folderId: string, uploadFilesList: File[]) {
+    const results = await Promise.allSettled(uploadFilesList.map(async (file) => { const data = new FormData(); data.append("file", file); data.append("folderId", folderId); return apiFetch<KnowledgeFile>("/knowledge/files", { method: "POST", body: data }); }));
+    const failed = results.filter((result) => result.status === "rejected");
+    return { successCount: results.length - failed.length, failed };
+  }
+  async function submitFolder(event: FormEvent) {
+    event.preventDefault(); if (!form.name.trim()) return; setSubmitting(true); setError("");
     try {
-      const data = await apiFetch<KnowledgeFile[]>(`/knowledge/files?folderId=${encodeURIComponent(folderId)}`);
-      setFiles(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "加载文件列表失败");
-      setFiles([]);
-    } finally {
-      setFilesLoading(false);
-    }
+      let target: FolderData;
+      if (dialog === "rename" && activeFolder) target = await apiFetch<FolderData>(`/knowledge/${activeFolder.id}`, { method: "PUT", body: JSON.stringify(form) });
+      else target = await apiFetch<FolderData>("/knowledge", { method: "POST", body: JSON.stringify(form) });
+      let createMessage = dialog === "rename" ? "文件夹已重命名。" : "文件夹已创建。";
+      if (dialog === "create" && selectedFiles.length) {
+        const uploadResult = await uploadFiles(target.id, selectedFiles);
+        if (uploadResult.failed.length) createMessage = `文件夹已创建，${uploadResult.successCount} 个文件已添加，${uploadResult.failed.length} 个文件添加失败。`;
+      }
+      setMessage(createMessage); setDialog(null); await loadFolders();
+      if (activeFolder?.id === target.id || dialog === "create") { setActiveFolder(target); await loadFiles(target.id); }
+    } catch (e) { setError(e instanceof Error ? e.message : "保存失败"); }
+    finally { setSubmitting(false); }
   }
-
-  async function handleDeleteFile(fileId: string, folderId: string) {
-    setError("");
+  async function submitUpload(event: FormEvent) {
+    event.preventDefault(); if (!activeFolder || !selectedFiles.length) return; setSubmitting(true); setError("");
+    try { const uploadResult = await uploadFiles(activeFolder.id, selectedFiles); setMessage(uploadResult.failed.length ? `${uploadResult.successCount} 个文件已添加，${uploadResult.failed.length} 个文件添加失败。` : `已添加 ${selectedFiles.length} 个文件。`); setDialog(null); await loadFiles(activeFolder.id); await loadFolders(); }
+    catch (e) { setError(e instanceof Error ? e.message : "添加文件失败"); }
+    finally { setSubmitting(false); }
+  }
+  async function deleteTarget() {
+    const target = confirmTarget; if (!target) return; setConfirmTarget(null); setError("");
     try {
-      await apiFetch<{ id: string }>(`/knowledge/files/${fileId}`, { method: "DELETE" });
-      setMessage("文件已删除。");
-      await loadFiles(folderId);
-      await loadFolders();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "删除失败");
-    }
+      if (target.type === "folder") {
+        const folder = folders.find((item) => item.id === target.id);
+        if (folder && folder.fileCount > 0) { setError("文件夹内仍有文件，请先删除或转移全部文件后再删除文件夹。"); return; }
+      }
+      await apiFetch<{ id: string }>(target.type === "folder" ? `/knowledge/${target.id}` : `/knowledge/files/${target.id}`, { method: "DELETE" });
+      setMessage(`${target.type === "folder" ? "文件夹" : "文件"}已删除。`);
+      if (target.type === "folder") { if (activeFolder?.id === target.id) { setActiveFolder(null); setFiles([]); } await loadFolders(); }
+      else if (activeFolder) { await loadFiles(activeFolder.id); await loadFolders(); }
+    } catch (e) { setError(e instanceof Error ? e.message : "删除失败"); }
   }
 
-  async function handleUploadFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file || !expandedFolder) return;
-    setUploading(true);
-    setError("");
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("folderId", expandedFolder.id);
-      const created = await apiFetch<KnowledgeFile>("/knowledge/files", {
-        method: "POST",
-        body: formData,
-      });
-      setMessage(
-        `文件「${file.name}」${created.parseStatus === "done" ? "已上传并解析。" : "已上传，解析中或解析失败。"}`,
-      );
-      await loadFiles(expandedFolder.id);
-      await loadFolders();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "上传失败");
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    try {
-      await apiFetch<Folder>("/knowledge", { method: "POST", body: JSON.stringify(form) });
-      setMessage("文件夹已新建。");
-      setShowModal(false);
-      await loadFolders();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
-    }
-  }
-
-  async function handleDelete(folderId: string) {
-    setError("");
-    try {
-      await apiFetch<{ id: string }>(`/knowledge/${folderId}`, { method: "DELETE" });
-      setMessage("文件夹已删除。");
-      if (expandedFolder?.id === folderId) setExpandedFolder(null);
-      await loadFolders();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "删除失败");
-    }
-  }
-
-  function handleResetFilter() {
-    setSearchText("");
-    setFilterFolder("all");
-  }
-
-  // 文件详情面板的文件列表（真实 API 数据 + 搜索过滤）
-  const filteredFiles = fileSearchText
-    ? files.filter((f) => f.name.toLowerCase().includes(fileSearchText.toLowerCase()))
-    : files;
-
-  return (
-    <section className="page-section">
-      <div className="home-grid">
-        <div className="home-main">
-          <div className="page-header">
-            <div>
-              <h1 className="page-title">企业知识库</h1>
-              <p className="page-desc">按文件夹管理企业培训资料；每个文件夹可包含多个视频、PDF、Word、Excel、PPT 文件。</p>
-            </div>
-            <div className="toolbar">
-              <button className="btn primary" type="button" onClick={openCreate}><Plus size={16} /> 新建文件夹</button>
-            </div>
-          </div>
-          {message ? <div className="notice">{message}</div> : null}
-          {error ? <div className="notice error">{error}</div> : null}
-
-          {/* ── 统计卡（原型彩色数值） ── */}
-          <div className="stats prototype-stats stats-4" style={{ marginBottom: 24 }}>
-            <div className="metric card"><span>文件夹数量</span><strong>{folders.length}</strong><small>全部知识资料分类</small></div>
-            <div className="metric card"><span>文件总数</span><strong style={{ color: "#0f3168" }}>{totalFiles}</strong><small>已归档文件</small></div>
-            <div className="metric card"><span>视频资料</span><strong style={{ color: "#8045DD" }}>—</strong><small>可用于课程学习</small></div>
-            <div className="metric card"><span>存储空间</span><strong style={{ color: "#32C766" }}>{formatSize(totalSize)}</strong><small>当前已上传资料</small></div>
-          </div>
-
-          {/* ── 搜索筛选栏 ── */}
-          <div className="card filter-bar" style={{ marginBottom: 16 }}>
-            <div className="filter-row">
-              <div className="filter-item">
-                <input
-                  className="filter-input"
-                  style={{ width: 260 }}
-                  placeholder="搜索文件夹名称/文件名称"
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                />
-              </div>
-              <div className="filter-item">
-                <label className="filter-label">所在文件夹</label>
-                <select
-                  className="filter-select"
-                  value={filterFolder}
-                  onChange={(e) => setFilterFolder(e.target.value)}
-                >
-                  <option value="all">全部</option>
-                  {folders.map((f) => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
-                  ))}
-                </select>
-              </div>
-              <button className="btn primary" type="button" onClick={() => setCurrentPage(1)}>查询</button>
-              <button className="btn" type="button" onClick={handleResetFilter}>重置</button>
-            </div>
-          </div>
-
-          {/* ── 文件夹列表 ── */}
-          <div className="card section">
-            <div className="section-head compact">
-              <div>
-                <h2 className="section-title">文件夹列表</h2>
-              </div>
-            </div>
-            {loading ? (
-              <div className="empty">正在加载文件夹数据…</div>
-            ) : (
-              <DataTable headers={["文件夹名称", "文件夹说明", "文件数量", "占用空间", "创建人", "更新时间", "操作"]}>
-                {paged.map((folder) => (
-                  <tr key={folder.id}>
-                    <td>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                        <Folder size={18} style={{ color: "#F5A623", flexShrink: 0 }} />
-                        <strong>{folder.name}</strong>
-                      </span>
-                    </td>
-                    <td className="muted-text">{folder.description || "—"}</td>
-                    <td>{folder.fileCount}个文件</td>
-                    <td>{formatSize(folder.totalSize)}</td>
-                    <td className="muted-text">{folder.creatorName || "—"}</td>
-                    <td className="muted-text">{formatTime(folder.updatedAt)}</td>
-                    <td>
-                      <button className="link-btn" type="button" onClick={() => handleView(folder)}><Eye size={14} /> 查看</button>
-                      <button className="link-btn danger" type="button" onClick={() => setConfirmTarget({ type: "folder", id: folder.id, name: folder.name })}><Trash2 size={14} /> 删除</button>
-                    </td>
-                  </tr>
-                ))}
-                {!filtered.length && <tr><td colSpan={7}><div className="empty">暂无文件夹，请点击「新建文件夹」创建。</div></td></tr>}
-              </DataTable>
-            )}
-
-            {/* ── 分页器 ── */}
-            {filtered.length > 0 && (
-              <div className="pagination">
-                <span className="pagination-info">共 {filtered.length} 个文件夹，第 {safePage}/{totalPages} 页</span>
-                <div className="pagination-controls">
-                  <button
-                    className="page-btn"
-                    type="button"
-                    disabled={safePage <= 1}
-                    onClick={() => setCurrentPage((p) => p - 1)}
-                  >‹</button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                    <button
-                      key={p}
-                      className={`page-btn${p === safePage ? " active" : ""}`}
-                      type="button"
-                      onClick={() => setCurrentPage(p)}
-                    >{p}</button>
-                  ))}
-                  <button
-                    className="page-btn"
-                    type="button"
-                    disabled={safePage >= totalPages}
-                    onClick={() => setCurrentPage((p) => p + 1)}
-                  >›</button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* ── 文件详情面板（展开在文件夹列表下方） ── */}
-          {expandedFolder && (
-            <div className="card section" style={{ marginTop: 16 }}>
-              {/* 标题区 */}
-              <div className="section-head compact" style={{ marginBottom: 16 }}>
-                <div>
-                  <h2 className="section-title" style={{ fontSize: 18 }}>
-                    {expandedFolder.name}·文件详情
-                  </h2>
-                  <p className="section-note">{expandedFolder.description || "暂无说明"}</p>
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn" type="button" onClick={() => setExpandedFolder(null)}>
-                    <ChevronUp size={14} /> 收起详情
-                  </button>
-                  <button className="btn primary" type="button" disabled={uploading} onClick={() => fileInputRef.current?.click()}>
-                    <Plus size={14} /> {uploading ? "解析中…" : "新建文件"}
-                  </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    hidden
-                    accept=".pdf,.docx,.xlsx,.pptx,.txt,.md"
-                    onChange={handleUploadFile}
-                  />
-                </div>
-              </div>
-
-              {/* 搜索区 */}
-              <div className="filter-bar" style={{ padding: "12px 0", marginBottom: 12 }}>
-                <div className="filter-row">
-                  <div className="filter-item">
-                    <input
-                      className="filter-input"
-                      style={{ width: 300 }}
-                      placeholder="搜索当前文件夹中的文件"
-                      value={fileSearchText}
-                      onChange={(e) => setFileSearchText(e.target.value)}
-                    />
-                  </div>
-                  <button className="btn primary" type="button">查询</button>
-                  <button className="btn" type="button" onClick={() => setFileSearchText("")}>重置</button>
-                </div>
-              </div>
-
-              {/* 文件列表 */}
-              <DataTable headers={["文件名称", "文件类型", "文件大小", "解析状态", "上传人", "上传时间", "操作"]}>
-                {filesLoading ? (
-                  <tr><td colSpan={7}><div className="empty">正在加载文件数据…</div></td></tr>
-                ) : (
-                  filteredFiles.map((file) => {
-                    const isVideo = file.mimeType.startsWith("video/");
-                    // 原型：视频=淡紫底#f0edff+深紫#7b61ff三角，其余=淡红底#ffeceb+红色#ed2633
-                    const iconBg = isVideo ? "#f0edff" : "#ffeceb";
-                    const iconColor = isVideo ? "#7b61ff" : "#ed2633";
-                    const iconLabel = isVideo ? "▶" : fileIconLabel(file.mimeType);
-                    return (
-                      <tr key={file.id}>
-                        <td>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              width: 20,
-                              height: 20,
-                              borderRadius: 3,
-                              background: iconBg,
-                              color: iconColor,
-                              fontSize: isVideo ? 10 : 7,
-                              fontWeight: 700,
-                              flexShrink: 0,
-                            }}>{iconLabel}</span>
-                            <div>
-                              <div style={{ fontWeight: 600 }}>{file.name}</div>
-                              <div style={{ color: "#86909c", fontSize: 12, marginTop: 2 }}>文件夹: {expandedFolder.name}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          <span style={{
-                            display: "inline-block",
-                            padding: "2px 8px",
-                            borderRadius: 4,
-                            background: "#eaf2ff",
-                            color: "#4080ff",
-                            fontSize: 12,
-                          }}>{fileTypeLabel(file.mimeType)}</span>
-                        </td>
-                        <td>{formatSize(file.size)}</td>
-                        <td>{renderParseStatusBadge(file)}</td>
-                        <td className="muted-text">{file.uploaderName || "—"}</td>
-                        <td className="muted-text">{formatTime(file.createdAt)}</td>
-                        <td>
-                          <button className="link-btn" type="button" style={{ color: "#4080ff" }} onClick={() => setPreviewFile(file)}>查看</button>
-                          <button className="link-btn danger" type="button" style={{ color: "#ed2633" }} onClick={() => setConfirmTarget({ type: "file", id: file.id, name: file.name })}>删除</button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-                {!filesLoading && !filteredFiles.length && <tr><td colSpan={7}><div className="empty">暂无文件</div></td></tr>}
-              </DataTable>
-              <div style={{ padding: "10px 0 4px", color: "#8b98aa", fontSize: 14 }}>
-                共 {filteredFiles.length} 个文件
-              </div>
-            </div>
-          )}
-        </div>
-
-        <aside className="right-rail">
-          <div className="profile card">
-            <span className="avatar large" />
-            <div>
-              <h2>{auth.user.name}</h2>
-              <p>企业管理员</p>
-              <p>培训负责人</p>
-            </div>
-          </div>
-          <div className="sidecard card">
-            <div className="sidecard-head"><h2>培训概况</h2><span>本年度</span></div>
-            <strong>{completedRecordCount}</strong>
-            <p>已完成培训任务</p>
-            <div className="mini-stats"><span>对练<b>{records.length}</b></span><span>考试<b>0</b></span><span>合格率<b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></span></div>
-          </div>
-          <div className="sidecard card">
-            <h2>通知消息</h2>
-            <p>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息，系统将及时推送任务派发、培训安排及学习进度提醒。"}</p>
-          </div>
+  return <section className="page-section knowledge-page">
+    <div className="home-grid"><div className="home-main">
+      <div className="knowledge-head card"><h1>企业知识库</h1><p>按文件夹管理企业培训资料；点击左侧文件夹查看其中的全部子文件。</p></div>
+      {message && <div className="notice">{message}</div>}{error && <div className="notice error">{error}</div>}
+      <div className="knowledge-filter card"><div className="knowledge-filter-title"><b>筛选文件夹</b><span>按名称或位置查找</span></div><div className="knowledge-top-tools">
+        <div className="knowledge-search"><Search size={16}/><input placeholder="搜索文件夹名称" value={folderKeyword} onChange={(e) => setFolderKeyword(e.target.value)} /></div>
+        <select value={folderFilter} onChange={(e) => setFolderFilter(e.target.value)}><option value="all">所在文件夹：全部</option>{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select>
+        <div className="knowledge-filter-actions"><button className="btn" type="button" onClick={() => setPage(1)}>查询</button><button className="btn outline" type="button" onClick={resetFilters}>重置</button></div>
+      </div></div>
+      <div className="knowledge-layout">
+        <aside className="knowledge-folder-panel card"><div className="knowledge-panel-heading"><div><span className="knowledge-panel-kicker">文件夹目录</span><h2>文件夹列表 <em>{folders.length}</em></h2></div></div><button className="btn knowledge-folder-add" type="button" onClick={openCreate}><Plus size={16}/> 新建文件夹</button><p className="knowledge-panel-note">选择文件夹，查看其中的全部子文件</p>
+          <div className="knowledge-folder-list">{loading ? <div className="knowledge-empty">正在加载…</div> : visibleFolders.map((folder) => <div className={`knowledge-folder-item ${activeFolder?.id === folder.id ? "active" : ""}`} key={folder.id} onClick={() => chooseFolder(folder)}><span className="knowledge-icon folder"><Folder size={17}/></span><span className="knowledge-folder-item-body"><b>{folder.name}</b><small>{folder.fileCount} 个子文件 · {formatSize(folder.totalSize)}</small></span><button className="knowledge-folder-more" type="button" onClick={(e) => { e.stopPropagation(); setFolderMenu(folderMenu === folder.id ? null : folder.id); }}><MoreHorizontal size={19}/></button>{folderMenu === folder.id && <div className="knowledge-folder-context-menu" onClick={(e) => e.stopPropagation()}><button onClick={() => openRename(folder)}>重命名</button><button className="danger" onClick={() => { setFolderMenu(null); setConfirmTarget({ type: "folder", id: folder.id, name: folder.name }); }}>删除</button></div>}</div>)}</div>
+          {filteredFolders.length > 0 && <div className="knowledge-folder-pagebar"><span>共 {filteredFolders.length} 个文件夹</span><div><button disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>‹</button><b>{currentPage}</b><button disabled={currentPage === totalPages} onClick={() => setPage(currentPage + 1)}>›</button></div></div>}
         </aside>
+        <main className="knowledge-files-panel card"><div className="knowledge-summary knowledge-summary-inline"><div><span>文件总数</span><strong>{totalFiles}</strong><small>已归档文件</small></div><div><span>视频资料</span><strong>—</strong><small>暂未支持上传视频</small></div><div><span>存储空间</span><strong>{formatSize(totalSize)}</strong><small>当前已上传资料</small></div></div>
+          {activeFolder ? <><div className="knowledge-detail-head"><div><span className="knowledge-panel-kicker">子文件列表</span><h2>{activeFolder.name} · 子文件</h2><p>{activeFolder.description || "当前文件夹全部子文件"}</p></div><div className="knowledge-detail-actions"><button className="btn outline" type="button" onClick={() => { setActiveFolder(null); setFiles([]); }}>返回文件夹列表</button><button className="btn" type="button" onClick={() => { setSelectedFiles([]); setDialog("upload"); }}><Plus size={16}/> 添加文件</button></div></div>
+            <div className="knowledge-detail-toolbar"><div className="knowledge-search"><Search size={16}/><input placeholder="搜索当前文件夹中的文件" value={fileKeyword} onChange={(e) => setFileKeyword(e.target.value)} /></div><button className="btn" type="button">查询</button><button className="btn outline" type="button" onClick={() => setFileKeyword("")}>重置</button></div>
+            <div className="knowledge-files-count"><b>共 {visibleFiles.length} 个文件（全部 {files.length} 个）</b><span>当前文件夹全部子文件</span></div><div className="table-wrap knowledge-files-table-wrap"><table className="knowledge-files-table"><thead><tr><th>文件名称</th><th>文件类型</th><th>文件大小</th><th>上传人</th><th>上传时间</th><th>操作</th></tr></thead><tbody>{filesLoading ? <tr><td colSpan={6} className="knowledge-empty">正在加载文件…</td></tr> : visibleFiles.map((file) => <tr key={file.id}><td><div className="knowledge-name"><span className={`knowledge-file-icon ${typeLabel(file.mimeType).toLowerCase()}`}>{typeIcon(file.mimeType)}</span><div><b>{file.name}</b><small>文件夹：{activeFolder.name}</small></div></div></td><td>{typeLabel(file.mimeType)}</td><td>{formatSize(file.size)}</td><td>{file.uploaderName || "—"}</td><td>{formatTime(file.createdAt)}</td><td><div className="knowledge-file-ops"><button onClick={() => setPreview(file)}>查看</button><button className="danger" onClick={() => setConfirmTarget({ type: "file", id: file.id, name: file.name })}>删除</button></div></td></tr>)}{!filesLoading && !visibleFiles.length && <tr><td colSpan={6} className="knowledge-empty">暂无文件</td></tr>}</tbody></table></div></> : <div className="knowledge-detail-placeholder"><Folder size={34}/><b>请选择左侧文件夹</b><span>选择文件夹后可查看子文件、添加文件或进行删除操作。</span></div>}
+        </main>
       </div>
-
-      {/* ── 新建文件夹弹窗 ── */}
-      {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <form className="modal-card" onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()} style={{ width: 480 }}>
-            <div className="modal-head">
-              <h2>新建文件夹</h2>
-              <button className="link-btn" type="button" onClick={() => setShowModal(false)}>关闭</button>
-            </div>
-            <Field label="文件夹名称"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></Field>
-            <Field label="文件夹说明"><textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="文件夹用途说明" /></Field>
-            <div className="modal-actions">
-              <button className="btn" type="button" onClick={() => setShowModal(false)}>取消</button>
-              <button className="btn primary" type="submit">创建</button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* ── 文件预览弹层 ── */}
-      {previewFile && (
-        <div className="modal-overlay" onClick={() => setPreviewFile(null)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 760, maxWidth: "calc(100vw - 48px)", display: "flex", flexDirection: "column", maxHeight: "80vh" }}>
-            <div className="modal-head">
-              <div style={{ minWidth: 0 }}>
-                <h2 style={{ margin: 0, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{previewFile.name}</h2>
-                <p className="muted-text" style={{ margin: "4px 0 0", fontSize: 12 }}>{fileTypeLabel(previewFile.mimeType)} · {formatSize(previewFile.size)} · 上传人 {previewFile.uploaderName || "—"}</p>
-              </div>
-              <button className="link-btn" type="button" onClick={() => setPreviewFile(null)}>关闭</button>
-            </div>
-            {previewFile.parseStatus === "failed" ? (
-              <div className="empty" style={{ padding: 40 }}>该文件解析失败，无法预览内容。</div>
-            ) : previewFile.content ? (
-              <div style={{ flex: 1, overflow: "auto", border: "1px solid var(--line)", borderRadius: 10, padding: "20px 24px", background: "#fff", lineHeight: 1.9, fontSize: 14, color: "#333", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                {previewFile.content.slice(0, 20000)}
-                {previewFile.content.length > 20000 ? <p className="muted-text" style={{ marginTop: 12 }}>内容过长，仅显示前 20000 字。</p> : null}
-              </div>
-            ) : (
-              <div className="empty" style={{ padding: 40 }}>暂无可预览的内容（该文件可能仅作为附件存储）。</div>
-            )}
-            {previewFile.summary ? (
-              <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 10, background: "#f0f6ff", border: "1px solid #dfeaff", fontSize: 13, color: "#3d5a80" }}>
-                <strong style={{ color: "#3477e8" }}>AI 摘要：</strong>{previewFile.summary}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      )}
-      {/* ── 删除确认弹窗 ── */}
-      <ConfirmDialog
-        open={!!confirmTarget}
-        title="删除确认"
-        message={confirmTarget ? `确认删除${confirmTarget.type === "folder" ? "文件夹" : "文件"}「${confirmTarget.name}」？删除后不可恢复。` : ""}
-        onCancel={() => setConfirmTarget(null)}
-        onConfirm={() => {
-          const t = confirmTarget;
-          setConfirmTarget(null);
-          if (!t) return;
-          if (t.type === "folder") void handleDelete(t.id);
-          else {
-            const f = files.find((x) => x.id === t.id);
-            void handleDeleteFile(t.id, f?.folderId ?? "");
-          }
-        }}
-      />
-    </section>
-  );
+    </div><aside className="right-rail"><div className="profile card"><span className="avatar large"/><div><h2>{auth.user.name}</h2><p>企业管理员</p><p>培训负责人</p></div></div><div className="sidecard card"><div className="sidecard-head"><h2>培训概况</h2><span>本年度</span></div><strong>{completedRecordCount}</strong><p>已完成培训任务</p><div className="mini-stats"><span>对练<b>{records.length}</b></span><span>考试<b>0</b></span><span>合格率<b>{records.length ? `${Math.round(records.filter((item) => item.score >= 80).length / records.length * 100)}%` : "0%"}</b></span></div></div><div className="sidecard card"><h2>通知消息</h2><p>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息。系统将及时推送任务派发、培训安排及学习进度提醒。"}</p></div></aside></div>
+    {dialog && <div className="modal-overlay" onClick={() => setDialog(null)}><form className="knowledge-modal-card" onClick={(e) => e.stopPropagation()} onSubmit={dialog === "upload" ? submitUpload : submitFolder}><div className="knowledge-modal-title"><h2>{dialog === "create" ? "新建知识库文件夹" : dialog === "rename" ? "重命名文件夹" : "添加文件到当前文件夹"}</h2><button type="button" onClick={() => setDialog(null)}><X size={19}/></button></div>{dialog !== "upload" && <><label>文件夹名称<i>*</i><input value={form.name} maxLength={120} placeholder="例如：2026年安全生产培训资料" onChange={(e) => setForm({ ...form, name: e.target.value })}/></label><label>文件夹说明<textarea value={form.description} maxLength={1000} placeholder="请输入文件夹说明（选填）" onChange={(e) => setForm({ ...form, description: e.target.value })}/></label></>}{dialog === "upload" && <label>目标文件夹<div className="knowledge-target-field">{activeFolder?.name}</div></label>}<label>{dialog === "create" ? "初始文件（可选）" : "选择文件"}{dialog === "upload" && <i>*</i>}<div className="knowledge-upload-box"><button type="button" onClick={() => uploadInput.current?.click()}><Upload size={16}/> 选择多个文件</button><input ref={uploadInput} hidden type="file" multiple accept=".pdf,.docx,.xlsx,.pptx,.txt,.md" onChange={chooseFiles}/><span>{selectedFiles.length ? selectedFiles.map((file) => file.name).join("、") : dialog === "create" ? "可先创建空文件夹，之后继续添加文件" : "尚未选择文件"}</span></div></label><div className="knowledge-modal-actions"><button className="btn outline" type="button" onClick={() => setDialog(null)}>取消</button><button className="btn" disabled={submitting || (dialog === "upload" && !selectedFiles.length)}>{submitting ? "处理中…" : dialog === "create" ? "创建文件夹" : dialog === "rename" ? "保存" : "添加文件"}</button></div></form></div>}
+    {preview && <div className="modal-overlay" onClick={() => setPreview(null)}><div className="knowledge-preview-card" onClick={(e) => e.stopPropagation()}><div className="knowledge-modal-title"><div><h2>{preview.name}</h2><p>{typeLabel(preview.mimeType)} · {formatSize(preview.size)} · 上传人 {preview.uploaderName || "—"}</p></div><button type="button" onClick={() => setPreview(null)}><X size={19}/></button></div><div className="knowledge-preview-content">{preview.parseStatus === "failed" ? "该文件解析失败，无法预览内容。" : preview.content || "暂无可预览的内容（该文件可能仅作为附件存储）。"}</div>{preview.summary && <div className="knowledge-preview-summary"><b>AI 摘要：</b>{preview.summary}</div>}</div></div>}
+    <ConfirmDialog open={!!confirmTarget} title="删除确认" message={confirmTarget ? `确认删除${confirmTarget.type === "folder" ? "文件夹" : "文件"}「${confirmTarget.name}」？删除后不可恢复。` : ""} onCancel={() => setConfirmTarget(null)} onConfirm={() => void deleteTarget()}/>
+  </section>;
 }
