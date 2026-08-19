@@ -250,6 +250,17 @@ const MIGRATION_SQL: string[] = [
     updated_at text not null default (datetime('now')),
     deleted_at text
   )`,
+  `CREATE TABLE IF NOT EXISTS scene_knowledge_files (
+    id text primary key,
+    tenant_id text not null,
+    scene_id text not null,
+    knowledge_file_id text not null,
+    sort_order integer not null default 0,
+    created_at text not null default (datetime('now')),
+    updated_at text not null default (datetime('now')),
+    deleted_at text,
+    unique(tenant_id, scene_id, knowledge_file_id)
+  )`,
   `CREATE TABLE IF NOT EXISTS ai_training_sessions (
     id text primary key,
     tenant_id text not null,
@@ -302,6 +313,8 @@ function applyMigrations() {
   db.run("create index if not exists idx_sr_tenant_scene on scoring_rules(tenant_id, scene_id)");
   db.run("create index if not exists idx_sceneroles_tenant_scene on scene_roles(tenant_id, scene_id)");
   db.run("create index if not exists idx_kf_folder on knowledge_files(folder_id)");
+  db.run("create index if not exists idx_skf_scene on scene_knowledge_files(tenant_id, scene_id)");
+  db.run("create index if not exists idx_skf_file on scene_knowledge_files(tenant_id, knowledge_file_id)");
   db.run("create index if not exists idx_aicall_tenant_created on ai_call_logs(tenant_id, created_at)");
   db.run("create index if not exists idx_tasks_tenant on tasks(tenant_id, deleted_at)");
   db.run("create index if not exists idx_users_tenant on users(tenant_id, deleted_at)");

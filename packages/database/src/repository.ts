@@ -154,6 +154,16 @@ export type SceneDetail = {
   rule: SceneRuleRow | null;
   scoringRules: ScoringRuleRow[];
   materials: MaterialRow[];
+  attachments: SceneAttachmentRow[];
+};
+
+export type SceneAttachmentRow = {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  parseStatus: string;
+  parseError: string;
 };
 export type TaskRow = {
   id: string;
@@ -1031,7 +1041,7 @@ export function listScenes(tenantId: string, options: { page: number; pageSize: 
   return { items, total, page: options.page, pageSize: options.pageSize };
 }
 
-export function createScene(tenantId: string, input: { industryPackageId?: string | null; name: string; code: string; mode: string; createMode?: string; createdBy?: string | null; sceneType: string; description: string; aiRole?: { identity: string; background: string; personality: string; emotion: string; languageStyle?: string; goal: string }; learnerRole?: { identity: string; goal: string }; endCondition?: string; interruptCondition?: string; dialogueExample?: string; initiator?: string; scoringRules?: Array<{ name: string; score: number; criteria: string; deductionRule: string; evidenceRequired: string }> }) {
+export function createScene(tenantId: string, input: { industryPackageId?: string | null; name: string; code: string; mode: string; createMode?: string; createdBy?: string | null; sceneType: string; description: string; aiRole?: { identity: string; background: string; personality: string; emotion: string; languageStyle?: string; goal: string }; learnerRole?: { identity: string; goal: string }; endCondition?: string; interruptCondition?: string; dialogueExample?: string; initiator?: string; scoringRules?: Array<{ name: string; score: number; criteria: string; deductionRule: string; evidenceRequired: string }>; attachmentFileIds?: string[] }) {
   const id = createId("scene");
   run(
     `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, create_mode, scene_type, description, status, source_type, is_template, version, created_by, created_at, updated_at)
@@ -1070,6 +1080,7 @@ export function createScene(tenantId: string, input: { industryPackageId?: strin
       [createId("score"), tenantId, id, rule.name, rule.score, rule.criteria, rule.deductionRule, rule.evidenceRequired, index + 1],
     );
   });
+  replaceSceneAttachments(tenantId, id, input.attachmentFileIds ?? []);
   return get<SceneRow>(
     "select id, name, code, industry_package_id as industryPackageId, scene_type as sceneType, mode, coalesce(create_mode, 'ai_practice') as createMode, status, is_template as isTemplate, source_type as sourceType, description, coalesce(pass_score, 80) as passScore, created_at as createdAt from scenes where id = ?",
     [id],
@@ -1152,7 +1163,29 @@ export function getSceneDetail(tenantId: string, sceneId: string): SceneDetail |
      where m.tenant_id = ? and m.scene_id = ? and m.deleted_at is null order by m.created_at desc`,
     [tenantId, sceneId],
   );
-  return { scene, roles, rule, scoringRules, materials };
+  const attachments = all<SceneAttachmentRow>(
+    `select kf.id, kf.name, kf.mime_type as mimeType, kf.size, kf.parse_status as parseStatus, kf.parse_error as parseError
+     from scene_knowledge_files skf
+     join knowledge_files kf on kf.id = skf.knowledge_file_id and kf.tenant_id = skf.tenant_id
+     where skf.tenant_id = ? and skf.scene_id = ? and skf.deleted_at is null and kf.deleted_at is null
+     order by skf.sort_order asc, skf.created_at asc`,
+    [tenantId, sceneId],
+  );
+  return { scene, roles, rule, scoringRules, materials, attachments };
+}
+
+function replaceSceneAttachments(tenantId: string, sceneId: string, fileIds: string[]) {
+  const uniqueFileIds = Array.from(new Set(fileIds.filter(Boolean)));
+  run("delete from scene_knowledge_files where tenant_id = ? and scene_id = ?", [tenantId, sceneId]);
+  uniqueFileIds.forEach((fileId, index) => {
+    const file = get<{ id: string }>("select id from knowledge_files where tenant_id = ? and id = ? and deleted_at is null", [tenantId, fileId]);
+    if (!file) return;
+    run(
+      `insert into scene_knowledge_files (id, tenant_id, scene_id, knowledge_file_id, sort_order, created_at, updated_at)
+       values (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [createId("s-kf"), tenantId, sceneId, fileId, index + 1],
+    );
+  });
 }
 
 export function replaceSceneScoringRules(
@@ -1195,6 +1228,7 @@ export function updateSceneDetail(
     dialogueExample?: string;
     initiator?: string;
     scoringRules?: Array<{ name: string; score: number; criteria: string; deductionRule?: string; evidenceRequired?: string }>;
+    attachmentFileIds?: string[];
   },
 ): SceneDetail | undefined {
   const exists = get<{ id: string }>(
@@ -1269,6 +1303,7 @@ export function updateSceneDetail(
       );
     });
   }
+  if (input.attachmentFileIds !== undefined) replaceSceneAttachments(tenantId, sceneId, input.attachmentFileIds);
   return getSceneDetail(tenantId, sceneId);
 }
 
@@ -2058,9 +2093,11 @@ export type ExamAnswerRow = {
   score: number;
 };
 
+export type ExamAttemptQuestionDetail = Omit<ExamQuestionRow, "score"> & ExamAnswerRow & { maxScore: number };
+
 export type ExamBankWithQuestions = ExamQuestionBankRow & { questions: ExamQuestionRow[] };
 export type ExamDetail = ExamRow & { questions: ExamQuestionRow[] };
-export type ExamAttemptDetail = ExamAttemptRow & { answers: ExamAnswerRow[] };
+export type ExamAttemptDetail = ExamAttemptRow & { answers: ExamAnswerRow[]; questions?: ExamAttemptQuestionDetail[] };
 
 export function createExamBank(tenantId: string, input: { name: string; description?: string }) {
   const id = createId("bank");
@@ -2392,6 +2429,27 @@ function getExamAttemptDetail(tenantId: string, attemptId: string): ExamAttemptD
     [tenantId, attemptId],
   );
   return { ...attempt, answers };
+}
+
+export function getCompletedExamAttemptDetail(
+  tenantId: string,
+  attemptId: string,
+  options: { userId?: string } = {},
+): ExamAttemptDetail | undefined {
+  const attempt = getExamAttemptDetail(tenantId, attemptId);
+  if (!attempt || attempt.status === "in_progress" || (options.userId && attempt.userId !== options.userId)) return undefined;
+  const exam = getExam(tenantId, attempt.examId);
+  if (!exam) return undefined;
+  const answers = new Map(attempt.answers.map((answer) => [answer.questionId, answer]));
+  const questions = listExamQuestions(tenantId, exam.bankId ?? undefined).map((question) => ({
+    ...question,
+    questionId: question.id,
+    maxScore: question.score,
+    userAnswer: answers.get(question.id)?.userAnswer ?? "",
+    isCorrect: answers.get(question.id)?.isCorrect ?? 0,
+    score: answers.get(question.id)?.score ?? 0,
+  }));
+  return { ...attempt, questions };
 }
 
 // ===== 对练中心：场景用户进度 =====

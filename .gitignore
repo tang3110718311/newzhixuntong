@@ -27,3 +27,4 @@ storage/
 deploy/*.local
 deploy/*.secret
 .worktrees/
+.DS_Store
