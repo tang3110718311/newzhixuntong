@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { addExamCount, addExamRecord, type ExamRoundRecord } from "@/lib/sceneProgress";
+import MobilePageAction from "./MobilePageAction";
 
 interface ScenarioExamProps {
   scene: any;
@@ -124,9 +125,7 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
     <div className="pv-shell exam-page">
       {/* ===== 顶部导航 ===== */}
       <header className="pv-nav">
-        <button className="pv-nav-back" type="button" onClick={onBack} aria-label="返回场景工作台">
-          ‹
-        </button>
+        <MobilePageAction kind="back" variant="immersive" onClick={onBack} aria-label="返回场景工作台" />
         <div className="pv-nav-title">
           <h1>场景考试</h1>
         </div>

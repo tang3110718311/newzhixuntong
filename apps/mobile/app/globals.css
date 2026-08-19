@@ -907,7 +907,6 @@ input, select, textarea { font-family: inherit; }
 
 /* 统一考试报告视觉：AI 对练页、AI 对练报告页签与对话记录 */
 .practice-page{background:transparent}
-.pr-transcript{background:#ffffffd9;border-top:0}
 .pr-tabs{border:1px solid #dceafb;background:#e8f1fcaa;box-shadow:inset 0 1px 2px #d0e1f244}
 
 /* 考试报告顶部：复用任务详情返回按钮与左对齐标题 */
@@ -920,7 +919,7 @@ input, select, textarea { font-family: inherit; }
 /* ====== AI 对练报告页（pr-*，参考图 7c5f6754 + 085844 一比一还原） ===== */
 .app:has(.pr-shell)>.tabbar{display:none}
 .app:has(.er-shell)>.tabbar{display:none}
-.pr-shell{position:fixed;inset:0;z-index:30;width:100%;max-width:430px;height:100dvh;min-height:100dvh;margin:0 auto;display:flex;flex-direction:column;overflow:hidden;background:radial-gradient(circle at 110% -130px,#b9eeff 0,rgba(207,242,255,.55) 40%,transparent 70%),radial-gradient(circle at -110px 110px,#d7ddff 0,rgba(227,231,255,.45) 42%,transparent 72%),linear-gradient(180deg,#eff9ff 0,#f8fbff 38%,#f7f9fc 100%)}
+.pr-shell{position:fixed;inset:0;z-index:30;width:100%;max-width:430px;height:100dvh;min-height:100dvh;margin:0 auto;display:flex;flex-direction:column;overflow:hidden;background:transparent}
 /* 中转页 */
 .pr-pending{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:0 40px;text-align:center}
 .pr-spinner{width:44px;height:44px;border-radius:50%;border:4px solid #e5e6eb;border-top-color:#427bff;animation:prSpin .8s linear infinite}
@@ -952,37 +951,44 @@ input, select, textarea { font-family: inherit; }
 .pr-tab{position:relative;z-index:1;border:0;border-radius:10px;background:transparent;color:#86909c;font-size:14px;font-weight:400;padding:0;cursor:pointer}
 .pr-tab.active{background:#fff;color:#427bff;font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,.05)}
 /* 滚动区 */
-.pr-report-body,.pr-transcript{position:relative;z-index:1;flex:1 1 auto;min-height:0;overflow-y:auto;padding:12px 16px 16px;overscroll-behavior:contain}
-/* ===== 对话记录页（严格按参考图 11687156 还原） ===== */
-.pr-transcript{background:#F7FAFF;border-top:1px solid transparent}
-.pr-transcript .pv-chat{background:#F7FAFF;gap:24px;padding:0;max-width:100%}
-.pr-transcript .pv-time{color:#AAB2BF;font-size:12px;line-height:1.2;margin:0 2px 8px}
-.pr-transcript .pv-avatar.ai{border-radius:50%;background:linear-gradient(135deg,#4080FF,#6aa0ff);box-shadow:0 2px 6px rgba(64,128,255,.3)}
-.pr-transcript .pv-msg.user{flex-direction:row-reverse;align-self:flex-end}
-.pr-transcript .pv-msg.user .pv-msg-main{display:flex;flex-direction:column;align-items:flex-end}
-.pr-transcript .pv-avatar.user{background:#E5E9F2;border:none;overflow:visible}
-.pr-transcript .pv-avatar.user:before{width:8px;height:8px;background:#AAB2BF;top:7px;left:50%;transform:translateX(-50%)}
-.pr-transcript .pv-avatar.user:after{width:16px;height:10px;background:#AAB2BF;bottom:5px;left:50%;transform:translateX(-50%)}
-.pr-transcript .pv-bubble{font-size:15px;color:#495366;line-height:1.5;border-radius:14px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.02)}
-.pr-transcript .pv-msg.user .pv-bubble{display:inline-block;width:max-content;padding:10px 20px;border-radius:22px;background:linear-gradient(180deg,#4080FF,#5998FF);color:#fff;font-size:15px;font-weight:500;line-height:1.2;box-shadow:0 4px 12px rgba(64,128,255,.25);white-space:nowrap}
-/* 实时点评卡 */
-.pr-transcript .pv-feedback-card{padding:20px 16px;border:none;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
-.pr-transcript .pv-feedback-head{padding-bottom:16px;border-bottom:1px solid #F2F3F5}
-.pr-transcript .pv-feedback-head>b{color:#384252;font-size:16px;font-weight:500}
-.pr-transcript .pv-feedback-head span{color:#86909C;font-size:16px;font-weight:400}
-.pr-transcript .pv-feedback-head span strong{color:#4080FF;font-size:32px;font-weight:700}
-.pr-transcript .pv-feedback-dimensions{gap:12px;margin-top:16px;row-gap:10px}
-.pr-transcript .pv-feedback-dimension{padding:6px 10px;border-radius:8px;background:#ECF4FF;gap:6px}
-.pr-transcript .pv-feedback-dimension em{color:#384252;font-size:14px;font-weight:400}
-.pr-transcript .pv-feedback-dimension b{color:#4080FF;font-size:14px;font-weight:400}
-.pr-transcript .pv-feedback-dimension.developing,.pr-transcript .pv-feedback-dimension.pass,.pr-transcript .pv-feedback-dimension.excellent{background:#ECF4FF}
-.pr-transcript .pv-feedback-dimension.developing b,.pr-transcript .pv-feedback-dimension.pass b,.pr-transcript .pv-feedback-dimension.excellent b{color:#4080FF}
-.pr-transcript .pv-feedback-sec{gap:8px;margin-top:16px;align-items:flex-start}
-.pr-transcript .pv-feedback-sec span{width:auto;padding:0;color:#F43F3F;font-size:14px;font-weight:500;line-height:1.4;flex:none;white-space:nowrap}
-.pr-transcript .pv-feedback-sec p{color:#495366;font-size:14px;line-height:1.4}
-.pr-transcript .pv-feedback-sec.green span{color:#07C160}
-.pr-transcript .pv-feedback-divider{background:#F2F3F5;margin:12px 0 0}
-.pr-transcript .pv-msg.feedback{margin-left:0;margin-right:0}
+.pr-report-body,.pr-transcript{position:relative;z-index:1;flex:1 1 auto;min-height:0;overflow-y:auto;padding:12px 16px 16px;overscroll-behavior:contain;background:transparent}
+/* ===== 对话记录页（参考原型对话流） ===== */
+.pr-transcript{background:transparent;border-top:1px solid transparent}
+.pr-transcript .pv-chat.report-mode{width:100%;height:auto;min-height:0;margin:0;background:transparent;gap:16px;padding:16px 0 32px;overflow:visible}
+.pr-transcript .pv-msg{width:min(358px,100%);max-width:100%;gap:8px}
+.pr-transcript .pv-msg-main{width:min(326px,calc(100% - 32px));flex:none;max-width:none}
+.pr-transcript .pv-time{color:#a5b2c3;font-size:13px;line-height:16px;margin:0 2px 8px}
+.pr-transcript .pv-avatar{width:24px;height:24px;border-radius:8px}
+.pr-transcript .pv-avatar.ai.report{padding:2px;background:#eaf4ff;box-shadow:none;box-sizing:border-box;overflow:hidden}
+.pr-transcript .pv-avatar.ai.report img{display:block;width:100%;height:100%;object-fit:cover;object-position:center;border-radius:5px}
+.pr-transcript .pv-msg.user{position:relative;flex-direction:row;align-self:flex-start}
+.pr-transcript .pv-msg.user .pv-msg-main{margin-left:32px;display:flex;flex-direction:column;align-items:flex-end}
+.pr-transcript .pv-msg.user .pv-avatar.user{position:absolute;right:-32px;top:0}
+.pr-transcript .pv-avatar.user{background:linear-gradient(145deg,#eaf3ff,#d6e6fb);border:1px solid #cfe0fb;overflow:hidden}
+.pr-transcript .pv-avatar.user:before{width:7px;height:7px;background:#7a93bd;top:4px;left:50%;transform:translateX(-50%)}
+.pr-transcript .pv-avatar.user:after{width:14px;height:8px;background:#7a93bd;bottom:3px;left:50%;transform:translateX(-50%)}
+.pr-transcript .pv-msg.ai .pv-bubble,.pr-transcript .pv-msg.user .pv-bubble{width:100%;max-width:none;padding:12px 16px;font-size:13px;line-height:1.65;white-space:pre-wrap}
+.pr-transcript .pv-msg.ai .pv-bubble{color:#506783;background:#fff;border:1px solid #e5ebf2;border-radius:4px 12px 12px;box-shadow:0 4px 12px rgba(57,93,137,.055)}
+.pr-transcript .pv-msg.user .pv-bubble{color:#fff;background:linear-gradient(135deg,#4a9af5,#5272ed);border-radius:12px 4px 12px 12px;box-shadow:0 5px 12px rgba(65,119,235,.18)}
+.pr-transcript .pv-ai-message-text{margin-top:0}
+/* 实时点评卡：与 AI、学员气泡完全同宽、同左右边界 */
+.pr-transcript .pv-msg.feedback{width:min(326px,calc(100% - 32px));max-width:100%;margin:0 0 0 32px}
+.pr-transcript .pv-feedback-card{width:100%;padding:16px;background:#fff;border:1px solid #e5ebf2;border-radius:12px;box-shadow:0 6px 16px rgba(57,93,137,.08)}
+.pr-transcript .pv-feedback-head{padding-bottom:12px;border-bottom:1px solid #edf1f5}
+.pr-transcript .pv-feedback-head>b{color:#506783;font-size:14px;font-weight:700}
+.pr-transcript .pv-feedback-head span{color:#8393a8;font-size:12px;font-weight:500}
+.pr-transcript .pv-feedback-head span strong{color:#4a86f3;font-size:28px;font-weight:800}
+.pr-transcript .pv-feedback-dimensions{gap:8px;margin-top:12px}
+.pr-transcript .pv-feedback-dimension{padding:5px 8px;border-radius:7px;background:#eef5ff;gap:4px}
+.pr-transcript .pv-feedback-dimension em{color:#506783;font-size:11px;font-weight:600}
+.pr-transcript .pv-feedback-dimension b{color:#4a86f3;font-size:11px;font-weight:800}
+.pr-transcript .pv-feedback-dimension.developing,.pr-transcript .pv-feedback-dimension.pass,.pr-transcript .pv-feedback-dimension.excellent{background:#eef5ff}
+.pr-transcript .pv-feedback-dimension.developing b,.pr-transcript .pv-feedback-dimension.pass b,.pr-transcript .pv-feedback-dimension.excellent b{color:#4a86f3}
+.pr-transcript .pv-feedback-sec{gap:8px;margin-top:12px;align-items:flex-start}
+.pr-transcript .pv-feedback-sec span{width:auto;padding:0;color:#f05b65;font-size:12px;font-weight:700;line-height:1.55;flex:none;white-space:nowrap}
+.pr-transcript .pv-feedback-sec p{color:#506783;font-size:12px;line-height:1.6}
+.pr-transcript .pv-feedback-sec.green span{color:#1ba36d}
+.pr-transcript .pv-feedback-divider{background:#edf1f5;margin:10px 0 0}
 /* 通用白卡 */
 .pr-card{background:#fff;border-radius:12px;padding:16px;margin-bottom:16px}
 /* 合格标签 */
@@ -1455,3 +1461,12 @@ button.hello:active{opacity:.7}
 .account-value{width:100%;border:1px solid #e5ebf4;border-radius:11px;background:#fff;padding:11px 12px;font-size:13px;color:#243858;min-height:42px;display:flex;align-items:center;word-break:break-all}
 .account-modal-actions{display:flex;gap:9px;margin-top:20px}
 .account-modal-actions button{flex:1;height:42px;border:0;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer}
+
+/* 统一页面内页签：以考试报告页签为标准 */
+.unified-tabs{display:grid;grid-template-columns:repeat(var(--unified-tab-count),minmax(0,1fr));gap:5px;margin:14px 16px 0;padding:4px;border:1px solid #dceafb;border-radius:11px;background:#e8f1fcaa;box-shadow:inset 0 1px 2px #d0e1f244}
+.unified-tab{height:37px;min-height:37px;padding:0;border:0;border-radius:8px;background:transparent;color:#8192a8;font-size:12px;font-weight:800;line-height:1;white-space:nowrap;cursor:pointer;transition:background .2s ease,color .2s ease,box-shadow .2s ease}
+.unified-tab.active{background:#fff;color:#3275df;box-shadow:0 3px 9px rgba(56,113,177,.12)}
+.unified-tab:disabled{color:#aab6c6;cursor:not-allowed}
+.unified-tabs--filter{margin:0 0 12px}
+.unified-tabs--compact{flex:1;min-width:0;margin:0}
+.unified-tabs--report{position:relative;z-index:4;flex:none;margin:20px 16px 12px}

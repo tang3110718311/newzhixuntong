@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { examApi, attemptApi, type ExamAttemptDetail, type ExamAttemptRow, type ExamDetail, type ExamQuestionRow, type ExamRow } from "@/lib/api";
 import { statusClass } from "@/lib/types";
 import MobilePageAction from "./MobilePageAction";
+import UnifiedTabs from "./UnifiedTabs";
 
 interface ExamsPageProps {
   showToast: (msg: string) => void;
@@ -254,10 +255,15 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
             <div><b>本次考试成绩</b><span>历史考试记录 <i>›</i></span></div>
           </div>
         </div>
-        <div className="exam-report-tabs" role="tablist" aria-label="考试报告内容">
-          <button className={reportTab === "report" ? "active" : ""} type="button" onClick={() => setReportTab("report")}>报告概览</button>
-          <button className={reportTab === "record" ? "active" : ""} type="button" onClick={() => setReportTab("record")}>对话记录</button>
-        </div>
+        <UnifiedTabs
+          ariaLabel="考试报告内容"
+          items={[
+            { value: "report", label: "报告概览" },
+            { value: "record", label: "对话记录" },
+          ]}
+          onChange={setReportTab}
+          value={reportTab}
+        />
         {reportTab === "report" ? (
           <div className="exam-report-overview">
             <section className="exam-report-summary">
@@ -322,18 +328,13 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
           搜索
         </button>
       </div>
-      <div className="exam-tabs" role="tablist" aria-label="考试状态">
-        {STATUS_TABS.map((s) => (
-          <button
-            key={s}
-            className={`exam-tab ${statusTab === s || (s === "全部" && statusTab === "") ? "active" : ""}`}
-            role="tab"
-            onClick={() => setStatusTab(s === "全部" ? "" : s)}
-          >
-            {s}
-          </button>
-        ))}
-      </div>
+      <UnifiedTabs
+        ariaLabel="考试状态"
+        className="unified-tabs--filter"
+        items={STATUS_TABS.map((label) => ({ value: label === "全部" ? "" : label, label }))}
+        onChange={setStatusTab}
+        value={statusTab}
+      />
       <div className="exam-list" id="examList">
         {loading && <div className="empty">加载中…</div>}
         {!loading && filtered.length === 0 && <div className="empty">暂无真实考试，请联系管理员发布考试</div>}

@@ -177,12 +177,14 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
         <div className="recent-tabs">
           <button
             className={`recent-tab ${recentTab === "tasks" ? "active" : ""}`}
+            type="button"
             onClick={() => setRecentTab("tasks")}
           >
             最近任务
           </button>
           <button
             className={`recent-tab ${recentTab === "exams" ? "active" : ""}`}
+            type="button"
             onClick={() => setRecentTab("exams")}
           >
             最近考试

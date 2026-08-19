@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { recordApi } from "@/lib/api";
 import PracticeChat, { type PracticeChatMsg } from "./PracticeChat";
 import MobilePageAction from "./MobilePageAction";
+import UnifiedTabs from "./UnifiedTabs";
 
 interface PracticeReportProps {
   /** 对练会话（练习完成后进入报告流程时使用，轮询 by-session 等待后台评分） */
@@ -331,14 +332,16 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
       </div>
 
       {/* ===== Tab ===== */}
-      <div className="pr-tabs">
-        <button className={`pr-tab ${tab === "report" ? "active" : ""}`} type="button" onClick={() => setTab("report")}>
-          AI对练报告
-        </button>
-        <button className={`pr-tab ${tab === "transcript" ? "active" : ""}`} type="button" onClick={() => setTab("transcript")}>
-          对话记录
-        </button>
-      </div>
+      <UnifiedTabs
+        ariaLabel="AI对练报告内容"
+        className="unified-tabs--report"
+        items={[
+          { value: "report", label: "AI对练报告" },
+          { value: "transcript", label: "对话记录" },
+        ]}
+        onChange={setTab}
+        value={tab}
+      />
 
       {tab === "report" ? (
         /* ===== AI对练报告 tab ===== */
@@ -494,7 +497,9 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
         </div>
       ) : (
         /* ===== 对话记录 tab：直接复用 AI 对练页对话记录 ===== */
-        <PracticeChat messages={transcriptMessages} />
+        <div className="pr-transcript">
+          <PracticeChat messages={transcriptMessages} reportMode />
+        </div>
       )}
     </div>
   );

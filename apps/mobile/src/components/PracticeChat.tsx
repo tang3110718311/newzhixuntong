@@ -29,19 +29,24 @@ interface PracticeChatProps {
   speakMsgId?: string | null;
   onReplayAi?: (message: PracticeChatMsg) => void;
   onToggleAiAudio?: (message: PracticeChatMsg) => void;
+  reportMode?: boolean;
 }
 
-function AiAvatar() {
+function AiAvatar({ reportMode = false }: { reportMode?: boolean }) {
   return (
-    <span className="pv-avatar ai" aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" strokeWidth="1.7">
-        <rect x="4.5" y="7" width="15" height="11" rx="3.2" />
-        <circle cx="9.2" cy="12.2" r="1.2" fill="#fff" stroke="none" />
-        <circle cx="14.8" cy="12.2" r="1.2" fill="#fff" stroke="none" />
-        <path d="M12 4.5v2.5" />
-        <circle cx="12" cy="3.6" r="1.1" fill="#fff" stroke="none" />
-        <path d="M7 16.6h.01M11.5 16.6h.01M16 16.6h.01" strokeWidth="2" strokeLinecap="round" />
-      </svg>
+    <span className={`pv-avatar ai${reportMode ? " report" : ""}`} aria-hidden="true">
+      {reportMode ? (
+        <img src="/cute-3d-training-robot.png" alt="" />
+      ) : (
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" strokeWidth="1.7">
+          <rect x="4.5" y="7" width="15" height="11" rx="3.2" />
+          <circle cx="9.2" cy="12.2" r="1.2" fill="#fff" stroke="none" />
+          <circle cx="14.8" cy="12.2" r="1.2" fill="#fff" stroke="none" />
+          <path d="M12 4.5v2.5" />
+          <circle cx="12" cy="3.6" r="1.1" fill="#fff" stroke="none" />
+          <path d="M7 16.6h.01M11.5 16.6h.01M16 16.6h.01" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      )}
     </span>
   );
 }
@@ -95,9 +100,10 @@ export default function PracticeChat({
   speakMsgId = null,
   onReplayAi,
   onToggleAiAudio,
+  reportMode = false,
 }: PracticeChatProps) {
   return (
-    <div className="pv-chat" ref={chatRef}>
+    <div className={`pv-chat${reportMode ? " report-mode" : ""}`} ref={chatRef}>
       {messages.map((message) => {
         if (message.who === "feedback") {
           return (
@@ -108,7 +114,7 @@ export default function PracticeChat({
         }
         return (
           <div className={`pv-msg ${message.who}`} key={message.id}>
-            {message.who === "ai" ? <AiAvatar /> : <span className="pv-avatar user" aria-hidden="true"></span>}
+            {message.who === "ai" ? <AiAvatar reportMode={reportMode} /> : <span className="pv-avatar user" aria-hidden="true"></span>}
             <div className="pv-msg-main">
               <span className="pv-time">{message.time}</span>
               <div className="pv-bubble">
@@ -162,7 +168,7 @@ export default function PracticeChat({
       })}
       {sending && (
         <div className="pv-msg ai">
-          <AiAvatar />
+          <AiAvatar reportMode={reportMode} />
           <div className="pv-msg-main">
             <span className="pv-time">{sendingTime}</span>
             <div className="pv-bubble">正在思考…</div>

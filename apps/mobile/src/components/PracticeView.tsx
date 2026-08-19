@@ -5,6 +5,7 @@ import { aiApi, recordApi, type AiInspirationHint } from "@/lib/api";
 import { getDisplayedLength, splitSpeechSegments } from "@/lib/speech-sync";
 import PracticeChat, { type PracticeChatMsg } from "./PracticeChat";
 import { createAsyncSubmitGuard } from "@/lib/submit-guard";
+import MobilePageAction from "./MobilePageAction";
 
 interface PracticeViewProps {
   scene: any;
@@ -849,9 +850,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     <div className="pv-shell">
       {/* ===== 顶部导航（淡天蓝渐变） ===== */}
       <header className="pv-nav">
-        <button className="pv-nav-back" type="button" onClick={onBack} aria-label="返回场景工作台">
-          ‹
-        </button>
+        <MobilePageAction kind="back" variant="immersive" onClick={onBack} aria-label="返回场景工作台" />
         <div className="pv-nav-title">
           <h1>AI对练</h1>
           <span className="pv-live-badge">
