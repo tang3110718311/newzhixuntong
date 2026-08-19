@@ -17,8 +17,9 @@ export interface MobileTask {
 export function statusClass(s: string): string {
   if (s === "未开始" || s === "待开始" || s === "draft") return "wait";
   if (s === "进行中" || s === "published") return "doing";
-  if (s === "已完成" || s === "completed") return "done";
-  if (s === "已停用" || s === "stopped") return "overdue";
+  if (s === "已完成" || s === "已通过" || s === "completed" || s === "passed") return "done";
+  if (s === "已停用" || s === "stopped") return "stopped";
+  if (s === "未通过") return "overdue";
   if (s === "已逾期" || s === "overdue") return "overdue";
   return "wait";
 }

@@ -270,9 +270,19 @@ export interface ExamAttemptRow {
   createdAt: string;
 }
 
+export interface ExamAttemptQuestionDetail extends Omit<ExamQuestionRow, "score"> {
+  userAnswer: string;
+  isCorrect: number;
+  score: number;
+  maxScore: number;
+}
+
+export type ExamAttemptDetail = ExamAttemptRow & { questions: ExamAttemptQuestionDetail[] };
+
 export const attemptApi = {
   list: (examId?: string) =>
     request<ExamAttemptRow[]>(`/exam-attempts${examId ? `?examId=${examId}` : ""}`),
+  detail: (attemptId: string) => request<ExamAttemptDetail>(`/exam-attempts?id=${encodeURIComponent(attemptId)}`),
   start: (examId: string, userId?: string) =>
     request<any>("/exam-attempts", {
       method: "POST",

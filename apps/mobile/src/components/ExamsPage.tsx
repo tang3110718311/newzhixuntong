@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { examApi, attemptApi, type ExamAttemptRow, type ExamDetail, type ExamQuestionRow, type ExamRow } from "@/lib/api";
+import { examApi, attemptApi, type ExamAttemptDetail, type ExamAttemptRow, type ExamDetail, type ExamQuestionRow, type ExamRow } from "@/lib/api";
 import { statusClass } from "@/lib/types";
 
 interface ExamsPageProps {
@@ -9,6 +9,17 @@ interface ExamsPageProps {
 }
 
 const STATUS_TABS = ["全部", "待参加", "未通过", "已通过"];
+
+const TASK_TYPE_LABELS: Record<string, string> = {
+  free_exam: "自由考试",
+  fixed_exam: "固定考试",
+};
+
+function examTypeLabel(exam: ExamRow) {
+  if (exam.status === "final") return "结业考试";
+  if (exam.status === "stage") return "阶段考试";
+  return TASK_TYPE_LABELS[exam.status] || "在线考试";
+}
 
 export default function ExamsPage({ showToast }: ExamsPageProps) {
   const [exams, setExams] = useState<ExamRow[]>([]);
@@ -23,7 +34,8 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
     answers: Record<string, string>;
     submitting: boolean;
   } | null>(null);
-  const [resultView, setResultView] = useState<{ exam: ExamRow | ExamDetail; attempt: ExamAttemptRow } | null>(null);
+  const [resultView, setResultView] = useState<{ exam: ExamRow | ExamDetail; attempt: ExamAttemptDetail } | null>(null);
+  const [reportTab, setReportTab] = useState<"report" | "record">("report");
 
   async function loadData(showSuccess = false) {
     setLoading(true);
@@ -49,9 +61,9 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
   const examStatus = (e: ExamRow): { text: string; score: string; action: string } => {
     const att = attempts[e.id];
     if (!att) return { text: "待参加", score: "—", action: "开始考试" };
-    if (att.status === "passed") return { text: "已通过", score: `${att.score} 分`, action: "查看成绩" };
+    if (att.status === "passed") return { text: "已通过", score: `${att.score} 分`, action: "查看解析" };
     if (att.status === "failed") return { text: "未通过", score: `${att.score} 分`, action: "重新考试" };
-    return { text: "进行中", score: "—", action: "继续考试" };
+    return { text: "进行中", score: "—", action: "开始考试" };
   };
 
   const filtered = useMemo(() => {
@@ -96,7 +108,16 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
   const startExam = async (e: ExamRow) => {
     const att = attempts[e.id];
     if (att?.status === "passed") {
-      setResultView({ exam: e, attempt: att });
+      setStartingId(e.id);
+      try {
+        const detail = await attemptApi.detail(att.id);
+        setReportTab("report");
+        setResultView({ exam: e, attempt: detail });
+      } catch (err: any) {
+        showToast(err.message || "考试报告加载失败");
+      } finally {
+        setStartingId(null);
+      }
       return;
     }
     const existingAttemptId = att?.status === "in_progress" ? att.id : undefined;
@@ -131,7 +152,9 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
         taking.exam.questions.map((q) => ({ questionId: q.id, answer: taking.answers[q.id] || "" })),
       );
       setTaking(null);
-      setResultView({ exam: taking.exam, attempt });
+      const report = await attemptApi.detail(attempt.id);
+      setReportTab("report");
+      setResultView({ exam: taking.exam, attempt: report });
       await loadData();
       showToast("考试已提交，成绩已记录");
     } catch (err: any) {
@@ -209,30 +232,53 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
 
   if (resultView) {
     const passed = resultView.attempt.status === "passed";
+    const questions = resultView.attempt.questions || [];
+    const correctCount = questions.filter((question) => question.isCorrect).length;
+    const score = resultView.attempt.score ?? 0;
+    const completionRounds = questions.length;
+    const examFormat = resultView.exam.description?.includes("文本") ? "文本形式" : "语音形式";
     return (
-      <div className="exam-result-view">
-        <div className="task-detail-head">
+      <div className="exam-report-view">
+        <div className="exam-report-topbar">
           <button className="task-detail-back" type="button" onClick={() => setResultView(null)} aria-label="返回考试列表">
             ‹
           </button>
-          <div className="task-detail-title">
-            <h1>考试成绩</h1>
-            <p>{resultView.exam.name}</p>
+          <div><b>考试报告</b><span>{resultView.exam.name}</span></div>
+          <button className="report-close" type="button" onClick={() => setResultView(null)} aria-label="关闭报告">×</button>
+        </div>
+        <div className={`exam-report-banner ${passed ? "passed" : "failed"}`}>
+          <div className="exam-report-banner-deco exam-report-banner-deco-one" />
+          <div className="exam-report-banner-deco exam-report-banner-deco-two" />
+          <div className="exam-report-banner-deco exam-report-banner-deco-arc" />
+          <div className="exam-report-banner-content">
+            <strong>{score}<small>分</small></strong>
+            <div><b>本次考试成绩</b><span>历史考试记录 <i>›</i></span></div>
           </div>
         </div>
-        <div className={`exam-result-card ${passed ? "passed" : "failed"}`}>
-          <span>{passed ? "已通过" : "未通过"}</span>
-          <strong>{resultView.attempt.score ?? 0}</strong>
-          <p>满分 {resultView.attempt.totalScore} 分 · {resultView.attempt.finishedAt ? resultView.attempt.finishedAt.slice(0, 16).replace("T", " ") : "刚刚提交"}</p>
+        <div className="exam-report-tabs" role="tablist" aria-label="考试报告内容">
+          <button className={reportTab === "report" ? "active" : ""} type="button" onClick={() => setReportTab("report")}>报告概览</button>
+          <button className={reportTab === "record" ? "active" : ""} type="button" onClick={() => setReportTab("record")}>对话记录</button>
         </div>
-        <div className="exam-result-actions">
-          <button className="secondary" type="button" onClick={() => setResultView(null)}>
-            返回列表
-          </button>
-          <button className="primary" type="button" onClick={() => beginTaking(resultView.exam as ExamRow)}>
-            再考一次
-          </button>
-        </div>
+        {reportTab === "report" ? (
+          <div className="exam-report-overview">
+            <section className="exam-report-summary">
+              <div className="exam-report-summary-head">
+                <div><h3>本次考试已完成</h3><p>考试轮次由后台配置控制，共 {completionRounds} 轮</p></div>
+                <span className={`exam-report-pass-tag ${passed ? "passed" : "failed"}`}>{passed ? "合格" : "不合格"}</span>
+              </div>
+              <div className="exam-report-score-card">
+                <div className="exam-report-score-ring" style={{ background: `conic-gradient(#3b82f6 ${Math.max(0, Math.min(score, 100)) * 3.6}deg, #eef1f6 0deg)` }}><div><strong className={passed ? "passed" : "failed"}>{score}</strong><span>综合得分</span></div></div>
+                <div className="exam-report-score-info"><h4>{passed ? "达到考试合格要求" : "未达到考试合格要求"}</h4><p>系统已整理本次{examFormat}考试的全部回答，并生成轮次表现记录。</p><div><span>考试形式 <b>{examFormat}</b></span><span>完成轮次 <b>{completionRounds}</b></span></div></div>
+              </div>
+              <div className="exam-report-conclusion"><h3>考试结论</h3><p>本次考试共完成 <b>{completionRounds}</b> 轮正式作答，最终成绩为 <strong>{score} 分</strong>，考试状态为 <em className={passed ? "passed" : "failed"}>{passed ? "合格" : "不合格"}</em>。</p></div>
+            </section>
+            <div className="exam-report-question-heading"><h3>逐题解析</h3><span>答对 {correctCount}/{questions.length} 题</span></div>
+            {questions.map((question, index) => <article className={`exam-analysis-card ${question.isCorrect ? "correct" : "wrong"}`} key={question.id}><div className="exam-analysis-head"><b>第 {index + 1} 题 · {question.type === "multi" ? "多选题" : question.type === "judge" ? "判断题" : "单选题"}</b><span>{question.isCorrect ? `得 ${question.score}/${question.maxScore} 分` : `得 0/${question.maxScore} 分`}</span></div><h4>{question.stem}</h4><p>你的答案：<b>{question.userAnswer || "未作答"}</b></p><p>正确答案：<b>{question.answer}</b></p><div className="exam-analysis-note"><strong>解析</strong>{question.analysis || "暂无解析"}</div></article>)}
+          </div>
+        ) : (
+          <div className="exam-record-chat">{questions.map((question, index) => <div className="exam-chat-group" key={question.id}><div className="exam-chat-row ai"><i>题</i><p>第 {index + 1} 题：{question.stem}</p></div><div className="exam-chat-row user"><i>我</i><p>{question.userAnswer || "未作答"}</p></div><div className={`exam-chat-feedback ${question.isCorrect ? "correct" : "wrong"}`}>{question.isCorrect ? "回答正确" : `回答错误，正确答案：${question.answer}`} · {question.score}/{question.maxScore} 分</div></div>)}</div>
+        )}
+        <button className="exam-report-close-action" type="button" onClick={() => setResultView(null)}>关闭报告</button>
       </div>
     );
   }
@@ -300,8 +346,8 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
               <div className="exam-card-head">
                 <div className="exam-kind">
                   <span className="exam-kind-icon">▣</span>
-                  <span>考试任务</span>
-                  <em>{e.description || "在线考试"}</em>
+                  <span>考试类型</span>
+                  <em>{examTypeLabel(e)}</em>
                 </div>
                 <span className={`exam-status ${statusClass(st.text)}`}>
                   <i></i>
