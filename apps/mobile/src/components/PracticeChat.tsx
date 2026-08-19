@@ -14,6 +14,7 @@ export interface PracticeChatMsg {
   dimensions?: AiTurnScore[];
   issues?: string[];
   advice?: string[];
+  feedbackMessage?: string;
 }
 
 interface PracticeChatProps {
@@ -68,6 +69,7 @@ function PracticeFeedbackCard({ message }: { message: PracticeChatMsg }) {
           ))}
         </div>
       )}
+      {message.feedbackMessage && <p className="pv-feedback-empty">{message.feedbackMessage}</p>}
       {message.issues && message.issues.length > 0 && (
         <div className="pv-feedback-sec">
           <span>问题定位</span>

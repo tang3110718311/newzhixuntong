@@ -282,6 +282,9 @@ export type ScoreDetailRow = {
   level?: string | null;
   /** 评分所属轮次：0 表示整场评分，>0 表示第 N 轮的单轮评分 */
   roundNo?: number;
+  /** 本轮问题定位与改进建议，JSON 字段解析后的数组 */
+  issues?: string[];
+  advice?: string[];
 };
 
 export type TrainingRecordDetail = {
@@ -312,7 +315,7 @@ export type CreateTrainingRecordInput = {
   finishedAt?: string | null;
   capabilityProfile?: string | null;
   turns: Array<{ speaker: "ai" | "learner"; text: string; durationMs?: number; startedAt?: string | null; emotion?: string }>;
-  scores: Array<{ scoringRuleId?: string | null; score: number; deductionReason?: string; evidenceText?: string; level?: string | null; roundNo?: number }>;
+  scores: Array<{ scoringRuleId?: string | null; score: number; deductionReason?: string; evidenceText?: string; level?: string | null; roundNo?: number; issues?: string[]; advice?: string[] }>;
 };
 
 export type AiTrainingSessionMessage = {
@@ -1743,9 +1746,9 @@ export function createTrainingRecord(tenantId: string, input: CreateTrainingReco
   });
   input.scores.forEach((score) => {
     run(
-      `insert into score_details (id, tenant_id, record_id, scoring_rule_id, round_no, score, deduction_reason, evidence_text, level, created_at, updated_at)
-       values (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      [createId("sd"), tenantId, id, score.scoringRuleId ?? null, score.roundNo ?? 0, score.score, score.deductionReason ?? "", score.evidenceText ?? "", score.level ?? ""],
+      `insert into score_details (id, tenant_id, record_id, scoring_rule_id, round_no, score, deduction_reason, evidence_text, level, issues_json, advice_json, created_at, updated_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [createId("sd"), tenantId, id, score.scoringRuleId ?? null, score.roundNo ?? 0, score.score, score.deductionReason ?? "", score.evidenceText ?? "", score.level ?? "", JSON.stringify(score.issues ?? []), JSON.stringify(score.advice ?? [])],
     );
   });
   if (input.taskId && input.userId && input.status === "completed") {
@@ -1787,7 +1790,7 @@ export function getTrainingRecordDetail(
     [tenantId, recordId],
   );
   const scores = all<ScoreDetailRow>(
-    `select sd.id, sr.name as ruleName, sd.score, sr.score as maxScore, sd.deduction_reason as deductionReason, sd.evidence_text as evidenceText, sd.level as level, sd.round_no as roundNo
+     `select sd.id, sr.name as ruleName, sd.score, sr.score as maxScore, sd.deduction_reason as deductionReason, sd.evidence_text as evidenceText, sd.level as level, sd.round_no as roundNo, sd.issues_json as issuesJson, sd.advice_json as adviceJson
      from score_details sd
      left join scoring_rules sr on sr.id = sd.scoring_rule_id and sr.tenant_id = sd.tenant_id
      where sd.tenant_id = ? and sd.record_id = ? and sd.deleted_at is null order by sd.created_at asc`,
@@ -1797,10 +1800,23 @@ export function getTrainingRecordDetail(
     "select suggestions from training_records where tenant_id = ? and id = ? and deleted_at is null limit 1",
     [tenantId, recordId],
   );
+  const parseStringArray = (raw: unknown): string[] => {
+    if (typeof raw !== "string") return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+    } catch {
+      return [];
+    }
+  };
+  const normalizedScores = scores.map((score) => {
+    const row = score as ScoreDetailRow & { issuesJson?: unknown; adviceJson?: unknown };
+    return { ...score, issues: parseStringArray(row.issuesJson), advice: parseStringArray(row.adviceJson) };
+  });
   // 拆分：round_no=0/null 为整场评分（报告页维度分析）；round_no>0 为每轮评分（对话记录反馈卡）
-  const overallScores = scores.filter((s) => !s.roundNo || s.roundNo <= 0).map(({ roundNo, ...rest }) => rest);
+  const overallScores = normalizedScores.filter((s) => !s.roundNo || s.roundNo <= 0).map(({ roundNo, ...rest }) => rest);
   const turnScoreMap = new Map<number, ScoreDetailRow[]>();
-  for (const s of scores) {
+  for (const s of normalizedScores) {
     if (s.roundNo && s.roundNo > 0) {
       const arr = turnScoreMap.get(s.roundNo) ?? [];
       arr.push({ ...s });

@@ -40,6 +40,8 @@ type TranscriptTurnScore = {
   maxScore?: number | null;
   deductionReason?: string;
   level?: string | null;
+  issues?: string[];
+  advice?: string[];
 };
 
 function normalizeLevel(score: number, maxScore = 100, level?: string | null): "excellent" | "pass" | "developing" {
@@ -175,21 +177,15 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
   const passed = score >= passScore;
   const overallScores: Array<{ ruleName: string | null; score: number; level?: string | null; deductionReason?: string; evidenceText?: string }> =
     detail?.scores ?? [];
-  // 原型能力均分 = 综合得分（各维度加权后），对齐显示
+  // 能力均分以已触发维度的累计表现归一化结果展示。
   const avgScore = score;
-  // 后端暂未返回权重：按维度数均分兜底（展示格式对齐原型「维度名（权重%）得分」）
-  const dimWeight = overallScores.length ? Math.round(100 / overallScores.length) : 0;
 
   // 对话记录 tab：把历史 turns/turnScores 转成 AI 对练页同款消息列表，渲染时直接复用 PracticeChat。
-  // 当 turnScores 为空（实时评分超时导致）时，使用 overallScores（整场评分）在最后一轮兜底展示。
   const transcriptMessages = useMemo<PracticeChatMsg[]>(() => {
     if (!detail) return [];
     const turnScores: Array<{ roundNo: number; scores: TranscriptTurnScore[] }> = detail.turnScores ?? [];
-    const suggestions: string[] = Array.isArray(detail.suggestions) ? detail.suggestions : [];
     const messages: PracticeChatMsg[] = [];
     let learnerIdx = 0;
-    const totalTurns = (detail.turns ?? []).filter((t: any) => t.speaker === "learner").length;
-    const hasAnyTurnScores = turnScores.length > 0;
 
     (detail.turns ?? []).forEach((t: any, i: number) => {
       const time = fmtChatTime(t.startedAt || detail.record?.startedAt);
@@ -203,36 +199,27 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
       learnerIdx += 1;
       messages.push({ id: `turn-${i}-learner`, who: "user", text, time, isVoice: Number(t.durationMs) > 0 });
 
-      // 优先使用 turnScores（每轮评分），兜底使用 overallScores（整场评分，仅在最后一轮展示）
-      let dimensions: Array<{ name: string; score: number; maxScore: number; level: "excellent" | "pass" | "developing"; reason: string }> = [];
-      if (hasAnyTurnScores) {
-        const ts = turnScores.find((x) => x.roundNo === learnerIdx);
-        dimensions =
-          ts?.scores?.map((s) => {
-            const scoreValue = Number(s.score) || 0;
-            const maxScore = Number(s.maxScore) || 100;
-            return {
-              name: s.ruleName || "评分维度",
-              score: scoreValue,
-              maxScore,
-              level: normalizeLevel(scoreValue, maxScore, s.level),
-              reason: s.deductionReason || "",
-            };
-          }) ?? [];
-      } else if (learnerIdx === totalTurns && (detail.scores ?? []).length > 0) {
-        // 兜底：turnScores 为空时，在最后一轮展示整场评分
-        dimensions = (detail.scores ?? []).map((s: { ruleName?: string | null; score: number | null; level?: string | null; deductionReason?: string }) => ({
-          name: s.ruleName || "评分维度",
-          score: Number(s.score) || 0,
-          maxScore: 100,
-          level: normalizeLevel(Number(s.score) || 0, 100, s.level || undefined),
-          reason: s.deductionReason || "",
-        }));
-      }
+      // 仅展示本轮实际触发并参与评价的维度，整场评分不伪装为单轮评分。
+      let dimensions: Array<{ name: string; score: number; maxScore: number; level: "excellent" | "pass" | "developing"; reason: string; issues: string[]; advice: string[] }> = [];
+      const ts = turnScores.find((x) => x.roundNo === learnerIdx);
+      dimensions =
+        ts?.scores?.map((s) => {
+          const scoreValue = Number(s.score) || 0;
+          const maxScore = Number(s.maxScore) || 100;
+          return {
+            name: s.ruleName || "评分维度",
+            score: scoreValue,
+            maxScore,
+            level: normalizeLevel(scoreValue, maxScore, s.level),
+            reason: s.deductionReason || "",
+            issues: Array.isArray(s.issues) ? s.issues : [],
+            advice: Array.isArray(s.advice) ? s.advice : [],
+          };
+        }) ?? [];
 
       const turnTotal = dimensions.length ? dimensions.reduce((a, s) => a + (Number(s.score) || 0), 0) : null;
-      const issues = dimensions.map((s) => s.reason).filter(Boolean);
-      const advice = suggestions[learnerIdx - 1] ? [suggestions[learnerIdx - 1]] : suggestions[0] ? [suggestions[0]] : [];
+      const issues = dimensions.flatMap((s) => s.issues).filter(Boolean);
+      const advice = dimensions.flatMap((s) => s.advice).filter(Boolean);
 
       if (turnTotal != null || dimensions.length > 0 || issues.length > 0 || advice.length > 0) {
         messages.push({
@@ -351,7 +338,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
             <div className="pr-eval-head">
               <div className="pr-eval-text">
                 <h3>本次AI对练评估</h3>
-                <p>综合得分 = 各能力维度得分 × 后台配置权重</p>
+                <p>综合得分 = 已触发维度实际得分 ÷ 已触发维度满分之和 × 100</p>
               </div>
               <PassTag score={score} />
             </div>
@@ -366,7 +353,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
               </div>
               <div className="pr-total-text">
                 <b>{passed ? "表现达到合格要求，继续保持优势能力" : "表现未达合格线，建议针对短板加强练习"}</b>
-                <p>系统依据评分维度与后台配置权重，综合评估你本次对练各能力维度的表现。得分越高代表该维度行为越规范。</p>
+                <p>系统仅统计对话中实际触发的评分维度，按各轮实际得分与对应满分归一化计算，避免未涉及维度产生扣分。</p>
                 <div className="pr-total-stats">
                   能力均分 {avgScore}　评价维度 {overallScores.length}
                 </div>
@@ -398,7 +385,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
                   {overallScores.map((s, i) => (
                     <div className="pr-radar-item" key={i}>
                       <span>
-                        {s.ruleName || `维度${i + 1}`}（{dimWeight}%）
+                        {s.ruleName || `维度${i + 1}`}
                       </span>
                       <b>{s.score}</b>
                     </div>
@@ -425,7 +412,6 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
                       <div className="pr-dim-top">
                         <span className={`pr-dim-dot ${isGood ? "good" : "warn"}`}></span>
                         <b>{s.ruleName || `维度${i + 1}`}</b>
-                        <span className="pr-dim-weight">{dimWeight}%</span>
                         <span className="pr-dim-score">{s.score}</span>
                       </div>
                       <div className="pr-dim-bar">

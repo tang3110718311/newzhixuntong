@@ -313,6 +313,8 @@ export interface AiTurnScore {
   maxScore: number;
   level: "excellent" | "pass" | "developing";
   reason?: string;
+  issues?: string[];
+  advice?: string[];
 }
 
 export interface AiInspirationHint {
@@ -323,11 +325,12 @@ export interface AiInspirationHint {
 export interface AiChatResponse {
   sessionId?: string;
   aiReply?: string;
-  coachTip?: string;
+  emotion?: string;
   inspirationHint?: AiInspirationHint | null;
   perTurnScores?: AiTurnScore[];
   round?: number;
   isFinished?: boolean;
+  outcome?: "continuing" | "cooperated" | "hesitating" | "left" | "complaint" | "off_topic_terminated" | "max_round" | "learner_ended" | "severe_misconduct";
   recordPending?: boolean;
   trainingRecord?: { score?: number | null } | null;
 }

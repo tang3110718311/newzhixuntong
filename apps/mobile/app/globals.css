@@ -100,7 +100,8 @@
 .exam-page .practice-compose-wrap{padding-top:8px}
 .exam-compose-meta{display:flex;align-items:center;justify-content:space-between;margin:0 2px 7px;color:#8a9ab0;font-size:12px}
 .exam-compose-meta strong{color:#2563eb}
-.exam-submit.exam-submit-dialogue{height:36px;margin-top:8px;background:linear-gradient(135deg,#e39a45,#c97b2c)}
+.exam-page .mobile-page-action--immersive{color:#4f67d9;background:rgba(238,242,255,.78);border:1px solid #d9e0ff;border-radius:12px;box-shadow:0 4px 12px rgba(79,103,217,.12)}
+.exam-submit.exam-submit-dialogue{height:36px;margin-top:8px;background:linear-gradient(135deg,#6478e6,#765bd6);box-shadow:0 5px 12px rgba(91,99,214,.22)}
 .exam-submit.exam-submit-dialogue:disabled{background:#e3e8ef;color:#9aa8b8}
 .exam-page .practice-send{background:linear-gradient(145deg,#e39a45,#c97b2c);box-shadow:0 4px 9px rgba(181,121,45,.22)}
 .report-section{margin-top:14px;padding-top:12px;border-top:1px solid #edf2f7}
@@ -801,16 +802,18 @@ input, select, textarea { font-family: inherit; }
 .scene-info-card:last-child{margin-bottom:24px}
 
 /* ===== AI 对练页（参考图还原 v2：顶部渐变导航 + 三栏信息卡 + 语音/文本输入） ===== */
-.app:has(.pv-shell)>.tabbar{display:none}
-.pv-shell{position:fixed;inset:0;z-index:30;width:100%;max-width:430px;height:100dvh;min-height:100dvh;margin:0 auto;display:flex;flex-direction:column;overflow:hidden;background:#f6f9ff}
-/* 顶部导航：淡天蓝渐变 */
-.pv-nav{flex:none;display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:2px;padding:max(6px,env(safe-area-inset-top)) 8px 10px;background:linear-gradient(135deg,#e3f0ff 0%,#f5faff 55%,#e8f6fd 100%)}
+.app:has(.pv-shell)>.tabbar,.app:has(.exam-dialogue-page)>.tabbar{display:none}
+.pv-shell{position:fixed;inset:0;z-index:30;width:100%;max-width:430px;height:100dvh;min-height:100dvh;margin:0 auto;display:flex;flex-direction:column;overflow:hidden}
+/* AI 对练顶部导航：背景沿用页面统一底色 */
+.pv-nav{flex:none;display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:2px;padding:max(6px,env(safe-area-inset-top)) 8px 10px;background:transparent}
 .pv-nav-back{width:42px;height:42px;display:grid;place-items:center;border:0;background:transparent;color:#374151;font-size:30px;line-height:1;padding:0;cursor:pointer}
 .pv-nav-title{display:flex;align-items:center;justify-content:center;gap:7px;min-width:0}
 .pv-nav-title h1{margin:0;color:#1e293b;font-size:17px;font-weight:600;white-space:nowrap}
 .pv-live-badge{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:999px;background:#ecfdf5;color:#059669;font-size:12px;line-height:1;white-space:nowrap;flex:none}
 .pv-live-badge i{width:6px;height:6px;border-radius:50%;background:#10b981}
 .pv-nav-spacer{width:42px}
+.pv-end-practice{min-width:44px;height:32px;padding:0 8px;border:0;border-radius:8px;background:rgba(37,99,235,.1);color:#2563eb;font-size:12px;font-weight:600;white-space:nowrap}
+.pv-end-practice:disabled{opacity:.45}
 /* 场景信息三栏卡（5:3:2，细灰竖线分隔） */
 .pv-scene-card{flex:none;display:grid;grid-template-columns:5fr 3fr 2fr;margin:0 16px 10px;background:#fff;border-radius:12px;box-shadow:0 3px 12px rgba(56,113,177,.07);overflow:hidden}
 .pv-scene-col{min-width:0;padding:11px 9px}
@@ -821,7 +824,7 @@ input, select, textarea { font-family: inherit; }
 .pv-scene-col b.orange{color:#d97706}
 .pv-scene-col b.blue{color:#2563eb}
 /* 对话区 */
-.pv-chat{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:13px;padding:12px 14px 16px;overflow-y:auto;overscroll-behavior:contain;background:linear-gradient(180deg,#f0f6ff 0%,#f6f9ff 100%)}
+.pv-chat{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:13px;padding:12px 14px 16px;overflow-y:auto;overscroll-behavior:contain;background:transparent}
 .pv-msg{display:flex;align-items:flex-start;gap:8px;max-width:min(362px,100%)}
 .pv-msg.user{align-self:flex-end;flex-direction:row-reverse}
 /* 反馈卡对齐：左对齐 AI 气泡左缘（14 padding + 32 头像 + 8 gap = 54px → margin-left 40px），右对齐学员气泡右缘（内容区右缘 - 头像 32 - gap 8 = 40px） */
@@ -861,6 +864,7 @@ input, select, textarea { font-family: inherit; }
 .pv-feedback-head span{display:flex;align-items:baseline;color:#607292;font-size:12px;font-weight:500;white-space:nowrap}
 .pv-feedback-head span strong{margin-right:2px;color:#2563eb;font-size:24px;line-height:1;font-weight:800;font-variant-numeric:tabular-nums}
 .pv-feedback-dimensions{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}
+.pv-feedback-empty{margin:12px 0 0;color:#8495aa;font-size:12px;line-height:1.55}
 .pv-feedback-dimension{display:inline-flex;align-items:center;gap:4px;min-height:28px;padding:5px 8px;border-radius:7px;background:#ecf4ff;box-sizing:border-box;line-height:1.1}
 .pv-feedback-dimension em{color:#475569;font-size:11px;font-style:normal;font-weight:600;white-space:nowrap}
 .pv-feedback-dimension b{color:#2563eb;font-size:11px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -904,6 +908,14 @@ input, select, textarea { font-family: inherit; }
 .pv-text-input:focus{border-color:#9dbaf2;background:#fff}
 .pv-text-send{flex:none;width:38px;height:38px;padding:0;border:0;border-radius:9px;background:#5276d5;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 6px rgba(82,118,213,.35)}
 .pv-text-send:disabled{opacity:.9;cursor:not-allowed;box-shadow:none}
+
+/* ===== 场景考试会话（独立于 AI 对练模块） ===== */
+.exam-dialogue-page{position:fixed;inset:0;z-index:30;width:100%;max-width:430px;height:100dvh;min-height:100dvh;margin:0 auto;display:flex;flex-direction:column;overflow:hidden}
+.exam-dialogue-nav{flex:none;display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:2px;padding:max(6px,env(safe-area-inset-top)) 8px 10px;background:linear-gradient(135deg,#fff8ef 0%,#fffdf9 55%,#fff4e8 100%)}
+.exam-dialogue-nav-title{display:flex;align-items:center;justify-content:center;min-width:0}.exam-dialogue-nav-title h1{margin:0;color:#4b3b29;font-size:17px;font-weight:600;white-space:nowrap}.exam-dialogue-nav-spacer{width:42px}.exam-dialogue-page .mobile-page-action--immersive{color:#a66a2b}
+.exam-dialogue-scene-card{flex:none;display:grid;grid-template-columns:5fr 3fr 2fr;margin:0 16px 10px;background:#fff;border-radius:12px;box-shadow:0 3px 12px rgba(128,91,45,.08);overflow:hidden}.exam-dialogue-scene-col{min-width:0;padding:11px 9px}.exam-dialogue-scene-col+.exam-dialogue-scene-col{border-left:1px solid #efe5d8}.exam-dialogue-scene-col span{display:block;color:#8d7b67;font-size:11px;white-space:nowrap}.exam-dialogue-scene-col b{display:block;margin-top:4px;color:#4b3b29;font-size:13px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}.exam-dialogue-scene-col:first-child b{white-space:normal;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.exam-dialogue-scene-col b.blue{color:#b5792d}
+.exam-dialogue-chat{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:13px;padding:12px 14px 16px;overflow-y:auto;overscroll-behavior:contain;background:transparent}.exam-dialogue-msg{display:flex;align-items:flex-start;gap:8px;max-width:min(362px,100%)}.exam-dialogue-msg.user{align-self:flex-end;flex-direction:row-reverse}.exam-dialogue-avatar{width:32px;height:32px;border-radius:10px;flex:none;display:grid;place-items:center}.exam-dialogue-avatar.ai{background:linear-gradient(135deg,#d8984a,#f0b86f);box-shadow:0 2px 6px rgba(181,121,45,.25)}.exam-dialogue-avatar.user{position:relative;background:linear-gradient(145deg,#fff1df,#f6dec0);border:1px solid #edcfaa;overflow:hidden}.exam-dialogue-avatar.user:before{content:"";position:absolute;left:50%;top:6px;transform:translateX(-50%);width:9px;height:9px;border-radius:50%;background:#b28a61}.exam-dialogue-avatar.user:after{content:"";position:absolute;left:50%;bottom:4px;transform:translateX(-50%);width:18px;height:11px;border-radius:11px 11px 7px 7px;background:#b28a61}.exam-dialogue-msg-main{min-width:0;max-width:100%}.exam-dialogue-time{display:block;margin:0 3px 4px;color:#aa9b8c;font-size:11px;line-height:1}.exam-dialogue-msg.user .exam-dialogue-time{text-align:right}.exam-dialogue-bubble{position:relative;max-width:322px;box-sizing:border-box;padding:10px 12px;border-radius:12px 12px 12px 3px;background:#fff;color:#514437;font-size:14px;line-height:1.6;box-shadow:0 2px 8px rgba(128,91,45,.07);word-break:break-word;white-space:pre-wrap}.exam-dialogue-msg.user .exam-dialogue-bubble{border-radius:12px 3px 12px 12px;background:linear-gradient(135deg,#d8984a,#c97b2c);color:#fff;box-shadow:0 4px 10px rgba(181,121,45,.22)}
+.exam-dialogue-composer{flex:none;background:#fff;border-top:1px solid #f0e6da;padding:10px 14px calc(12px + env(safe-area-inset-bottom));box-shadow:0 -6px 18px rgba(128,91,45,.06)}.exam-dialogue-text-bar{display:flex;align-items:center;gap:8px}.exam-dialogue-text-input{flex:1;min-width:0;height:44px;border:1px solid #eadfce;border-radius:10px;background:#fffaf4;padding:0 12px;outline:none;font-size:14px;color:#5a4938}.exam-dialogue-text-input:focus{border-color:#d9b98f;background:#fff}.exam-dialogue-text-send{flex:none;width:38px;height:38px;padding:0;border:0;border-radius:9px;background:#c97b2c;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 6px rgba(181,121,45,.3)}.exam-dialogue-text-send:disabled{opacity:.9;cursor:not-allowed;box-shadow:none}
 
 /* 统一考试报告视觉：AI 对练页、AI 对练报告页签与对话记录 */
 .practice-page{background:transparent}

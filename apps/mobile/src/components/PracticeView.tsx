@@ -18,32 +18,6 @@ interface PracticeViewProps {
 type ChatMsg = PracticeChatMsg;
 
 /**
- * 解析教练提示（兼容两种格式）：
- * 1. 新版两段式（后端 9b287e7 起）："点评｜可以说：建议"，用 ｜ 分隔，点评 ≤12字、建议 20-35字
- * 2. 旧版："点评，可以说：建议"
- * 映射：点评 → 问题定位，建议 → 改进建议
- */
-function parseCoachTip(tip: string): { issues: string[]; advice: string[] } {
-  const t = (tip || "").trim();
-  if (!t) return { issues: [], advice: [] };
-  // 新版两段式：按 ｜ 分隔
-  const pipeIdx = t.indexOf("｜");
-  if (pipeIdx > -1) {
-    const issues = [t.slice(0, pipeIdx).replace(/[，,。；;\s|｜]+$/, "").trim()].filter(Boolean);
-    const advicePart = t.slice(pipeIdx + 1).replace(/^可以说[:：]?\s*/, "可以说：").trim();
-    return { issues, advice: advicePart ? [advicePart] : [] };
-  }
-  // 旧版：按"可以说"拆分
-  const idx = t.indexOf("可以说");
-  if (idx > -1) {
-    const issues = [t.slice(0, idx).replace(/[，,。；;\s]+$/, "").trim()].filter(Boolean);
-    const advicePart = t.slice(idx).replace(/^可以说[:：]?\s*/, "可以说：");
-    return { issues, advice: [advicePart] };
-  }
-  return { issues: [t].filter(Boolean), advice: [] };
-}
-
-/**
  * 并发受限的任务池：按 limit 并发执行 fn，返回与 items 一一对应的 promise 数组。
  * 单个任务失败不阻塞其余任务（失败结果由调用方自行 catch）。
  */
@@ -159,7 +133,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       .then((res) => {
         if (res.sessionId) setSessionId(res.sessionId);
         setInspirationHint(res.inspirationHint ?? null);
-        pushAiMsgAndSpeak(res.aiReply || "你好，我是" + aiName + "，我们开始吧。");
+        pushAiMsgAndSpeak(res.aiReply || "你好，我是" + aiName + "，我们开始吧。", res.emotion || "default");
       })
       .catch(() => pushMsg({ who: "ai", text: "（AI 对练服务暂时不可用，请稍后重试）" }))
       .finally(() => setSending(false));
@@ -216,6 +190,13 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     }
     chatSubmittingRef.current = true;
     pushMsg({ who: "user", text: text.trim(), time: now(), isVoice });
+    // 先占位渲染评分卡，避免评分服务超时或返回空数组时整张卡片不可见。
+    const feedbackId = pushMsg({
+      who: "feedback",
+      text: "",
+      score: null,
+      feedbackMessage: "正在生成本轮点评…",
+    });
     setInput("");
     setSending(true);
     try {
@@ -227,26 +208,20 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       });
       const activeSessionId = res.sessionId || sessionId;
       if (res.sessionId && res.sessionId !== sessionId) setSessionId(res.sessionId);
-      // 参考图顺序：用户消息 → 反馈卡 → AI 回复
-      if (res.coachTip || res.perTurnScores?.length) {
-        const { issues, advice } = parseCoachTip(res.coachTip || "");
-        // 反馈卡右上角分数 = 本轮各维度得分之和（后端单轮评分 perTurnScores）
-        const turnTotal =
-          Array.isArray(res.perTurnScores) && res.perTurnScores.length
-            ? res.perTurnScores.reduce((acc, item) => acc + (Number(item.score) || 0), 0)
-            : null;
-        pushMsg({
-          who: "feedback",
-          text: res.coachTip || "",
-          issues,
-          advice,
-          score: turnTotal,
-          dimensions: res.perTurnScores,
-        });
-      }
-      // 先完成评分卡的首帧渲染，再创建并播报 AI 回复，保证反馈优先可见。
+      const turnScores = res.perTurnScores ?? [];
+      setMessages((prev) => prev.map((message) => message.id === feedbackId ? {
+        ...message,
+        score: turnScores.length
+          ? turnScores.reduce((total, item) => total + (Number(item.score) || 0), 0)
+          : null,
+        dimensions: turnScores,
+        issues: turnScores.flatMap((item) => item.issues ?? []).filter(Boolean),
+        advice: turnScores.flatMap((item) => item.advice ?? []).filter(Boolean),
+        feedbackMessage: turnScores.length ? undefined : "本轮暂无可用评分，已继续进行对练。",
+      } : message));
+      // 评分卡必须先完成首帧渲染，再继续展示或播报 AI 的下一句。
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      const speakPromise = res.aiReply ? pushAiMsgAndSpeak(res.aiReply) : null;
+      const speakPromise = res.aiReply ? pushAiMsgAndSpeak(res.aiReply, res.emotion || "default") : null;
       setInspirationHint(res.inspirationHint ?? null);
       if (res.isFinished) {
         // 优先使用同步返回的训练记录得分；异步评分时稍后轮询一次
@@ -262,7 +237,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
               .catch(() => { /* 轮询失败不影响主流程 */ });
           }, 2500);
         }
-        showToast("对练完成，正在生成报告…");
+        showToast("对练结束，正在生成报告…");
         // 等 AI 收尾话 TTS 播完再进入报告页；最长等待 30s，避免 TTS 异常导致永久阻塞
         if (speakPromise) {
           try {
@@ -275,6 +250,10 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         onReport(activeSessionId);
       }
     } catch (e: any) {
+      setMessages((prev) => prev.map((message) => message.id === feedbackId ? {
+        ...message,
+        feedbackMessage: "本轮评分服务暂时不可用，请继续完成对练。",
+      } : message));
       pushMsg({ who: "ai", text: "（回复失败：" + (e.message || "网络错误") + "）" });
     } finally {
       chatSubmittingRef.current = false;
@@ -285,6 +264,21 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const handleSend = () => {
     if (sending) return;
     sendText(input);
+  };
+
+  const endPractice = async () => {
+    if (sending || !sceneId || !sessionId) return;
+    setSending(true);
+    try {
+      const res = await aiApi.chat({ sceneId, action: "end", sessionId });
+      if (res.aiReply) await pushAiMsgAndSpeak(res.aiReply, res.emotion || "default");
+      showToast("对练结束，正在生成报告…");
+      onReport(res.sessionId || sessionId);
+    } catch (e: any) {
+      showToast(e.message || "结束对练失败，请稍后重试");
+    } finally {
+      setSending(false);
+    }
   };
 
   // ===== 语音链路 =====
@@ -429,7 +423,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   );
 
   const speakText = useCallback(
-    async (text: string, msgId?: string): Promise<void> => {
+    async (text: string, msgId?: string, emotion = "default"): Promise<void> => {
       // 播完信号：自然播完 / 出错 / 被 stopAiSpeak 或新音频抢占时 resolve，供对练结束等关键节点等待
       const playEndResolvers: Array<() => void> = [];
       const playEndPromise = new Promise<void>((resolve: () => void) => {
@@ -467,20 +461,21 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         setSpeakMsgId(msgId || null);
             // 分句并行合成（并发 3，避免触发后端 tts 限流），按句序 await 即"边合边播"
         const ttsPromises = makePooledTasks(segments, 3, (segment) => {
-          const cached = ttsCacheRef.current.get(segment.ttsText);
+          const cacheKey = `${emotion}::${segment.ttsText}`;
+          const cached = ttsCacheRef.current.get(cacheKey);
           if (cached) return cached;
-          const request = aiApi.tts(segment.ttsText).then((tts) => {
+          const request = aiApi.tts(segment.ttsText, "xiaoyan", emotion).then((tts) => {
             if (!tts?.audioBase64) {
-              ttsCacheRef.current.delete(segment.ttsText);
+              ttsCacheRef.current.delete(cacheKey);
               throw new Error("TTS returned empty audio");
             }
             return tts;
           }).catch((error) => {
             // 失败或空音频不能进入长期缓存，否则“重新播放”会重复复用失败 Promise。
-            ttsCacheRef.current.delete(segment.ttsText);
+            ttsCacheRef.current.delete(cacheKey);
             throw error;
           });
-          ttsCacheRef.current.set(segment.ttsText, request);
+          ttsCacheRef.current.set(cacheKey, request);
           return request;
         });
         let allPlayed = true;
@@ -551,9 +546,9 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   );
 
   const pushAiMsgAndSpeak = useCallback(
-    (text: string): Promise<void> => {
-      // 防御性剥离模型可能残留的 [COACH_TIP:...]/【COACH_TIP:...】标记（后端已剥离，此处兜底）
-      const cleaned = text.replace(/[\[【]\s*COACH_TIP\s*[:：][\s\S]*?[\]】]/g, "").trim();
+    (text: string, emotion = "default"): Promise<void> => {
+      // 防御性剥离模型可能残留的系统决策标记（后端已剥离，此处兜底）
+      const cleaned = text.replace(/[\[【]\s*DECISION\s*[:：]\s*[a-z_]+\s*[\]】]/gi, "").trim();
       const msgId = pushMsg({ who: "ai", text: cleaned, time: now() });
       // 文本形式无需合成或播放语音，直接展示完整回复。
       if (isTextMode) return Promise.resolve();
@@ -571,7 +566,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       // TTS 合成期间气泡下显示"语音准备中…"
       setTtsPreparing(msgId);
       // 返回播完 promise，供对练结束等场景等待收尾话播完
-      return speakText(cleaned, msgId);
+      return speakText(cleaned, msgId, emotion);
     },
     [isTextMode, pushMsg, speakText]
   );
@@ -847,7 +842,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   };
 
   return (
-    <div className="pv-shell">
+    <div className="pv-shell mobile-page-background">
       {/* ===== 顶部导航（淡天蓝渐变） ===== */}
       <header className="pv-nav">
         <MobilePageAction kind="back" variant="immersive" onClick={onBack} aria-label="返回场景工作台" />
@@ -857,7 +852,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
             <i></i>进行中
           </span>
         </div>
-        <span className="pv-nav-spacer"></span>
+        <button className="pv-end-practice" type="button" onClick={() => void endPractice()} disabled={sending || !sessionId}>结束对练</button>
       </header>
 
       {/* ===== 场景信息三栏卡 ===== */}
@@ -873,7 +868,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
           <b className="orange">第 {practiceTimes > 0 ? practiceTimes : 1} 次</b>
         </div>
         <div className="pv-scene-col">
-          <span>本轮得分</span>
+          <span>最终得分</span>
           <b className="blue">{score != null ? `${score}分` : "—"}</b>
         </div>
       </div>

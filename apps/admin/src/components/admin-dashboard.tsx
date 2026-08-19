@@ -1418,12 +1418,13 @@ export function AdminDashboard() {
 
   async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await submitAction("学员已创建，可用于任务发布对象。", async () => {
+    await submitAction("人员创建成功，已返回用户管理列表。", async () => {
       await apiFetch<User>("/users", {
         method: "POST",
         body: JSON.stringify({ ...userForm, orgId: userForm.orgId || null }),
       });
       setUserForm((prev) => ({ ...initialUserForm, orgId: prev.orgId }));
+      setShowUserCreate(false);
     });
   }
 
