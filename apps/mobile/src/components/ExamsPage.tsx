@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { examApi, attemptApi, type ExamAttemptDetail, type ExamAttemptRow, type ExamDetail, type ExamQuestionRow, type ExamRow } from "@/lib/api";
 import { statusClass } from "@/lib/types";
+import MobilePageAction from "./MobilePageAction";
 
 interface ExamsPageProps {
   showToast: (msg: string) => void;
@@ -168,9 +169,7 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
     return (
       <div className="exam-taking-shell">
         <div className="task-detail-head">
-          <button className="task-detail-back" type="button" onClick={() => setTaking(null)} aria-label="返回考试列表">
-            ‹
-          </button>
+          <MobilePageAction kind="back" onClick={() => setTaking(null)} aria-label="返回考试列表" />
           <div className="task-detail-title">
             <h1>{taking.exam.name}</h1>
             <p>
@@ -239,12 +238,12 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
     const examFormat = resultView.exam.description?.includes("文本") ? "文本形式" : "语音形式";
     return (
       <div className="exam-report-view">
-        <div className="exam-report-topbar">
-          <button className="task-detail-back" type="button" onClick={() => setResultView(null)} aria-label="返回考试列表">
-            ‹
-          </button>
-          <div><b>考试报告</b><span>{resultView.exam.name}</span></div>
-          <button className="report-close" type="button" onClick={() => setResultView(null)} aria-label="关闭报告">×</button>
+        <div className="task-detail-head exam-report-topbar">
+          <MobilePageAction kind="back" onClick={() => setResultView(null)} aria-label="返回考试列表" />
+          <div className="task-detail-title exam-report-title">
+            <h1>考试报告</h1>
+            <p>{resultView.exam.name}</p>
+          </div>
         </div>
         <div className={`exam-report-banner ${passed ? "passed" : "failed"}`}>
           <div className="exam-report-banner-deco exam-report-banner-deco-one" />
@@ -262,13 +261,15 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
         {reportTab === "report" ? (
           <div className="exam-report-overview">
             <section className="exam-report-summary">
-              <div className="exam-report-summary-head">
-                <div><h3>本次考试已完成</h3><p>考试轮次由后台配置控制，共 {completionRounds} 轮</p></div>
-                <span className={`exam-report-pass-tag ${passed ? "passed" : "failed"}`}>{passed ? "合格" : "不合格"}</span>
-              </div>
-              <div className="exam-report-score-card">
-                <div className="exam-report-score-ring" style={{ background: `conic-gradient(#3b82f6 ${Math.max(0, Math.min(score, 100)) * 3.6}deg, #eef1f6 0deg)` }}><div><strong className={passed ? "passed" : "failed"}>{score}</strong><span>综合得分</span></div></div>
-                <div className="exam-report-score-info"><h4>{passed ? "达到考试合格要求" : "未达到考试合格要求"}</h4><p>系统已整理本次{examFormat}考试的全部回答，并生成轮次表现记录。</p><div><span>考试形式 <b>{examFormat}</b></span><span>完成轮次 <b>{completionRounds}</b></span></div></div>
+              <div className="exam-report-summary-card">
+                <div className="exam-report-summary-head">
+                  <div><h3>本次考试已完成</h3><p>考试轮次由后台配置控制，共 {completionRounds} 轮</p></div>
+                  <span className={`exam-report-pass-tag ${passed ? "passed" : "failed"}`}>{passed ? "合格" : "不合格"}</span>
+                </div>
+                <div className="exam-report-score-card">
+                  <div className="exam-report-score-ring" style={{ background: `conic-gradient(#3b82f6 ${Math.max(0, Math.min(score, 100)) * 3.6}deg, #eef1f6 0deg)` }}><div><strong className={passed ? "passed" : "failed"}>{score}</strong><span>综合得分</span></div></div>
+                  <div className="exam-report-score-info"><h4>{passed ? "达到考试合格要求" : "未达到考试合格要求"}</h4><p>系统已整理本次{examFormat}考试的全部回答，并生成轮次表现记录。</p><div><span>考试形式 <b>{examFormat}</b></span><span>完成轮次 <b>{completionRounds}</b></span></div></div>
+                </div>
               </div>
               <div className="exam-report-conclusion"><h3>考试结论</h3><p>本次考试共完成 <b>{completionRounds}</b> 轮正式作答，最终成绩为 <strong>{score} 分</strong>，考试状态为 <em className={passed ? "passed" : "failed"}>{passed ? "合格" : "不合格"}</em>。</p></div>
             </section>

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { recordApi } from "@/lib/api";
 import PracticeChat, { type PracticeChatMsg } from "./PracticeChat";
+import MobilePageAction from "./MobilePageAction";
 
 interface PracticeReportProps {
   /** 对练会话（练习完成后进入报告流程时使用，轮询 by-session 等待后台评分） */
@@ -249,8 +250,20 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
   }, [detail]);
 
 
-  // 中转页：对练报告生成中（对齐原型 report-generating-modal）
-  if (!detail && !failed) {
+  // 历史记录入口（recordId）：直接拉取详情，加载期间仅显示轻量加载提示，不出现"生成报告中"中转弹窗
+  if (recordId && !detail && !failed) {
+    return (
+      <div className="pr-shell">
+        <div className="pr-light-loading" role="status" aria-live="polite">
+          <div className="pr-light-spinner" />
+          <p>正在加载报告…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 中转页：仅 sessionId 模式（刚练完、后台异步评分轮询中）显示"生成报告中"
+  if (!recordId && sessionId && !detail && !failed) {
     return (
       <div className="pr-shell">
         <div className="report-generating-modal show" role="status" aria-live="polite">
@@ -295,22 +308,14 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
 
   return (
     <div className="pr-shell">
-      {/* ===== 顶部导航（白底，标题居中） ===== */}
+      {/* ===== 顶部导航（复用任务详情返回样式） ===== */}
       <header className="pr-head">
-        <button className="pr-head-btn" type="button" onClick={onClose} aria-label="返回">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 5l-7 7 7 7" />
-          </svg>
-        </button>
+        <MobilePageAction kind="back" onClick={onClose} />
         <div className="pr-head-text">
           <h1>AI对练报告</h1>
           <p>{subTitle}</p>
         </div>
-        <button className="pr-head-close" type="button" onClick={onClose} aria-label="关闭报告">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
+        <MobilePageAction kind="close" variant="overlay" onClick={onClose} aria-label="关闭报告" />
       </header>
 
       {/* ===== 顶部得分区 ===== */}
