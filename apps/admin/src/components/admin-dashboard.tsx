@@ -1654,9 +1654,9 @@ export function AdminDashboard() {
   }
 
   async function publishTask(taskId: string) {
-    await submitAction("任务已发布。", async () => {
+    await submitAction("发布成功！", async () => {
       await apiFetch(`/tasks/${taskId}/publish`, { method: "POST", body: JSON.stringify({}) });
-      await viewTaskDetail(taskId);
+      await loadData();
     });
   }
 
