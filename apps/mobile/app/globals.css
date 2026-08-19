@@ -858,23 +858,23 @@ input, select, textarea { font-family: inherit; }
 .pv-rec-bar i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#3b82f6,#6366f1);transition:width .3s linear}
 .pv-rec-progress b{flex:none;font-size:12px;font-weight:700;color:#2563eb;font-variant-numeric:tabular-nums}
 /* 实时反馈卡：对齐参考图的整行白色大卡、蓝色评分维度标签与分区说明 */
-.pv-feedback-card{width:322px;max-width:100%;box-sizing:border-box;padding:24px 20px;background:#fff;border:1px solid #e8f0ff;border-radius:20px;box-shadow:0 2px 16px rgba(170,190,255,.12)}
-.pv-feedback-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:16px;border-bottom:1px solid #e8f0ff}
+.pv-feedback-card{width:322px;max-width:100%;box-sizing:border-box;padding:16px 12px;background:#fff;border:1px solid #e8f0ff;border-radius:20px;box-shadow:0 2px 16px rgba(170,190,255,.12)}
+.pv-feedback-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:10px;border-bottom:1px solid #e8f0ff}
 .pv-feedback-head>b{color:#4e5969;font-size:13px;font-weight:500;line-height:1.35}
 .pv-feedback-head span{display:flex;align-items:baseline;color:#4e5969;font-size:16px;font-weight:400;line-height:1;white-space:nowrap}
 .pv-feedback-head span strong{margin-right:3px;color:#3b7dff;font-size:24px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums}
-.pv-feedback-dimensions{display:flex;flex-wrap:wrap;gap:8px 10px;margin-top:14px}
-.pv-feedback-empty{margin:20px 0 0;color:#86909c;font-size:15px;line-height:1.6}
-.pv-feedback-dimension{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:6px 10px;border-radius:12px;background:#f0f5ff;box-sizing:border-box;line-height:1.25}
+.pv-feedback-dimensions{display:flex;flex-wrap:wrap;gap:8px 10px;margin-top:10px}
+.pv-feedback-empty{margin:12px 0 0;color:#86909c;font-size:15px;line-height:1.6}
+.pv-feedback-dimension{display:inline-flex;align-items:center;gap:6px;min-height:32px;min-width:0;flex:1 1 auto;padding:5px 8px;border-radius:12px;background:#f0f5ff;box-sizing:border-box;line-height:1.25}
 .pv-feedback-dimension em{color:#2e3440;font-size:11px;font-style:normal;font-weight:500;white-space:nowrap}
 .pv-feedback-dimension b{color:#3b7dff;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .pv-feedback-dimension.developing,.pv-feedback-dimension.pass,.pv-feedback-dimension.excellent{background:#f0f5ff}.pv-feedback-dimension.developing b,.pv-feedback-dimension.pass b,.pv-feedback-dimension.excellent b{color:#3b7dff}
-.pv-feedback-sec{display:flex;align-items:flex-start;gap:6px;margin-top:20px}
+.pv-feedback-sec{display:flex;align-items:flex-start;gap:6px;margin-top:12px}
 .pv-feedback-sec span{flex:none;width:auto;padding-top:1px;color:#f53f3f;font-size:12px;font-weight:600;line-height:1.6;white-space:nowrap}
 .pv-feedback-sec p{flex:1;margin:0;color:#4e5969;font-size:12px;line-height:1.6;word-break:break-word}
 .pv-feedback-sec.green span{color:#00b42a}
 .pv-feedback-sec.green p{color:#4e5969}
-.pv-feedback-divider{height:1px;margin:24px 0 0;background:#e8f0ff}
+.pv-feedback-divider{height:1px;margin:16px 0 0;background:#e8f0ff}
 /* 评分卡收起/展开箭头 */
 .pv-feedback-chevron{transition:transform .2s ease}
 .pv-feedback-chevron.open{transform:rotate(180deg)}
@@ -987,22 +987,22 @@ input, select, textarea { font-family: inherit; }
 .pr-transcript .pv-ai-message-text{margin-top:0}
 /* 实时点评卡：与 AI、学员气泡完全同宽、同左右边界 */
 .pr-transcript .pv-msg.feedback{width:min(326px,calc(100% - 32px));max-width:100%;margin:0 0 0 32px}
-.pr-transcript .pv-feedback-card{width:100%;padding:16px;background:#fff;border:1px solid #e5ebf2;border-radius:12px;box-shadow:0 6px 16px rgba(57,93,137,.08)}
-.pr-transcript .pv-feedback-head{padding-bottom:12px;border-bottom:1px solid #edf1f5}
+.pr-transcript .pv-feedback-card{width:100%;padding:12px;background:#fff;border:1px solid #e5ebf2;border-radius:12px;box-shadow:0 6px 16px rgba(57,93,137,.08)}
+.pr-transcript .pv-feedback-head{padding-bottom:8px;border-bottom:1px solid #edf1f5}
 .pr-transcript .pv-feedback-head>b{color:#506783;font-size:13px;font-weight:700}
 .pr-transcript .pv-feedback-head span{color:#8393a8;font-size:12px;font-weight:500}
 .pr-transcript .pv-feedback-head span strong{color:#4a86f3;font-size:28px;font-weight:800}
-.pr-transcript .pv-feedback-dimensions{gap:8px;margin-top:12px}
+.pr-transcript .pv-feedback-dimensions{gap:8px;margin-top:8px}
 .pr-transcript .pv-feedback-dimension{padding:5px 8px;border-radius:7px;background:#eef5ff;gap:4px}
 .pr-transcript .pv-feedback-dimension em{color:#506783;font-size:11px;font-weight:600}
 .pr-transcript .pv-feedback-dimension b{color:#4a86f3;font-size:11px;font-weight:800}
 .pr-transcript .pv-feedback-dimension.developing,.pr-transcript .pv-feedback-dimension.pass,.pr-transcript .pv-feedback-dimension.excellent{background:#eef5ff}
 .pr-transcript .pv-feedback-dimension.developing b,.pr-transcript .pv-feedback-dimension.pass b,.pr-transcript .pv-feedback-dimension.excellent b{color:#4a86f3}
-.pr-transcript .pv-feedback-sec{gap:8px;margin-top:12px;align-items:flex-start}
+.pr-transcript .pv-feedback-sec{gap:8px;margin-top:8px;align-items:flex-start}
 .pr-transcript .pv-feedback-sec span{width:auto;padding:0;color:#f05b65;font-size:12px;font-weight:700;line-height:1.55;flex:none;white-space:nowrap}
 .pr-transcript .pv-feedback-sec p{color:#506783;font-size:12px;line-height:1.6}
 .pr-transcript .pv-feedback-sec.green span{color:#1ba36d}
-.pr-transcript .pv-feedback-divider{background:#edf1f5;margin:10px 0 0}
+.pr-transcript .pv-feedback-divider{background:#edf1f5;margin:8px 0 0}
 /* 通用白卡 */
 .pr-card{background:#fff;border-radius:12px;padding:16px;margin-bottom:16px}
 /* 合格标签 */
