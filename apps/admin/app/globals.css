@@ -85,6 +85,7 @@ textarea {
 }
 
 .content {
+  position: relative;
   min-width: 0;
   padding: 24px;
 }
@@ -1442,6 +1443,42 @@ textarea:focus {
   letter-spacing: 1px;
 }
 
+.form-password-input {
+  position: relative;
+}
+
+.form-password-input input {
+  width: 100%;
+  padding-right: 44px;
+}
+
+.form-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #88a2bd;
+  cursor: pointer;
+}
+
+.form-password-toggle:hover {
+  background: #f1f6ff;
+  color: #2f74eb;
+}
+
+.form-password-toggle:focus-visible {
+  outline: 2px solid #82aef8;
+  outline-offset: 1px;
+}
+
 .login-captcha-mask {
   position: fixed;
   inset: 0;
@@ -2729,6 +2766,21 @@ body {
   place-items: center;
   background: rgba(255, 255, 255, 0.58);
   backdrop-filter: blur(2px);
+}
+
+.dashboard-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  min-height: 280px;
+  background: rgba(245, 247, 251, 0.72);
+  backdrop-filter: blur(2px);
+  color: #7c8da6;
+  font-size: 14px;
 }
 
 .navigation-loading-spinner {
