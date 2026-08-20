@@ -71,10 +71,6 @@ function statusOn(status: string) {
   return status === "published" || status === "enabled";
 }
 
-function modeLabel(mode: string) {
-  return mode === "voice" ? "语音模式" : "文本模式";
-}
-
 function createModeLabel(createMode?: string) {
   const map: Record<string, string> = {
     ai_practice: "AI对练模式",
@@ -226,9 +222,8 @@ export default function SceneDetailPage() {
             <div className="preview-stat card">
               <div className="preview-stat-icon purple-icon">✦</div>
               <div>
-                <label>对话训练模式</label>
-                <strong>{modeLabel(scene.mode)}</strong>
-                <small>支持学员沉浸式对练</small>
+                <label>场景模式</label>
+                <strong>{createModeLabel(scene.createMode)}</strong>
               </div>
             </div>
             <div className="preview-stat card">
@@ -237,6 +232,14 @@ export default function SceneDetailPage() {
                 <label>评分维度</label>
                 <strong>{detail.scoringRules.length}</strong>
                 <small>总分 <b>{scoreTotal}</b> 分</small>
+              </div>
+            </div>
+            <div className="preview-stat card">
+              <div className="preview-stat-icon amber-icon">◎</div>
+              <div>
+                <label>合格分数</label>
+                <strong>{scene.passScore ?? 60} 分</strong>
+                <small>满分 {scoreTotal} 分</small>
               </div>
             </div>
           </div>
@@ -390,7 +393,7 @@ export default function SceneDetailPage() {
               <section className="preview-side-card card">
                 <div className="row">
                   <h3>评分规则</h3>
-                  <span className="muted">满分 100</span>
+                  <span className="muted">合格 {scene.passScore ?? 60} 分</span>
                 </div>
                 <div className="preview-scoring-list">
                   {detail.scoringRules.length === 0 ? (
@@ -403,8 +406,9 @@ export default function SceneDetailPage() {
                           <b>{r.score} 分</b>
                         </div>
                         <div className="preview-score-track">
-                          <i style={{ width: `${Math.min(100, (Number(r.score) || 0) / 100 * 100)}%` }} />
+                          <i style={{ width: `${Math.min(100, scoreTotal ? (Number(r.score) || 0) / scoreTotal * 100 : 0)}%` }} />
                         </div>
+                        <p className="preview-score-criteria">{r.criteria || "未填写规则说明"}</p>
                       </div>
                     ))
                   )}

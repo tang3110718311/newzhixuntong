@@ -288,6 +288,7 @@ function applyMigrations() {
   ensureColumn("posts", "role_code", "text");
   ensureColumn("posts", "industry_package_id", "text");
   ensureColumn("scenes", "create_mode", "text not null default 'ai_practice'");
+  ensureColumn("scenes", "pass_score", "integer not null default 60");
   ensureColumn("scene_roles", "language_style", "text not null default ''");
   ensureColumn("exam_attempts", "task_id", "text");
   ensureColumn("exam_attempts", "scene_id", "text");

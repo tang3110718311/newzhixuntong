@@ -389,6 +389,8 @@ export type GeneratedSceneInput = {
     deductionRule: string;
     evidenceRequired: string;
   }>;
+  attachmentFileIds?: string[];
+  passScore?: number;
 };
 
 export function getTenantByCode(code: string) {
@@ -1044,12 +1046,36 @@ export function listScenes(tenantId: string, options: { page: number; pageSize: 
   return { items, total, page: options.page, pageSize: options.pageSize };
 }
 
-export function createScene(tenantId: string, input: { industryPackageId?: string | null; name: string; code: string; mode: string; createMode?: string; createdBy?: string | null; sceneType: string; description: string; aiRole?: { identity: string; background: string; personality: string; emotion: string; languageStyle?: string; goal: string }; learnerRole?: { identity: string; goal: string }; endCondition?: string; interruptCondition?: string; dialogueExample?: string; initiator?: string; scoringRules?: Array<{ name: string; score: number; criteria: string; deductionRule: string; evidenceRequired: string }>; attachmentFileIds?: string[] }) {
+function sceneCodeDate() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = (type: "year" | "month" | "day") => parts.find((part) => part.type === type)?.value || "";
+  return `${value("year")}${value("month")}${value("day")}`;
+}
+
+function generateSceneCode(tenantId: string) {
+  const tenantCode = get<{ code: string }>("select code from tenants where id = ? and deleted_at is null limit 1", [tenantId])?.code || tenantId;
+  const normalizedTenantCode = tenantCode.replace(/[^a-zA-Z0-9]/g, "").toUpperCase() || "TENANT";
+  const prefix = `CJ${normalizedTenantCode}${sceneCodeDate()}`;
+  const existingCodes = all<{ code: string }>("select code from scenes where tenant_id = ? and code like ?", [tenantId, `${prefix}%`]);
+  const maxSequence = existingCodes.reduce((max, row) => {
+    const suffix = row.code.slice(prefix.length);
+    return /^\d+$/.test(suffix) ? Math.max(max, Number(suffix)) : max;
+  }, 0);
+  return `${prefix}${String(maxSequence + 1).padStart(3, "0")}`;
+}
+
+export function createScene(tenantId: string, input: { industryPackageId?: string | null; name: string; code: string; mode: string; createMode?: string; createdBy?: string | null; sceneType: string; description: string; aiRole?: { identity: string; background: string; personality: string; emotion: string; languageStyle?: string; goal: string }; learnerRole?: { identity: string; goal: string }; endCondition?: string; interruptCondition?: string; dialogueExample?: string; initiator?: string; scoringRules?: Array<{ name: string; score: number; criteria: string; deductionRule: string; evidenceRequired: string }>; attachmentFileIds?: string[]; passScore?: number; status?: "disabled" | "published" }) {
   const id = createId("scene");
+  const code = generateSceneCode(tenantId);
   run(
-    `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, create_mode, scene_type, description, status, source_type, is_template, version, created_by, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', 'manual', 0, '1.0.0', ?, datetime('now'), datetime('now'))`,
-    [id, tenantId, input.industryPackageId ?? null, input.name, input.code, input.mode, input.createMode ?? "ai_practice", input.sceneType, input.description, input.createdBy ?? null],
+    `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, create_mode, scene_type, description, pass_score, status, source_type, is_template, version, created_by, created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', 0, '1.0.0', ?, datetime('now'), datetime('now'))`,
+    [id, tenantId, input.industryPackageId ?? null, input.name, code, input.mode, input.createMode ?? "ai_practice", input.sceneType, input.description, input.passScore ?? 60, input.status ?? "published", input.createdBy ?? null],
   );
   // AI 角色
   if (input.aiRole?.identity) {
@@ -1092,11 +1118,11 @@ export function createScene(tenantId: string, input: { industryPackageId?: strin
 
 export function createGeneratedScene(tenantId: string, input: GeneratedSceneInput) {
   const id = createId("scene");
-  const safeCode = input.code || `AI-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+  const code = generateSceneCode(tenantId);
   run(
-    `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, create_mode, scene_type, description, status, source_type, is_template, version, created_by, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, 0, '1.0.0', ?, datetime('now'), datetime('now'))`,
-    [id, tenantId, input.industryPackageId ?? null, input.name, safeCode, input.mode, input.createMode ?? "ai_practice", input.sceneType, input.description, input.sourceType, input.createdBy ?? null],
+    `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, create_mode, scene_type, description, pass_score, status, source_type, is_template, version, created_by, created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, 0, '1.0.0', ?, datetime('now'), datetime('now'))`,
+    [id, tenantId, input.industryPackageId ?? null, input.name, code, input.mode, input.createMode ?? "ai_practice", input.sceneType, input.description, input.passScore ?? 60, input.sourceType, input.createdBy ?? null],
   );
   run(
     `insert into scene_roles (id, tenant_id, scene_id, role_type, identity, background, personality, emotion, language_style, goal, created_at, updated_at)
@@ -1120,6 +1146,7 @@ export function createGeneratedScene(tenantId: string, input: GeneratedSceneInpu
       [createId("score"), tenantId, id, rule.name, rule.score, rule.criteria, rule.deductionRule, rule.evidenceRequired, index + 1],
     );
   });
+  replaceSceneAttachments(tenantId, id, input.attachmentFileIds ?? []);
 
   return get<SceneRow>(
     "select id, name, code, industry_package_id as industryPackageId, scene_type as sceneType, mode, coalesce(create_mode, 'ai_practice') as createMode, status, is_template as isTemplate, source_type as sourceType, description, coalesce(pass_score, 80) as passScore, created_at as createdAt from scenes where id = ?",
@@ -1232,6 +1259,8 @@ export function updateSceneDetail(
     initiator?: string;
     scoringRules?: Array<{ name: string; score: number; criteria: string; deductionRule?: string; evidenceRequired?: string }>;
     attachmentFileIds?: string[];
+    passScore?: number;
+    status?: "disabled" | "published";
   },
 ): SceneDetail | undefined {
   const exists = get<{ id: string }>(
@@ -1240,13 +1269,16 @@ export function updateSceneDetail(
   );
   if (!exists) return undefined;
   run("update scenes set updated_at = datetime('now') where tenant_id = ? and id = ?", [tenantId, sceneId]);
-  if (input.name !== undefined || input.description !== undefined) {
-    const scene = get<{ name: string; description: string }>(
-      "select name, description from scenes where id = ?", [sceneId],
-    ) ?? { name: "", description: "" };
+  if (input.status !== undefined) {
+    run("update scenes set status = ?, updated_at = datetime('now') where tenant_id = ? and id = ?", [input.status, tenantId, sceneId]);
+  }
+  if (input.name !== undefined || input.description !== undefined || input.passScore !== undefined) {
+    const scene = get<{ name: string; description: string; passScore: number }>(
+      "select name, description, coalesce(pass_score, 60) as passScore from scenes where id = ?", [sceneId],
+    ) ?? { name: "", description: "", passScore: 60 };
     run(
-      "update scenes set name = ?, description = ?, updated_at = datetime('now') where tenant_id = ? and id = ?",
-      [input.name ?? scene.name, input.description ?? scene.description, tenantId, sceneId],
+      "update scenes set name = ?, description = ?, pass_score = ?, updated_at = datetime('now') where tenant_id = ? and id = ?",
+      [input.name ?? scene.name, input.description ?? scene.description, input.passScore ?? scene.passScore, tenantId, sceneId],
     );
   }
   // 角色：整体替换（先软删旧角色，再按当前表单插入）

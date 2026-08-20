@@ -68,6 +68,7 @@ export async function POST(request: Request) {
       endCondition: draft.endCondition,
       interruptCondition: draft.interruptCondition,
       scoringRules: draft.scoringRules || [],
+      attachmentFileIds: body.attachmentFileIds || [],
     });
 
     logAiCall({
