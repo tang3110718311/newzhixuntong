@@ -3,16 +3,16 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '520e0e06-6879-4391-a1e3-9ce911d49467'
-  PropagateID: '520e0e06-6879-4391-a1e3-9ce911d49467'
-  ReservedCode1: '386eddae-f400-4657-9e9f-0741fbf09db6'
-  ReservedCode2: '386eddae-f400-4657-9e9f-0741fbf09db6'
+  ProduceID: '0ffedad5-4017-4c71-90fe-041a28807734'
+  PropagateID: '0ffedad5-4017-4c71-90fe-041a28807734'
+  ReservedCode1: 'bd50f816-e59c-4a4e-aaca-54045a2ac32a'
+  ReservedCode2: 'bd50f816-e59c-4a4e-aaca-54045a2ac32a'
 ---
 
 # 企业知识库文件上传 + AI 解析 + 出题联动 设计文档
 
 日期：2026-08-10
-状态：已批准（宏哥）
+状态：已批准（项目负责人）
 
 ## 1. 背景与目标
 
@@ -20,7 +20,7 @@ AIGC:
 
 目标：实现文件上传 + AI 解析 + 知识库落库，使 AI 在出题/对练时能引用知识库内容作为依据。
 
-**核心需求（宏哥确认）**：
+**核心需求（项目负责人确认）**：
 - 上传文件后 AI 解析内容，作为出题依据和知识库
 - 出题方式：**现场动态出题**（解析内容存入知识库，对练/出题时 AI 根据知识库内容现场出题，不预存题目）
 - 解析格式：**文档类 5 种**（PDF/Word/Excel/PPT/TXT），不解析视频

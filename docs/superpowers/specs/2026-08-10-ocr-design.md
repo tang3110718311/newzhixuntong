@@ -3,16 +3,16 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: 'a5202ee3-df6c-4ae6-8375-75538224339f'
-  PropagateID: 'a5202ee3-df6c-4ae6-8375-75538224339f'
-  ReservedCode1: '0c0ebd7a-74b1-43a0-9541-0c0a23d8967a'
-  ReservedCode2: '0c0ebd7a-74b1-43a0-9541-0c0a23d8967a'
+  ProduceID: '9569e411-fb77-4397-8357-674082e713e5'
+  PropagateID: '9569e411-fb77-4397-8357-674082e713e5'
+  ReservedCode1: '8ef155ed-36ed-47d1-80fd-f6e97ad31e5e'
+  ReservedCode2: '8ef155ed-36ed-47d1-80fd-f6e97ad31e5e'
 ---
 
 # 知识库图片 OCR 接入 设计文档
 
 日期：2026-08-10
-状态：已批准（宏哥）
+状态：已批准（项目负责人）
 
 ## 1. 背景与目标
 
@@ -20,7 +20,7 @@ AIGC:
 
 目标：为知识库接入图片 OCR 能力，使图片（PNG/JPG/JPEG/BMP/WebP）上传后自动识别文字并入库，与其他文档走完全相同的"解析 → AI 摘要 → 出题联动"流程。
 
-**核心需求（宏哥确认）**：
+**核心需求（项目负责人确认）**：
 - OCR 方案：**百度 OCR 通用文字识别 API**（免费额度 1000 次/月，已验证 OCR 链路可用）
 - 密钥存放：环境变量（.env），不硬编码、不进 git
 - 大图处理：超 4MB 自动压缩（sharp）后再识别
