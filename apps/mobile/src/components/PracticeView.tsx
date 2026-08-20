@@ -141,50 +141,6 @@ function ensureTranscriptPauseBreak(value: string): string {
   return VOICE_SENTENCE_END_RE.test(text) ? text : `${text}。`;
 }
 
-function transcriptPlainText(value: string): string {
-  return normalizeVoiceTranscriptText(value).replace(TRANSCRIPT_BREAK_RE, "");
-}
-
-function restoreVoiceTranscriptPunctuation(value: unknown): string {
-  const source = normalizeVoiceTranscriptText(value);
-  if (!source) return "";
-
-  const normalized = source
-    .replace(/([。！？!?；;，,、…])+/g, "$1")
-    .replace(/\s*([。！？!?；;，,、…])\s*/g, "$1")
-    .replace(/([。！？!?；;…])(?=\S)/g, "$1 ");
-
-  const rawParts = normalized.split(/\s+/).filter(Boolean);
-  const clauses = rawParts.length > 1 ? rawParts : [normalized];
-  const result: string[] = [];
-
-  clauses.forEach((part, index) => {
-    let text = part.trim();
-    if (!text) return;
-    const hasPunctuation = /[。！？!?；;，,、…]/.test(text);
-    if (!hasPunctuation && text.length > 24) {
-      text = text
-        .replace(/(首先|第一|第二|第三|另外|同时|然后|所以|因此|但是|不过|如果|比如|针对|关于|我们这个方案|我这边|接下来)/g, "，$1")
-        .replace(/^，/, "")
-        .replace(/，{2,}/g, "，");
-    }
-    if (!VOICE_SENTENCE_END_RE.test(text)) {
-      const mark = COMMA_CONNECTORS_RE.test(text) && result.length ? "，" : "。";
-      text = `${text}${mark}`;
-    }
-    if (index === clauses.length - 1) text = text.replace(/[，,]$/, "。");
-    result.push(text);
-  });
-
-  return result.join("").replace(/\s+/g, " ").trim();
-}
-
-function ensureTranscriptPauseBreak(value: string): string {
-  const text = restoreVoiceTranscriptPunctuation(value);
-  if (!text) return "";
-  return VOICE_SENTENCE_END_RE.test(text) ? text : `${text}。`;
-}
-
 function mergeTranscriptWithPauseBreaks(previous: string, incoming: string): string {
   const nextRaw = normalizeVoiceTranscriptText(incoming);
   const prev = normalizeVoiceTranscriptText(previous);
@@ -421,7 +377,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       return;
     }
     chatSubmittingRef.current = true;
-    const normalized = restoreVoiceTranscriptPunctuation(text);
+    const normalized = isVoice ? restoreVoiceTranscriptPunctuation(text) : text.trim();
     pushMsg({ who: "user", text: normalized, time: now(), isVoice, voiceAudioUrl: isVoice ? voiceAudioUrl : undefined });
     // 先占位渲染评分卡，避免评分服务超时或返回空数组时整张卡片不可见。
     const feedbackId = pushMsg({
@@ -1007,6 +963,8 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
             }
             speechInterimRef.current = normalizeVoiceTranscriptText(interim);
             const finalTranscript = restoreVoiceTranscriptPunctuation(buildSpeechTranscript());
+            // Web Speech 实际产出结果 → 停用后端分段兜底，避免双写冲突
+            if (finalTranscript) speechActiveRef.current = true;
             setLiveTranscript(finalTranscript);
           };
           recog.onend = () => {

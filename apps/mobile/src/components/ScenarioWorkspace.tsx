@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { recordApi } from "@/lib/api";
 import { isMaterialDone, getExamCount, getExamRecords, type ExamRecord } from "@/lib/sceneProgress";
-import { taskFormText } from "@/lib/types";
+import { taskFormText, taskDisplayStatus } from "@/lib/types";
 import PracticeReport from "./PracticeReport";
 import ExamReport from "./ExamReport";
 import MobilePageAction from "./MobilePageAction";
@@ -46,6 +46,11 @@ export default function ScenarioWorkspace({
   const examCount = sceneId ? getExamCount(sceneId) : 0;
   const sceneDone = practiceDone;
 
+  // 任务运行状态：停用态禁用按钮，逾期态放开前置校验
+  const runtimeStatus = task ? taskDisplayStatus(task) : "";
+  const isStopped = task?.status === "stopped";
+  const isOverdue = runtimeStatus === "已逾期";
+
   // ===== 历史记录（对练记录来自后端）=====
   const [recordTab, setRecordTab] = useState<"practice" | "exam">("practice");
   const [records, setRecords] = useState<any[]>([]);
@@ -69,7 +74,8 @@ export default function ScenarioWorkspace({
   const examRecords = useMemo<ExamRecord[]>(() => (sceneId ? getExamRecords(sceneId) : []), [sceneId]);
 
   const openPractice = () => {
-    if (!materialDone) {
+    if (isStopped) return;
+    if (!isOverdue && !materialDone) {
       showToast("请先完成资料学习，再开始 AI 对练");
       return;
     }
@@ -77,7 +83,8 @@ export default function ScenarioWorkspace({
   };
 
   const openExam = () => {
-    if (!practiceDone) {
+    if (isStopped) return;
+    if (!isOverdue && !practiceDone) {
       showToast("请先完成 AI 对练，再进行考试");
       return;
     }
@@ -146,7 +153,7 @@ export default function ScenarioWorkspace({
             <span className="path-step-num">1</span>
             <b>学习资料</b>
             <em>{materialDone ? "已完成" : "待完成"}</em>
-            <button type="button" onClick={onEnterMaterial}>
+            <button type="button" onClick={onEnterMaterial} disabled={isStopped}>
               查看资料 ›
             </button>
           </div>
@@ -155,7 +162,7 @@ export default function ScenarioWorkspace({
             <span className="path-step-num">2</span>
             <b>AI 对练</b>
             <em>{practiceDone ? "已完成" : trainCount > 0 ? `进行中 ${trainCount}/${required}` : "待完成"}</em>
-            <button type="button" onClick={openPractice}>
+            <button type="button" onClick={openPractice} disabled={isStopped}>
               {trainCount > 0 ? "再次对练" : "开始对练"} ›
             </button>
           </div>
@@ -164,7 +171,7 @@ export default function ScenarioWorkspace({
             <span className="path-step-num">3</span>
             <b>场景考试</b>
             <em>{examCount > 0 ? "已完成" : "待完成"}</em>
-            <button type="button" onClick={openExam}>
+            <button type="button" onClick={openExam} disabled={isStopped}>
               {examCount > 0 ? "再次考试" : "开始考试"} ›
             </button>
           </div>

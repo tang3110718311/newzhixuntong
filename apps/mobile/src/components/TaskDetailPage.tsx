@@ -118,7 +118,9 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
   const doneCount = scenes.filter((s: any) => (s.completedTrainCount || 0) > 0).length;
   const percent = scenes.length ? Math.round((doneCount / scenes.length) * 100) : 0;
   const isStopped = task.status === "stopped";
-const cls = isStopped ? "overdue" : task.status === "completed" ? "done" : taskDisplayStatus(task.status, task.endAt) === "已逾期" ? "overdue" : "doing";
+  const runtimeStatus = taskDisplayStatus(task);
+  const isOverdue = runtimeStatus === "已逾期";
+  const cls = runtimeStatus === "已停用" ? "stopped" : runtimeStatus === "已完成" ? "done" : runtimeStatus === "已逾期" ? "overdue" : "doing";
 
   if (view === "workspace") {
     return (
@@ -207,7 +209,7 @@ const cls = isStopped ? "overdue" : task.status === "completed" ? "done" : taskD
             <span className="dot"></span>
             <span>任务详情 · {task.code}</span>
             <span className={`task-detail-status status ${cls}`} style={{ marginLeft: "auto" }}>
-              {taskDisplayStatus(task.status, task.endAt)}
+              {runtimeStatus}
             </span>
           </div>
           <div className="task-detail-main">
@@ -256,8 +258,8 @@ const cls = isStopped ? "overdue" : task.status === "completed" ? "done" : taskD
                 key={sc.id}
                 className={`scenario-card scene-layout ${trainDone ? "done" : ""}`}
                 onClick={() => { if (!isStopped) openScenario(i); }}
-                style={{ cursor: isStopped ? "default" : "pointer" }}
-              >
+                 style={{ cursor: isStopped ? "default" : "pointer" }}
+               >
                 <div className="scenario-timeline">
                   <span className="scenario-index">{String(i + 1).padStart(2, "0")}</span>
                   <span className="scenario-timeline-line"></span>
@@ -287,50 +289,50 @@ const cls = isStopped ? "overdue" : task.status === "completed" ? "done" : taskD
                     <span>考试 {examCount} 次</span>
                   </div>
                   <div className="scenario-actions">
-                    <button
-                      type="button"
-                      className="material-btn"
+                     <button
+                       type="button"
+                       className="material-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isStopped) return;
+                          enterSceneView(i, "material");
+                        }}
+                        disabled={isStopped}
+                     >
+                       查看资料{materialDone ? " ✓" : ""}
+                     </button>
+                     <button
+                       type="button"
+                       className={`practice-btn${(isOverdue || materialDone) ? "" : " locked"}`}
                        onClick={(e) => {
                          e.stopPropagation();
                          if (isStopped) return;
-                         enterSceneView(i, "material");
+                         if (!isOverdue && !materialDone) {
+                           showToast("请先完成资料学习，再开始 AI 对练");
+                           return;
+                         }
+                         enterSceneView(i, "practice");
                        }}
                        disabled={isStopped}
-                    >
-                      查看资料{materialDone ? " ✓" : ""}
-                    </button>
-                    <button
-                      type="button"
-                      className={`practice-btn${materialDone ? "" : " locked"}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isStopped) return;
-                        if (!materialDone) {
-                          showToast("请先完成资料学习，再开始 AI 对练");
-                          return;
-                        }
-                        enterSceneView(i, "practice");
-                      }}
-                      disabled={isStopped}
-                    >
-                      {trainDone ? "再次对练" : "开始对练"}
-                    </button>
-                    <button
-                      type="button"
-                      className={`exam-btn${practiceDone ? "" : " locked"}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isStopped) return;
-                        if (!practiceDone) {
-                          showToast("请先完成 AI 对练，再进行考试");
-                          return;
-                        }
-                        enterSceneView(i, "exam");
-                      }}
-                      disabled={isStopped}
-                    >
-                      {examCount > 0 ? "再次考试" : "开始考试"}
-                    </button>
+                     >
+                       {trainDone ? "再次对练" : "开始对练"}
+                     </button>
+                     <button
+                       type="button"
+                       className={`exam-btn${(isOverdue || practiceDone) ? "" : " locked"}`}
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         if (isStopped) return;
+                         if (!isOverdue && !practiceDone) {
+                           showToast("请先完成 AI 对练，再进行考试");
+                           return;
+                         }
+                         enterSceneView(i, "exam");
+                       }}
+                       disabled={isStopped}
+                     >
+                       {examCount > 0 ? "再次考试" : "开始考试"}
+                     </button>
                   </div>
                 </div>
               </article>

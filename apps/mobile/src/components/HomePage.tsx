@@ -211,7 +211,7 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
             )}
             {recentTasks.map((t) => {
               const isPractice = (t.type || "").includes("practice") || (t.type || "").includes("scenario");
-              const stText = taskDisplayStatus(t.status, t.endAt);
+              const stText = taskDisplayStatus(t);
               return (
                 <div
                   className="recent-item"
