@@ -3,16 +3,16 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: 'e7d0f9cb-f686-4682-8b6a-ab1de26044cc'
-  PropagateID: 'e7d0f9cb-f686-4682-8b6a-ab1de26044cc'
-  ReservedCode1: 'c55ec587-5bf6-4431-aeca-2a80db134176'
-  ReservedCode2: 'c55ec587-5bf6-4431-aeca-2a80db134176'
+  ProduceID: '194bba63-3f68-465f-a594-f279d697fe94'
+  PropagateID: '194bba63-3f68-465f-a594-f279d697fe94'
+  ReservedCode1: '0e3b3cba-6fd7-41ea-be97-013cedf72b0d'
+  ReservedCode2: '0e3b3cba-6fd7-41ea-be97-013cedf72b0d'
 ---
 
 # 对练中心（/practice）与学员首页改造 · 设计规格
 
 - 日期：2026-08-08
-- 作者：小唐（星辰超级智能体）
+- 作者：星辰超级智能体
 - 关联工程：zxt-next（apps/admin、apps/api、packages/database、packages/ai-provider）
 
 ## 一、目标与范围

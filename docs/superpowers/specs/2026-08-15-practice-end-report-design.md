@@ -3,16 +3,16 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: 'f2b95cd4-14b2-4f66-9c75-0f6828de3704'
-  PropagateID: 'f2b95cd4-14b2-4f66-9c75-0f6828de3704'
-  ReservedCode1: '8fb1f8bb-f38d-4e99-a9c7-0e17d4caa5d3'
-  ReservedCode2: '8fb1f8bb-f38d-4e99-a9c7-0e17d4caa5d3'
+  ProduceID: '8506f9b2-656f-43f9-8629-9fd0382c25e9'
+  PropagateID: '8506f9b2-656f-43f9-8629-9fd0382c25e9'
+  ReservedCode1: '8a01a50d-fae2-4965-b74f-60daf24ec624'
+  ReservedCode2: '8a01a50d-fae2-4965-b74f-60daf24ec624'
 ---
 
 # 对练结束、阶段性报告与正式完成设计规格
 
 - 日期：2026-08-15
-- 作者：小唐（星辰超级智能体）
+- 作者：星辰超级智能体
 - 关联工程：zxt-next（apps/mobile、apps/api、packages/database）
 
 ## 一、目标与范围

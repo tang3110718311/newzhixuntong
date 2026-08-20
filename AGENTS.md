@@ -3,10 +3,10 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '4dd60fdc-dd1e-455d-96f8-d56db9724cac'
-  PropagateID: '4dd60fdc-dd1e-455d-96f8-d56db9724cac'
-  ReservedCode1: '1e2c6910-6f0c-4733-bafa-5e54e28ee083'
-  ReservedCode2: '1e2c6910-6f0c-4733-bafa-5e54e28ee083'
+  ProduceID: '4bb8e6ef-6df2-498b-b0af-405564ab3895'
+  PropagateID: '4bb8e6ef-6df2-498b-b0af-405564ab3895'
+  ReservedCode1: '9143dd66-01bc-41fd-82d0-89f0072990fa'
+  ReservedCode2: '9143dd66-01bc-41fd-82d0-89f0072990fa'
 ---
 
 # AGENTS.md — 智训通 zxt-next 项目 AI 自动上下文入口
@@ -16,7 +16,7 @@ AIGC:
 
 ## 一句话
 
-**动手之前先拷问：每次只问一个问题、每个问题带推荐答案、能从文件查到的事实自己查、宏哥拍板所有决策、确认理解一致前不写代码。**
+**动手之前先拷问：每次只问一个问题、每个问题带推荐答案、能从文件查到的事实自己查、项目负责人拍板所有决策、确认理解一致前不写代码。**
 
 ## 自动上下文读取顺序
 
@@ -35,7 +35,7 @@ AIGC:
    - 移动端考试：`docs/AI协作/tasks/T004-移动端考试流程可用性.md`
    - 业务巡检：`docs/AI协作/tasks/T005-业务板块真实可用性巡检.md`
 
-如果当前 AI 工具不能自动读取本文件，宏哥只需要说：“先读 AGENTS.md”，后续背景由 AI 自己继续读取，不再让宏哥重复解释。
+如果当前 AI 工具不能自动读取本文件，只需要说：“先读 AGENTS.md”，后续背景由 AI 自己继续读取，不再重复解释。
 
 ## 完整协议
 
@@ -57,7 +57,7 @@ AIGC:
 1. 收到需求 → **不要立刻写代码**
 2. 按协议逐项追问（每次 1 个问题，带推荐答案）
 3. 能从文件/文档查证的事实先查（如 `docs/AI协作/`、`docs/skills/`）
-4. 输出完整方案总结，等宏哥确认
+4. 输出完整方案总结，等项目负责人确认
 5. 确认后才进入开发；改完跑 `npx tsc --noEmit -p apps/admin/tsconfig.json` + 浏览器逐区块验证
 
 ## 相关文档索引
