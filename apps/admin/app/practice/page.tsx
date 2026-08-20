@@ -38,6 +38,7 @@ type AiInspirationHint = { title: string; body: string };
 
 type ScoreDetail = {
   id: string;
+  scoringRuleId?: string | null;
   ruleName?: string | null;
   score: number;
   deductionReason: string;
@@ -60,6 +61,7 @@ type TrainingRecordResult = {
     mode: string;
     status: string;
     score: number;
+    scenePassScore?: number | null;
     finishedAt?: string | null;
   };
   turns: Array<{ id: string; speaker: string; text: string; durationMs: number; startedAt?: string | null }>;
@@ -78,9 +80,9 @@ type HistoryItem = {
   mode: string;
   status: string;
   score: number;
-  finishedAt?: string | null;
   scenePassScore: number;
   passed: number;
+  finishedAt?: string | null;
 };
 
 type HistoryDetail = {
@@ -89,6 +91,7 @@ type HistoryDetail = {
     sceneName?: string | null;
     mode: string;
     score: number;
+    scenePassScore?: number | null;
     finishedAt?: string | null;
   };
   turns: Array<{ id: string; speaker: string; text: string; durationMs: number; emotion?: string }>;
@@ -430,14 +433,14 @@ export default function PracticePage() {
       const me = readStoredAuth();
       if (me?.user.id) {
         try {
-          const recData = await apiGet<{ items: Array<{ sceneId: string; score: number; status: string }> }>(
+          const recData = await apiGet<{ items: Array<{ sceneId: string; score: number; status: string; scenePassScore?: number | null }> }>(
             `/training-records?pageSize=200&userId=${encodeURIComponent(me.user.id)}`
           );
           const records = recData.items || [];
           const completed = records.filter((r) => r.status === "completed");
           setPracticeCount(completed.length);
           if (completed.length > 0) {
-            const passed = completed.filter((r) => r.score >= 60).length;
+            const passed = completed.filter((r) => r.score >= (Number(r.scenePassScore) || 60)).length;
             setPassRate(`${Math.round((passed / completed.length) * 100)}%`);
           }
         } catch {

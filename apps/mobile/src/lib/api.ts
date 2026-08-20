@@ -201,6 +201,8 @@ export interface TaskRow {
   sceneCount: number;
   completedSceneCount: number;
   progressPercent: number;
+  sceneIds?: string[];
+  completedExamSceneCount?: number;
   primarySceneType: string | null;
   primaryMode: string | null;
   answerForm: "voice" | "text" | null;
@@ -335,7 +337,14 @@ export interface AiTurnScore {
 
 export interface AiInspirationHint {
   title: string;
-  body: string;
+  content?: string;
+  focus?: string[];
+  avoid?: string;
+  body?: string;
+  ability_gap?: string;
+  thinking_direction?: string;
+  focus_points?: string[];
+  avoid_points?: string[];
 }
 
 export interface AiChatResponse {

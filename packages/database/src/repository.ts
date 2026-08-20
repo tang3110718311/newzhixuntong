@@ -183,7 +183,8 @@ export type TaskRow = {
   participantCount: number;
   sceneCount: number;
   completedSceneCount: number;
-  progressPercent: number;
+  sceneIds?: string[];
+  completedExamSceneCount?: number;
   primarySceneType?: string | null;
   primaryMode?: string | null;
 };
@@ -259,6 +260,7 @@ export type TrainingRecordRow = {
   startedAt: string | null;
   finishedAt: string | null;
   sessionId?: string | null;
+  scenePassScore?: number | null;
   summaryJson?: string | null;
 };
 
@@ -273,6 +275,7 @@ export type TrainingTurnRow = {
 
 export type ScoreDetailRow = {
   id: string;
+  scoringRuleId?: string | null;
   ruleName: string | null;
   score: number;
   maxScore?: number | null;
@@ -1443,7 +1446,7 @@ export function listTasks(
   const progressUserClause = options.assigneeUserId ? " and tr.user_id = ?" : "";
   const progressParams = options.assigneeUserId ? [options.assigneeUserId] : [];
   const total = get<{ count: number }>(`select count(*) as count from tasks t where ${where}`, params)?.count ?? 0;
-  const items = all<Omit<TaskRow, "progressPercent">>(
+  const items = all<Omit<TaskRow, "progressPercent" | "sceneIds"> & { sceneIds?: string | null }>(
     `select t.id, t.name, t.code, t.type, coalesce(t.description, '') as description, t.answer_form as answerForm, t.status,
             t.start_at as startAt, t.end_at as endAt, t.publish_at as publishAt, t.created_by as createdBy,
             (select max(tr.finished_at) from training_records tr where tr.tenant_id = t.tenant_id and tr.task_id = t.id and tr.status = 'completed' and tr.deleted_at is null${progressUserClause}) as completedAt,
@@ -1451,21 +1454,26 @@ export function listTasks(
             (select count(*) from task_participants tp where tp.tenant_id = t.tenant_id and tp.task_id = t.id and tp.deleted_at is null) as participantCount,
             (select count(*) from task_scenes ts where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null) as sceneCount,
             (select count(distinct tr.scene_id) from training_records tr where tr.tenant_id = t.tenant_id and tr.task_id = t.id and tr.status = 'completed' and tr.deleted_at is null${progressUserClause}) as completedSceneCount,
+            (select count(distinct ea.scene_id) from exam_attempts ea where ea.tenant_id = t.tenant_id and ea.task_id = t.id and ea.status in ('passed', 'failed') and ea.scene_id is not null${options.assigneeUserId ? " and ea.user_id = ?" : ""}) as completedExamSceneCount,
             (select s.scene_type from task_scenes ts left join scenes s on s.id = ts.scene_id and s.tenant_id = ts.tenant_id where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null order by ts.sort_order asc limit 1) as primarySceneType,
-            (select s.mode from task_scenes ts left join scenes s on s.id = ts.scene_id and s.tenant_id = ts.tenant_id where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null order by ts.sort_order asc limit 1) as primaryMode
+            (select s.mode from task_scenes ts left join scenes s on s.id = ts.scene_id and s.tenant_id = ts.tenant_id where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null order by ts.sort_order asc limit 1) as primaryMode,
+            (select group_concat(ts.scene_id, ',') from task_scenes ts where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null) as sceneIds
      from tasks t
      left join users u on u.id = t.created_by and u.tenant_id = t.tenant_id
      left join organizations o on o.id = u.org_id and o.tenant_id = u.tenant_id
      where ${where} order by t.created_at desc limit ? offset ?`,
-    [...progressParams, ...progressParams, ...params, options.pageSize, (options.page - 1) * options.pageSize],
+    [...progressParams, ...progressParams, ...progressParams, ...params, options.pageSize, (options.page - 1) * options.pageSize],
   ).map((task) => {
     const sceneCount = Number(task.sceneCount || 0);
     const completedSceneCount = Math.min(Number(task.completedSceneCount || 0), sceneCount);
+    const completedExamSceneCount = Math.min(Number(task.completedExamSceneCount || 0), sceneCount);
     return {
       ...task,
       sceneCount,
       completedSceneCount,
+      completedExamSceneCount,
       participantCount: Number(task.participantCount || 0),
+      sceneIds: typeof task.sceneIds === "string" ? task.sceneIds.split(",").filter(Boolean) : [],
       progressPercent: task.status === "completed" ? 100 : sceneCount ? Math.round((completedSceneCount / sceneCount) * 100) : 0,
     };
   });
@@ -1506,21 +1514,24 @@ export function getTaskDetail(
             (select count(*) from task_participants tp where tp.tenant_id = t.tenant_id and tp.task_id = t.id and tp.deleted_at is null) as participantCount,
             (select count(*) from task_scenes ts where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null) as sceneCount,
             (select count(distinct tr.scene_id) from training_records tr where tr.tenant_id = t.tenant_id and tr.task_id = t.id and tr.status = 'completed' and tr.deleted_at is null${progressUserClause}) as completedSceneCount,
+            (select count(distinct ea.scene_id) from exam_attempts ea where ea.tenant_id = t.tenant_id and ea.task_id = t.id and ea.status in ('passed', 'failed') and ea.scene_id is not null${options.viewerUserId ? " and ea.user_id = ?" : ""}) as completedExamSceneCount,
             (select s.scene_type from task_scenes ts left join scenes s on s.id = ts.scene_id and s.tenant_id = ts.tenant_id where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null order by ts.sort_order asc limit 1) as primarySceneType,
             (select s.mode from task_scenes ts left join scenes s on s.id = ts.scene_id and s.tenant_id = ts.tenant_id where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null order by ts.sort_order asc limit 1) as primaryMode
      from tasks t
      left join users u on u.id = t.created_by and u.tenant_id = t.tenant_id
      left join organizations o on o.id = u.org_id and o.tenant_id = u.tenant_id
      where ${taskFilters.join(" and ")} limit 1`,
-    [...progressParams, ...progressParams, ...taskParams],
+    [...progressParams, ...progressParams, ...progressParams, ...taskParams],
   );
   if (!rawTask) return undefined;
   const sceneCount = Number(rawTask.sceneCount || 0);
   const completedSceneCount = Math.min(Number(rawTask.completedSceneCount || 0), sceneCount);
+  const completedExamSceneCount = Math.min(Number(rawTask.completedExamSceneCount || 0), sceneCount);
   const task: TaskRow = {
     ...rawTask,
     sceneCount,
     completedSceneCount,
+    completedExamSceneCount,
     participantCount: Number(rawTask.participantCount || 0),
     progressPercent: rawTask.status === "completed" ? 100 : sceneCount ? Math.round((completedSceneCount / sceneCount) * 100) : 0,
   };
@@ -1806,6 +1817,7 @@ export function getTrainingRecordDetail(
   const record = get<TrainingRecordRow>(
     `select tr.id, tr.record_no as recordNo, tr.task_id as taskId, t.name as taskName, tr.scene_id as sceneId, s.name as sceneName,
             tr.user_id as userId, u.name as userName, tr.mode, tr.status, tr.score, tr.session_id as sessionId,
+            coalesce(s.pass_score, 80) as scenePassScore,
             tr.summary_json as summaryJson,
             tr.started_at as startedAt, tr.finished_at as finishedAt
      from training_records tr
@@ -1822,7 +1834,7 @@ export function getTrainingRecordDetail(
     [tenantId, recordId],
   );
   const scores = all<ScoreDetailRow>(
-     `select sd.id, sr.name as ruleName, sd.score, sr.score as maxScore, sd.deduction_reason as deductionReason, sd.evidence_text as evidenceText, sd.level as level, sd.round_no as roundNo, sd.issues_json as issuesJson, sd.advice_json as adviceJson
+     `select sd.id, sd.scoring_rule_id as scoringRuleId, sr.name as ruleName, sd.score, sr.score as maxScore, sd.deduction_reason as deductionReason, sd.evidence_text as evidenceText, sd.level as level, sd.round_no as roundNo, sd.issues_json as issuesJson, sd.advice_json as adviceJson
      from score_details sd
      left join scoring_rules sr on sr.id = sd.scoring_rule_id and sr.tenant_id = sd.tenant_id
      where sd.tenant_id = ? and sd.record_id = ? and sd.deleted_at is null order by sd.created_at asc`,

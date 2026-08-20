@@ -105,10 +105,11 @@ function RadarChart({ items, size = 140 }: { items: Array<{ name: string; score:
   );
 }
 
-/** 合格/未合格标签（对练报告：按原型三档 <60不合格 / 60-85合格 / >85优秀） */
-function PassTag({ score }: { score: number }) {
-  if (score > 85) return <span className="pr-tag ok">优秀</span>;
-  if (score >= 60) return <span className="pr-tag ok">合格</span>;
+/** 合格/未合格标签：合格线取场景配置；优秀线保留 86 分但不得低于合格线 */
+function PassTag({ score, passScore }: { score: number; passScore: number }) {
+  const excellentLine = Math.max(86, passScore);
+  if (score >= excellentLine) return <span className="pr-tag ok">优秀</span>;
+  if (score >= passScore) return <span className="pr-tag ok">合格</span>;
   return <span className="pr-tag no">不合格</span>;
 }
 
@@ -172,12 +173,12 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, recordId]);
 
-  const passScore = 60; // 对练报告合格线对齐原型（<60 不合格 / 60-85 合格 / >85 优秀）
+  const passScore = Number(detail?.record?.scenePassScore ?? scene?.scene?.passScore ?? scene?.passScore ?? 60);
   const score = detail?.record?.score ?? 0;
   const passed = score >= passScore;
-  const overallScores: Array<{ ruleName: string | null; score: number; level?: string | null; deductionReason?: string; evidenceText?: string }> =
+  const overallScores: Array<{ ruleName: string | null; score: number; maxScore?: number | null; level?: string | null; deductionReason?: string; evidenceText?: string }> =
     detail?.scores ?? [];
-  // 能力均分以已触发维度的累计表现归一化结果展示。
+  // 综合得分以场景已有评分规则总分为基准，未触发维度按 0 计。
   const avgScore = score;
 
   // 对话记录 tab：把历史 turns/turnScores 转成 AI 对练页同款消息列表，渲染时直接复用 PracticeChat。
@@ -338,9 +339,9 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
             <div className="pr-eval-head">
               <div className="pr-eval-text">
                 <h3>本次AI对练评估</h3>
-                <p>综合得分 = 已触发维度实际得分 ÷ 已触发维度满分之和 × 100</p>
+                <p>综合得分 = 各评分规则维度实际得分之和 ÷ 场景评分规则满分 × 100</p>
               </div>
-              <PassTag score={score} />
+              <PassTag score={score} passScore={passScore} />
             </div>
 
             <div className="pr-total-card">
@@ -353,9 +354,9 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
               </div>
               <div className="pr-total-text">
                 <b>{passed ? "表现达到合格要求，继续保持优势能力" : "表现未达合格线，建议针对短板加强练习"}</b>
-                <p>系统仅统计对话中实际触发的评分维度，按各轮实际得分与对应满分归一化计算，避免未涉及维度产生扣分。</p>
+                <p>系统按场景已配置的评分规则汇总综合分；本次未触发的维度按 0 分计入，确保报告分数与既有评分规则一致。</p>
                 <div className="pr-total-stats">
-                  能力均分 {avgScore}　评价维度 {overallScores.length}
+                  综合得分 {avgScore}　评价维度 {overallScores.length}　合格线 {passScore}
                 </div>
               </div>
             </div>
@@ -380,7 +381,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
                 能力画像
               </div>
               <div className="pr-radar">
-                <RadarChart items={overallScores.map((s) => ({ name: s.ruleName || "维度", score: Number(s.score) || 0, maxScore: 100 }))} />
+                <RadarChart items={overallScores.map((s) => ({ name: s.ruleName || "维度", score: Number(s.score) || 0, maxScore: Number(s.maxScore) || 100 }))} />
                 <div className="pr-radar-list">
                   {overallScores.map((s, i) => (
                     <div className="pr-radar-item" key={i}>
@@ -405,14 +406,16 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
               <div className="pr-dims">
                 {overallScores.map((s, i) => {
                   const val = Number(s.score) || 0;
-                  const isGood = val >= 80;
-                  const pct = Math.min(Math.max(val / 100, 0), 1) * 100;
+                  const max = Number(s.maxScore) || 100;
+                  const ratio = max > 0 ? val / max : 0;
+                  const isGood = ratio >= 0.8;
+                  const pct = Math.min(Math.max(ratio, 0), 1) * 100;
                   return (
                     <div className="pr-dim" key={i}>
                       <div className="pr-dim-top">
                         <span className={`pr-dim-dot ${isGood ? "good" : "warn"}`}></span>
                         <b>{s.ruleName || `维度${i + 1}`}</b>
-                        <span className="pr-dim-score">{s.score}</span>
+                        <span className="pr-dim-score">{s.score}/{max}</span>
                       </div>
                       <div className="pr-dim-bar">
                         <i className={isGood ? "good" : "warn"} style={{ width: `${pct}%` }}></i>
@@ -468,7 +471,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
             </div>
             <div className="pr-final-row">
               <b>{score}</b>
-              <PassTag score={score} />
+              <PassTag score={score} passScore={passScore} />
             </div>
           </div>
 

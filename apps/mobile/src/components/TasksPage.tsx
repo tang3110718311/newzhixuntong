@@ -12,7 +12,7 @@ interface TasksPageProps {
   showToast: (msg: string) => void;
 }
 
-const STATUS_TABS = ["全部", "待开始", "进行中", "已完成", "已停用", "已逾期"];
+const STATUS_TABS = ["全部", "进行中", "已完成", "已逾期", "已停用"];
 
 function taskIconLabel(name: string): string {
   const short = name.slice(0, 4);
@@ -21,7 +21,7 @@ function taskIconLabel(name: string): string {
 }
 
 // 任务展示状态（运行时状态 → 中文），与 PC 端「我的任务」判定一致
-const displayStatus = (t: TaskRow) => taskDisplayStatus(t.status, t.endAt);
+const displayStatus = (t: TaskRow) => taskDisplayStatus(t);
 
 export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPageProps) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
@@ -52,9 +52,8 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
   const stats = useMemo(() => {
     const total = tasks.length;
     const overdue = tasks.filter((t) => displayStatus(t) === "已逾期").length;
-    const done = tasks.filter((t) => displayStatus(t) === "已完成").length;
     const doing = tasks.filter((t) => displayStatus(t) === "进行中").length;
-    return { total, overdue, done, doing };
+    return { total, overdue, doing };
   }, [tasks]);
 
   return (
@@ -68,17 +67,13 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
           <label>全部任务</label>
           <strong id="taskTotal">{stats.total}</strong>
         </div>
-        <div className="task-stat overdue">
-          <label>已逾期</label>
-          <strong id="taskOverdue">{stats.overdue}</strong>
-        </div>
-        <div className="task-stat done">
-          <label>已完成</label>
-          <strong id="taskDone">{stats.done}</strong>
-        </div>
         <div className="task-stat doing">
           <label>进行中</label>
           <strong id="taskDoing">{stats.doing}</strong>
+        </div>
+        <div className="task-stat overdue">
+          <label>已逾期</label>
+          <strong id="taskOverdue">{stats.overdue}</strong>
         </div>
       </div>
       <div className="task-filter">
@@ -113,8 +108,8 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
             <article
               className="task-card reference-task"
               key={t.id}
-              onClick={() => { if (displayStatus(t) !== "已停用") onOpenTask(t.id); }}
-              style={{ cursor: displayStatus(t) === "已停用" ? "default" : "pointer" }}
+              onClick={() => onOpenTask(t.id)}
+              style={{ cursor: "pointer" }}
             >
               <div className="reference-main">
                 <span className="task-icon">{taskIconLabel(t.name)}</span>
@@ -133,8 +128,8 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
                 <span>
                   {st === "已停用" ? "已停用" : st === "已完成" ? "完成" : "截止"} {fmtDate(t.endAt)}
                 </span>
-                <a onClick={(e) => { e.stopPropagation(); if (st !== "已停用") onOpenTask(t.id); }}>
-                  {st === "已停用" ? "任务已停用" : st === "已完成" ? "查看记录" : "继续学习"} <span>›</span>
+                <a onClick={(e) => { e.stopPropagation(); onOpenTask(t.id); }}>
+                  {st === "已停用" ? "查看详情" : st === "已完成" ? "查看记录" : "继续学习"} <span>›</span>
                 </a>
               </div>
             </article>

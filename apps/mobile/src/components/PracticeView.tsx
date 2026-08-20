@@ -5,7 +5,6 @@ import { aiApi, recordApi, type AiInspirationHint } from "@/lib/api";
 import { getDisplayedLength, splitSpeechSegments } from "@/lib/speech-sync";
 import PracticeChat, { type PracticeChatMsg } from "./PracticeChat";
 import { createAsyncSubmitGuard } from "@/lib/submit-guard";
-import MobilePageAction from "./MobilePageAction";
 
 interface PracticeViewProps {
   scene: any;
@@ -44,6 +43,162 @@ function makePooledTasks<T, R>(
   return results;
 }
 
+type NormalizedHint = { title: string; content: string; focus: string[]; avoid: string };
+
+function clipHintText(value: unknown, maxLength: number): string {
+  return String(value ?? "")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function normalizePracticeHint(raw: AiInspirationHint | null | undefined): NormalizedHint {
+  const legacyBodyLines = raw?.body
+    ? raw.body
+        .split(/\n+/)
+        .map((line) => line.replace(/^(能力缺口|思考方向|关注|避免)[:：]/, "").trim())
+        .filter(Boolean)
+    : [];
+  const focusSource = Array.isArray(raw?.focus) && raw.focus.length
+    ? raw.focus
+    : Array.isArray(raw?.focus_points) && raw.focus_points.length
+      ? raw.focus_points
+      : legacyBodyLines.slice(0, 2);
+  const focus = focusSource
+    .map((item) => clipHintText(item, 15))
+    .filter(Boolean)
+    .slice(0, 2);
+  const fallbackFocus = [
+    clipHintText(raw?.thinking_direction || legacyBodyLines[1] || "回应客户核心诉求", 15),
+    clipHintText(raw?.ability_gap || legacyBodyLines[0] || "补齐关键信息", 15),
+  ].filter(Boolean);
+
+  while (focus.length < 2 && fallbackFocus.length) {
+    const next = fallbackFocus.shift();
+    if (next && !focus.includes(next)) focus.push(next);
+  }
+
+  return {
+    title: clipHintText(raw?.title || raw?.thinking_direction || "思考重点", 20) || "思考重点",
+    content: clipHintText(raw?.content || raw?.ability_gap || legacyBodyLines[0] || "建议关注", 30) || "建议关注",
+    focus: focus.length ? focus : ["回应核心诉求", "补齐关键信息"],
+    avoid: clipHintText(raw?.avoid || raw?.avoid_points?.[0] || "避免空泛承诺", 20) || "避免空泛承诺",
+  };
+}
+
+const VOICE_SENTENCE_END_RE = /[。！？!?；;，,、…]$/;
+const TRANSCRIPT_BREAK_RE = /[\s。！？!?；;，,、…]/g;
+const COMMA_CONNECTORS_RE = /^(但|但是|不过|然后|所以|因此|同时|另外|而且|并且|如果|因为|比如|尤其|还有|以及|关于|针对)/;
+
+function normalizeVoiceTranscriptText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function transcriptPlainText(value: string): string {
+  return normalizeVoiceTranscriptText(value).replace(TRANSCRIPT_BREAK_RE, "");
+}
+
+function restoreVoiceTranscriptPunctuation(value: unknown): string {
+  const source = normalizeVoiceTranscriptText(value);
+  if (!source) return "";
+
+  const normalized = source
+    .replace(/([。！？!?；;，,、…])+/g, "$1")
+    .replace(/\s*([。！？!?；;，,、…])\s*/g, "$1")
+    .replace(/([。！？!?；;…])(?=\S)/g, "$1 ");
+  const rawParts = normalized.split(/\s+/).filter(Boolean);
+  const clauses = rawParts.length > 1 ? rawParts : [normalized];
+  const result: string[] = [];
+
+  clauses.forEach((part, index) => {
+    let text = part.trim();
+    if (!text) return;
+    const hasPunctuation = /[。！？!?；;，,、…]/.test(text);
+    if (!hasPunctuation && text.length > 24) {
+      text = text
+        .replace(/(首先|第一|第二|第三|另外|同时|然后|所以|因此|但是|不过|如果|比如|针对|关于|我们这个方案|我这边|接下来)/g, "，$1")
+        .replace(/^，/, "")
+        .replace(/，{2,}/g, "，");
+    }
+    if (!VOICE_SENTENCE_END_RE.test(text)) {
+      const mark = COMMA_CONNECTORS_RE.test(text) && result.length ? "，" : "。";
+      text = `${text}${mark}`;
+    }
+    if (index === clauses.length - 1) text = text.replace(/[，,]$/, "。");
+    result.push(text);
+  });
+
+  return result.join("").replace(/\s+/g, " ").trim();
+}
+
+function ensureTranscriptPauseBreak(value: string): string {
+  const text = restoreVoiceTranscriptPunctuation(value);
+  if (!text) return "";
+  return VOICE_SENTENCE_END_RE.test(text) ? text : `${text}。`;
+}
+
+function transcriptPlainText(value: string): string {
+  return normalizeVoiceTranscriptText(value).replace(TRANSCRIPT_BREAK_RE, "");
+}
+
+function restoreVoiceTranscriptPunctuation(value: unknown): string {
+  const source = normalizeVoiceTranscriptText(value);
+  if (!source) return "";
+
+  const normalized = source
+    .replace(/([。！？!?；;，,、…])+/g, "$1")
+    .replace(/\s*([。！？!?；;，,、…])\s*/g, "$1")
+    .replace(/([。！？!?；;…])(?=\S)/g, "$1 ");
+
+  const rawParts = normalized.split(/\s+/).filter(Boolean);
+  const clauses = rawParts.length > 1 ? rawParts : [normalized];
+  const result: string[] = [];
+
+  clauses.forEach((part, index) => {
+    let text = part.trim();
+    if (!text) return;
+    const hasPunctuation = /[。！？!?；;，,、…]/.test(text);
+    if (!hasPunctuation && text.length > 24) {
+      text = text
+        .replace(/(首先|第一|第二|第三|另外|同时|然后|所以|因此|但是|不过|如果|比如|针对|关于|我们这个方案|我这边|接下来)/g, "，$1")
+        .replace(/^，/, "")
+        .replace(/，{2,}/g, "，");
+    }
+    if (!VOICE_SENTENCE_END_RE.test(text)) {
+      const mark = COMMA_CONNECTORS_RE.test(text) && result.length ? "，" : "。";
+      text = `${text}${mark}`;
+    }
+    if (index === clauses.length - 1) text = text.replace(/[，,]$/, "。");
+    result.push(text);
+  });
+
+  return result.join("").replace(/\s+/g, " ").trim();
+}
+
+function ensureTranscriptPauseBreak(value: string): string {
+  const text = restoreVoiceTranscriptPunctuation(value);
+  if (!text) return "";
+  return VOICE_SENTENCE_END_RE.test(text) ? text : `${text}。`;
+}
+
+function mergeTranscriptWithPauseBreaks(previous: string, incoming: string): string {
+  const nextRaw = normalizeVoiceTranscriptText(incoming);
+  const prev = normalizeVoiceTranscriptText(previous);
+  if (!prev) return nextRaw;
+  const prevPlain = transcriptPlainText(prev);
+  const nextPlain = transcriptPlainText(nextRaw);
+  if (!nextPlain || nextPlain.length < prevPlain.length) return prev;
+  if (nextPlain.startsWith(prevPlain)) {
+    const suffix = nextPlain.slice(prevPlain.length);
+    return suffix ? `${prev}${suffix}` : prev;
+  }
+  return nextRaw;
+}
+
 export default function PracticeView({ scene, task, onBack, showToast, onReport }: PracticeViewProps) {
   const sceneId = scene?.scene?.id;
   // 文本形式：仅文本框+发送；语音形式：仅语音输入区（参考图还原）
@@ -73,6 +228,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const [score, setScore] = useState<number | null>(null);
   // 进入本对练页面的次数仅用于本机展示，不作为服务端可信完成状态。
   const [practiceTimes, setPracticeTimes] = useState(0);
+  const [confirmAction, setConfirmAction] = useState<"quit" | "end" | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -109,10 +265,52 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const speakSeqRef = useRef(0);
   const ttsCacheRef = useRef(new Map<string, Promise<{ audioBase64: string; format: string }>>());
   const quitRequestedRef = useRef(false);
+  const voiceAudioUrlsRef = useRef<string[]>([]);
+  const speechFinalSegmentsRef = useRef<string[]>([]);
+  const speechInterimRef = useRef("");
+  const pauseBreakCommittedRef = useRef(false);
 
   const sceneName = scene?.scene?.name || "场景对练";
   const aiRole = scene?.roles?.find((r: any) => r.roleType === "ai");
   const aiName = aiRole?.identity || "AI 教练";
+
+  const setLiveTranscript = (value: string) => {
+    const text = normalizeVoiceTranscriptText(value);
+    liveTextRef.current = text;
+    setLiveText(text);
+  };
+
+  const resetLiveTranscript = () => {
+    speechFinalSegmentsRef.current = [];
+    speechInterimRef.current = "";
+    pauseBreakCommittedRef.current = false;
+    liveTextRef.current = "";
+    setLiveText("");
+  };
+
+  const appendFinalSpeechSegment = (value: string) => {
+    const text = normalizeVoiceTranscriptText(value);
+    const core = transcriptPlainText(text);
+    if (!core) return;
+    const existingCores = speechFinalSegmentsRef.current.map((item) => transcriptPlainText(item));
+    if (!existingCores.includes(core)) {
+      speechFinalSegmentsRef.current.push(ensureTranscriptPauseBreak(text));
+    }
+  };
+
+  const buildSpeechTranscript = () => `${speechFinalSegmentsRef.current.join("")}${speechInterimRef.current}`.trim();
+
+  const commitTranscriptPauseBreak = () => {
+    if (speechInterimRef.current.trim()) {
+      appendFinalSpeechSegment(speechInterimRef.current);
+      speechInterimRef.current = "";
+      setLiveTranscript(buildSpeechTranscript());
+      return;
+    }
+    if (liveTextRef.current.trim()) {
+      setLiveTranscript(ensureTranscriptPauseBreak(liveTextRef.current));
+    }
+  };
 
   const pushMsg = useCallback((m: Omit<ChatMsg, "id">) => {
     msgSeq.current += 1;
@@ -182,6 +380,8 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       if (liveSttTimerRef.current) clearInterval(liveSttTimerRef.current);
       if (recSecTimerRef.current) clearInterval(recSecTimerRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      voiceAudioUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      voiceAudioUrlsRef.current = [];
       stopAiSpeak();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -192,7 +392,28 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   };
 
-  const sendText = async (text: string, isVoice = false) => {
+  const makeVoiceAudioUrl = (blob: Blob) => {
+    if (!blob.size) return undefined;
+    const url = URL.createObjectURL(blob);
+    voiceAudioUrlsRef.current.push(url);
+    return url;
+  };
+
+  const captureCurrentVoiceAudioUrl = async () => {
+    const rec = mediaRecorderRef.current;
+    if (!rec) return undefined;
+    if (rec.state === "recording") {
+      try {
+        rec.requestData();
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      } catch { /* ignore */ }
+    }
+    const chunks = chunksRef.current.filter((chunk) => chunk.size > 0);
+    if (!chunks.length) return undefined;
+    return makeVoiceAudioUrl(new Blob(chunks, { type: rec.mimeType || chunks[0]?.type || "audio/webm" }));
+  };
+
+  const sendText = async (text: string, isVoice = false, voiceAudioUrl?: string) => {
     if (!text.trim() || !sceneId) return;
     if (chatSubmittingRef.current) return;
     if (!sessionId) {
@@ -200,7 +421,8 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       return;
     }
     chatSubmittingRef.current = true;
-    pushMsg({ who: "user", text: text.trim(), time: now(), isVoice });
+    const normalized = restoreVoiceTranscriptPunctuation(text);
+    pushMsg({ who: "user", text: normalized, time: now(), isVoice, voiceAudioUrl: isVoice ? voiceAudioUrl : undefined });
     // 先占位渲染评分卡，避免评分服务超时或返回空数组时整张卡片不可见。
     const feedbackId = pushMsg({
       who: "feedback",
@@ -215,7 +437,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         sceneId,
         action: "message",
         sessionId,
-        learnerText: text.trim(),
+        learnerText: normalized,
       });
       if (quitRequestedRef.current) return;
       const activeSessionId = res.sessionId || sessionId;
@@ -650,8 +872,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     stopAiSpeak();
     try {
       // 重置上次录音残留的实时识别文字，避免旧缓存显示/静音自动提交误用
-      liveTextRef.current = "";
-      setLiveText("");
+      resetLiveTranscript();
       // 重置录音时长并启动计时
       setRecSec(0);
       if (recSecTimerRef.current) clearInterval(recSecTimerRef.current);
@@ -678,7 +899,8 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
           const pcmBase64 = await blobToPcmBase64(blob);
           const stt = await aiApi.stt(pcmBase64, "pcm");
           if (stt.text) {
-            await sendText(stt.text, true);
+            const voiceAudioUrl = makeVoiceAudioUrl(blob);
+            await sendText(restoreVoiceTranscriptPunctuation(stt.text), true, voiceAudioUrl);
           } else {
             showToast("未识别到有效语音");
           }
@@ -718,13 +940,12 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
           const stt = await aiApi.stt(pcmBase64, "pcm");
           // 录音会话已切换（重新开始录音/已关闭）→ 丢弃过期结果
           if (recordTokenRef.current !== recToken) return;
-          const seg = (stt.text || "").trim();
+          const seg = restoreVoiceTranscriptPunctuation(stt.text || "");
           if (seg) {
-            // 每次识别的是"录音开始到当前"的整段音频，直接覆盖显示（文字随录音逐步完整）
-            // 仅在结果不短于当前时覆盖，避免识别波动导致已显示文字后退
-            if (seg.length >= liveTextRef.current.length) {
-              liveTextRef.current = seg;
-              setLiveText(seg);
+            // 每次识别的是“录音开始到当前”的整段音频：保留已按停顿补上的断句标点，再补充新增文字。
+            const next = mergeTranscriptWithPauseBreaks(liveTextRef.current, seg);
+            if (transcriptPlainText(next).length >= transcriptPlainText(liveTextRef.current).length) {
+              setLiveTranscript(next);
             }
           }
         } catch {
@@ -749,12 +970,21 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
           const avg = sum / dataArr.length / 255;
           if (avg > 0.02) {
             lastSoundRef.current = Date.now();
-          } else if (Date.now() - lastSoundRef.current >= 3500) {
-            // 静音超过 3.5s：有识别文本则自动提交，否则继续聆听
-            if (liveTextRef.current.trim()) {
-              submitVoice();
-            } else {
-              lastSoundRef.current = Date.now();
+            pauseBreakCommittedRef.current = false;
+          } else {
+            const silentFor = Date.now() - lastSoundRef.current;
+            // 静音停顿约 0.9s：先把当前片段收束为一句，避免实时转写全部连成一长句。
+            if (silentFor >= 900 && !pauseBreakCommittedRef.current && liveTextRef.current.trim()) {
+              commitTranscriptPauseBreak();
+              pauseBreakCommittedRef.current = true;
+            }
+            if (silentFor >= 3500) {
+              // 静音超过 3.5s：有识别文本则自动提交，否则继续聆听
+              if (liveTextRef.current.trim()) {
+                submitVoice();
+              } else {
+                lastSoundRef.current = Date.now();
+              }
             }
           }
         } catch { /* ignore */ }
@@ -769,18 +999,15 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
           recog.continuous = true;
           recog.interimResults = true;
           recog.onresult = (e: any) => {
-            let final = "";
             let interim = "";
             for (let i = e.resultIndex; i < e.results.length; i++) {
               const r = e.results[i];
-              if (r.isFinal) final += r[0].transcript;
+              if (r.isFinal) appendFinalSpeechSegment(r[0].transcript);
               else interim += r[0].transcript;
             }
-            const combined = (final + interim).trim();
-            // Web Speech 实际产出结果 → 停用后端分段兜底，避免双写冲突
-            if (combined) speechActiveRef.current = true;
-            liveTextRef.current = combined;
-            setLiveText(combined);
+            speechInterimRef.current = normalizeVoiceTranscriptText(interim);
+            const finalTranscript = restoreVoiceTranscriptPunctuation(buildSpeechTranscript());
+            setLiveTranscript(finalTranscript);
           };
           recog.onend = () => {
             // 浏览器偶发自动停止：仍在聆听状态则重启
@@ -821,15 +1048,15 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         stopLiveRecognition();
         const live = liveTextRef.current.trim();
         if (live) {
+          const voiceAudioUrl = await captureCurrentVoiceAudioUrl();
           voiceTextSentRef.current = true;
           stopRecorderAndStream();
-          await sendText(live, true);
+          await sendText(live, true, voiceAudioUrl);
         } else {
           stopRecorderAndStream(); // onstop 中走 STT
         }
         // 发送/提交后清空实时识别文字缓存，避免下一次录音残留
-        setLiveText("");
-        liveTextRef.current = "";
+        resetLiveTranscript();
       } finally {
         submittingRef.current = false;
       }
@@ -844,8 +1071,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     stopLiveRecognition();
     voiceTextSentRef.current = true; // 取消本次，onstop 不再发送
     stopRecorderAndStream();
-    setLiveText("");
-    liveTextRef.current = "";
+    resetLiveTranscript();
     // 允许再次开始
     setTimeout(() => {
       submittingRef.current = false;
@@ -853,8 +1079,6 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   };
 
   const quitPractice = async () => {
-    const confirmed = window.confirm("确定退出当前对练吗？");
-    if (!confirmed) return;
     quitRequestedRef.current = true;
     chatSubmittingRef.current = true;
     stopAiSpeak();
@@ -862,8 +1086,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     stopLiveRecognition();
     voiceTextSentRef.current = true;
     stopRecorderAndStream();
-    setLiveText("");
-    liveTextRef.current = "";
+    resetLiveTranscript();
     setSending(false);
     if (sceneId && sessionId) {
       try {
@@ -875,40 +1098,97 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     onBack();
   };
 
-  const hint = inspirationHint ?? {
-    title: "回答方向",
-    body: "暂无新的上下文提示，请先结合 AI 最新追问自行组织回答。",
+  const requestQuitPractice = () => {
+    if (quitRequestedRef.current || sending || !sessionId) return;
+    setConfirmAction("quit");
   };
+
+  const requestEndPractice = () => {
+    if (quitRequestedRef.current || sending || !sceneId || !sessionId) return;
+    setConfirmAction("end");
+  };
+
+  const confirmPracticeAction = async () => {
+    const action = confirmAction;
+    if (!action) return;
+    setConfirmAction(null);
+    if (action === "quit") {
+      await quitPractice();
+      return;
+    }
+    await endPractice();
+  };
+
+  const hint = normalizePracticeHint(inspirationHint);
 
   return (
     <div className="pv-shell mobile-page-background">
-      {/* ===== 顶部导航（淡天蓝渐变） ===== */}
+      {/* ===== 顶部导航 ===== */}
       <header className="pv-nav">
-        <MobilePageAction kind="back" variant="immersive" onClick={() => void quitPractice()} aria-label="退出对练" />
-        <div className="pv-nav-title">
-          <h1>AI对练</h1>
-          <span className="pv-live-badge">
-            <i></i>进行中
-          </span>
+        <div className="pv-navrow">
+          <button
+            className="pv-back-btn"
+            type="button"
+            onClick={requestQuitPractice}
+            aria-label="返回任务详情"
+            disabled={sending || !sessionId}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
+          <div className="pv-nav-title">
+            <h1>{isTextMode ? "AI 文本对练" : "AI 语音对练"}</h1>
+            <span className="pv-live-badge">
+              <i></i>进行中
+            </span>
+          </div>
+          <div className="pv-nav-actions">
+            <button
+              className="pv-nav-btn pv-nav-btn--exit"
+              type="button"
+              onClick={requestQuitPractice}
+              aria-label="退出对练"
+              disabled={sending || !sessionId}
+            >
+              <svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M8.5 4.5H5.8c-.9 0-1.6.7-1.6 1.6v7.8c0 .9.7 1.6 1.6 1.6h2.7" />
+                <path d="M11.2 6.4 7.8 10l3.4 3.6" />
+                <path d="M8.1 10h7.7" />
+              </svg>
+              <span>退出</span>
+            </button>
+            <button
+              className="pv-nav-btn pv-nav-btn--finish"
+              type="button"
+              onClick={requestEndPractice}
+              aria-label="结束对练"
+              disabled={sending || !sessionId}
+            >
+              <svg viewBox="0 0 20 20" width="17" height="17" fill="currentColor" aria-hidden="true">
+                <rect x="5" y="5" width="10" height="10" rx="2" />
+              </svg>
+              <span>结束</span>
+            </button>
+          </div>
         </div>
-        <button className="pv-end-practice" type="button" onClick={() => void endPractice()} disabled={sending || !sessionId}>结束对练</button>
       </header>
 
-      {/* ===== 场景信息三栏卡 ===== */}
-      <div className="pv-scene-card">
-        <div className="pv-scene-col">
-          <span>对练场景 · AI角色</span>
+      {/* ===== 状态条 ===== */}
+      <div className="pv-scene-card pv-status-strip voice-practice-status">
+        <div className="pv-scene-col scene">
+          <span>{isTextMode ? "文本场景 · AI角色" : "语音场景 · AI角色"}</span>
           <b>
             {sceneName} · {aiName}
           </b>
         </div>
-        <div className="pv-scene-col">
+        <div className="pv-scene-col round">
           <span>对练次数</span>
-          <b className="orange">第 {practiceTimes > 0 ? practiceTimes : 1} 次</b>
+          <b>第 {practiceTimes > 0 ? practiceTimes : 1} 次</b>
         </div>
-        <div className="pv-scene-col">
-          <span>最终得分</span>
-          <b className="blue">{score != null ? `${score}分` : "—"}</b>
+        <div className="pv-scene-col score">
+          <span>本轮得分</span>
+          <b>{score != null ? `${score}分` : "—"}</b>
         </div>
       </div>
 
@@ -951,132 +1231,139 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         }}
       />
 
-        {/* ===== 底部输入区 ===== */}
+      {/* ===== 底部输入区 ===== */}
       <div className="pv-composer">
-        {isTextMode ? (
-          /* 文本形式：灵感提示 + 文本框 */
-          <div className="pv-voice-area">
+        <div className="pv-voice-area">
+          <div className="pv-inspiration-row">
             <button
-              className="pv-hint-pill"
+              className={`pv-hint-pill${hintVisible ? " active" : ""}`}
               type="button"
               onClick={() => setHintVisible((v) => !v)}
               aria-expanded={hintVisible}
             >
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-                <path d="M12 3l9 9-9 9-9-9z" fill="#2563eb" />
+                <path d="M12 3l9 9-9 9-9-9z" fill="currentColor" />
               </svg>
               灵感提示
             </button>
-
-            {hintVisible && (
-              <div className="pv-hint-card">
-                <h4>
-                  <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
-                    <path d="M12 3l9 9-9 9-9-9z" fill="#2563eb" />
-                  </svg>
-                  {hint.title}
-                </h4>
-                <p>{hint.body}</p>
-                <em>根据当前对话上下文生成</em>
-              </div>
-            )}
-
-            <div className="pv-text-bar">
-              <input
-                className="pv-text-input"
-                placeholder="输入你的回答…"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSend();
-                }}
-                maxLength={500}
-              />
-              <button className="pv-text-send" type="button" onClick={handleSend} disabled={sending || !input.trim()}>
-                <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
-                  <path d="M3.5 11.8 20.5 3.5l-4.2 17-4.1-6.1-8.7-2.6Z" fill="#fff" stroke="none" />
-                  <path d="m12.2 14.4 8.3-10.7" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" fill="none" />
-                </svg>
-              </button>
-            </div>
+            <small>{isTextMode ? "整理表达思路" : "按需展开回答方向"}</small>
           </div>
-        ) : (
-          /* 语音形式：灵感提示 + 录音面板 */
-          <div className="pv-voice-area">
-            <button
-              className="pv-hint-pill"
-              type="button"
-              onClick={() => setHintVisible((v) => !v)}
-              aria-expanded={hintVisible}
-            >
-              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-                <path d="M12 3l9 9-9 9-9-9z" fill="#2563eb" />
-              </svg>
-              灵感提示
-            </button>
 
-            {hintVisible && (
-              <div className="pv-hint-card">
-                <h4>
-                  <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
-                    <path d="M12 3l9 9-9 9-9-9z" fill="#2563eb" />
-                  </svg>
-                  {hint.title}
-                </h4>
-                <p>{hint.body}</p>
-                <em>根据当前对话上下文生成</em>
+          {hintVisible && (
+            <div className="pv-hint-card">
+              <span className="pv-hint-icon" aria-hidden="true">✦</span>
+              <div className="pv-hint-content">
+                <h4>{hint.title}</h4>
+                <p className="pv-hint-label">{hint.content}</p>
+                <div className="pv-hint-focus">
+                  {hint.focus.map((item, index) => (
+                    <span key={`${item}-${index}`}>{item}</span>
+                  ))}
+                </div>
+                <em>{hint.avoid}</em>
               </div>
-            )}
+            </div>
+          )}
 
-            {recording ? (
-              <div className="pv-listening-panel">
-                <div className="pv-listening-top">
-                  <b>正在聆听，请说话...</b>
-                  <button className="pv-listening-close" type="button" onClick={closeListening} aria-label="关闭聆听">
-                    ×
-                  </button>
-                </div>
-                <div className="pv-live-text">{liveText || "请自然表达你的回答，我会实时识别"}</div>
-                <div className="pv-wave" aria-hidden="true">
-                  <i></i>
-                  <i></i>
-                  <i></i>
-                  <i></i>
-                  <i></i>
-                  <i></i>
-                  <i></i>
-                  <i></i>
-                  <i></i>
-                  <i></i>
-                </div>
-                {/* 学员说话（录音）实时进度：已录时长进度条 */}
-                <div className="pv-rec-progress" aria-hidden="true">
-                  <span className="pv-rec-bar">
-                    <i style={{ width: `${Math.min(100, Math.round((recSec / 60) * 100))}%` }}></i>
-                  </span>
-                  <b>{recSec}s</b>
-                </div>
-                <button className="pv-send-big" type="button" onClick={submitVoice}>
-                  发送
+          {isTextMode ? (
+            <div className="pv-text-panel">
+              <div className="pv-text-bar">
+                <input
+                  className="pv-text-input"
+                  placeholder="输入你的回答…"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSend();
+                  }}
+                  maxLength={500}
+                />
+                <button className="pv-text-send" type="button" onClick={handleSend} disabled={sending || !input.trim()} aria-label="发送回答">
+                  <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+                    <path d="M3.5 11.8 20.5 3.5l-4.2 17-4.1-6.1-8.7-2.6Z" fill="#fff" stroke="none" />
+                    <path d="m12.2 14.4 8.3-10.7" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+                  </svg>
                 </button>
               </div>
-            ) : (
+            </div>
+          ) : recording ? (
+            <div className="pv-listening-panel voice-reference-panel">
+              <div className="pv-listening-top voice-reference-head">
+                <div>
+                  <b>语音输入</b>
+                  <span className="pv-listening-badge">实时转写中</span>
+                </div>
+                <button className="pv-listening-close" type="button" onClick={closeListening} aria-label="关闭聆听">
+                  ×
+                </button>
+              </div>
+              <div className="pv-live-text voice-reference-transcript">{liveText || "请自然表达你的回答，我会实时识别"}</div>
+              <div className="pv-wave voice-reference-wave" aria-hidden="true">
+                {Array.from({ length: 31 }).map((_, index) => <i key={index}></i>)}
+              </div>
+              {/* 学员说话（录音）实时进度：已录时长进度条 */}
+              <div className="pv-rec-progress" aria-hidden="true">
+                <span className="pv-rec-bar">
+                  <i style={{ width: `${Math.min(100, Math.round((recSec / 60) * 100))}%` }}></i>
+                </span>
+                <b>{recSec}s</b>
+              </div>
+              <button className="pv-send-big voice-reference-end" type="button" onClick={submitVoice}>
+                发送回答
+              </button>
+            </div>
+          ) : (
+            <div className="pv-voice-default">
+              <div className="pv-voice-default-label">
+                <span className="pv-voice-default-dot"></span>
+                <div>
+                  <b>语音输入</b>
+                  <em>点击后实时转写</em>
+                </div>
+              </div>
               <button
-                className={`pv-record-btn${aiSpeaking ? " speaking-lock" : ""}`}
+                className={`pv-record-btn voice-start-btn${aiSpeaking ? " speaking-lock" : ""}`}
                 type="button"
                 onClick={startRecording}
               >
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <rect x="9" y="3" width="6" height="11" rx="3" />
                   <path d="M5.5 11a6.5 6.5 0 0 0 13 0" />
                   <path d="M12 17.5V21" />
                 </svg>
-                {aiSpeaking ? "AI 说话中，请稍候…" : "开始录音"}
+                {aiSpeaking ? "AI 说话中，请稍候…" : "开始录音 · 实时转写"}
               </button>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </div>
+
+      {confirmAction && (
+        <div className="pv-confirm-mask" role="dialog" aria-modal="true" aria-labelledby="pv-confirm-title">
+          <div className="pv-confirm-card">
+            <div className={`pv-confirm-icon ${confirmAction === "quit" ? "exit" : "finish"}`} aria-hidden="true">
+              {confirmAction === "quit" ? (
+                <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M13 3H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8" />
+                  <path d="M16 8l-4-4v3H9v2h3v3z" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor">
+                  <rect x="3" y="3" width="10" height="10" rx="1" />
+                </svg>
+              )}
+            </div>
+            <h3 id="pv-confirm-title">{confirmAction === "quit" ? "确定退出当前对练吗？" : "确定结束当前对练吗？"}</h3>
+            <p>{confirmAction === "quit" ? "退出后将直接返回任务详情，不生成报告，也不会保留对练记录。" : "确认后将生成本次 AI 对练报告。"}</p>
+            <div className="pv-confirm-actions">
+              <button className="pv-confirm-cancel" type="button" onClick={() => setConfirmAction(null)}>取消</button>
+              <button className="pv-confirm-primary" type="button" onClick={() => void confirmPracticeAction()}>
+                {confirmAction === "quit" ? "确认退出" : "确认结束"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

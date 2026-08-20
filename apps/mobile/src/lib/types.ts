@@ -41,20 +41,73 @@ export function taskStatusText(status: string): string {
   return map[status] || "待开始";
 }
 
-// 任务运行时状态（与 PC 端 getTaskRuntimeStatus 对齐）：
-// completed → 已完成；endAt 已过 → 已逾期（不论 published/stopped）；published → 进行中；其余 → 待开始
-export function taskRuntimeStatus(status: string, endAt: string | null | undefined): string {
-  if (status === "completed") return "completed";
-  if (status === "stopped") return "stopped";
-  const endTime = endAt ? new Date(endAt).getTime() : Number.NaN;
-  if (Number.isFinite(endTime) && endTime < Date.now()) return "overdue";
-  if (status === "published") return "published";
-  return status;
+// 任务运行状态计算输入。列表页可传入学员维度的场景/考试完成数，避免只按后端任务状态粗略展示。
+export interface TaskStatusInput {
+  status: string;
+  type?: string | null;
+  startAt?: string | null;
+  endAt?: string | null;
+  sceneCount?: number | null;
+  completedSceneCount?: number | null;
+  completedExamSceneCount?: number | null;
+  hasExam?: boolean | null;
 }
 
-// 任务展示状态文本（运行时状态 → 中文），与 PC 端「我的任务」判定一致
-export function taskDisplayStatus(status: string, endAt: string | null | undefined): string {
-  const runtime = taskRuntimeStatus(status, endAt);
+function toTime(value: string | null | undefined): number {
+  if (!value) return Number.NaN;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : Number.NaN;
+}
+
+export function taskHasExam(task: Pick<TaskStatusInput, "type" | "hasExam">): boolean {
+  const type = (task.type || "").toLowerCase();
+  return Boolean(task.hasExam) || type === "exam" || type === "mixed" || type.endsWith("_exam");
+}
+
+function normalizeTaskStatusInput(
+  statusOrTask: TaskStatusInput | string,
+  endAt?: string | null,
+  startAt?: string | null,
+): TaskStatusInput {
+  if (typeof statusOrTask === "string") return { status: statusOrTask, endAt, startAt };
+  return statusOrTask;
+}
+
+// 任务运行时状态：停用优先；超过截止时间为逾期；未到开始时间为待开始；
+// 在有效期内按学员完成进度判定：有考试需对练+考试完成，无考试只需对练完成。
+export function taskRuntimeStatus(
+  statusOrTask: TaskStatusInput | string,
+  endAt?: string | null,
+  startAt?: string | null,
+): string {
+  const task = normalizeTaskStatusInput(statusOrTask, endAt, startAt);
+  if (task.status === "stopped") return "stopped";
+
+  const now = Date.now();
+  const startTime = toTime(task.startAt);
+  const endTime = toTime(task.endAt);
+  if (Number.isFinite(endTime) && endTime < now) return "overdue";
+  if (Number.isFinite(startTime) && startTime >= now) return "draft";
+  if (task.status === "draft") return "draft";
+
+  const sceneCount = Number(task.sceneCount || 0);
+  const completedSceneCount = Number(task.completedSceneCount || 0);
+  const completedExamSceneCount = Number(task.completedExamSceneCount || 0);
+  const practiceDone = sceneCount > 0 ? completedSceneCount >= sceneCount : task.status === "completed";
+  const examDone = !taskHasExam(task) || (sceneCount > 0 ? completedExamSceneCount >= sceneCount : task.status === "completed");
+
+  if (practiceDone && examDone) return "completed";
+  if (task.status === "published" || task.status === "completed") return "published";
+  return task.status;
+}
+
+// 任务展示状态文本（运行时状态 → 中文），与移动端我的任务判定一致
+export function taskDisplayStatus(
+  statusOrTask: TaskStatusInput | string,
+  endAt?: string | null,
+  startAt?: string | null,
+): string {
+  const runtime = taskRuntimeStatus(statusOrTask, endAt, startAt);
   if (runtime === "completed") return "已完成";
   if (runtime === "stopped") return "已停用";
   if (runtime === "overdue") return "已逾期";

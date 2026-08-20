@@ -1,6 +1,6 @@
 "use client";
 
-import { type RefObject, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { getFullTextFallback } from "@/lib/speech-sync";
 import { type AiTurnScore } from "@/lib/api";
 
@@ -10,6 +10,7 @@ export interface PracticeChatMsg {
   text: string;
   time?: string;
   isVoice?: boolean;
+  voiceAudioUrl?: string;
   score?: number | null;
   dimensions?: AiTurnScore[];
   issues?: string[];
@@ -61,13 +62,13 @@ function PracticeFeedbackCard({ message }: { message: PracticeChatMsg }) {
     (message.advice && message.advice.length > 0);
 
   return (
-    <div className="pv-feedback-card">
+    <div className={`pv-feedback-card ${collapsed ? "collapsed" : "expanded"}`}>
       <div
         className="pv-feedback-head pv-feedback-toggle"
         onClick={hasDetail ? () => setCollapsed((v) => !v) : undefined}
         style={hasDetail ? { cursor: "pointer" } : undefined}
       >
-        <b>实时点评</b>
+        <b>实时点评.本次回复综合分</b>
         <span style={{ gap: "6px", alignItems: "center" }}>
           {message.score != null ? <><strong>{message.score}</strong>分</> : "—"}
           {hasDetail && (
@@ -137,6 +138,46 @@ export default function PracticeChat({
   onToggleAiAudio,
   reportMode = false,
 }: PracticeChatProps) {
+  const userAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingUserVoiceId, setPlayingUserVoiceId] = useState<string | null>(null);
+
+  const stopUserVoice = () => {
+    if (userAudioRef.current) {
+      try { userAudioRef.current.pause(); } catch { /* ignore */ }
+      userAudioRef.current = null;
+    }
+    setPlayingUserVoiceId(null);
+  };
+
+  useEffect(() => stopUserVoice, []);
+
+  const toggleUserVoice = (message: PracticeChatMsg) => {
+    if (!message.voiceAudioUrl) return;
+    if (playingUserVoiceId === message.id) {
+      stopUserVoice();
+      return;
+    }
+    stopUserVoice();
+    const audio = new Audio(message.voiceAudioUrl);
+    userAudioRef.current = audio;
+    setPlayingUserVoiceId(message.id);
+    const clear = () => {
+      if (userAudioRef.current === audio) userAudioRef.current = null;
+      setPlayingUserVoiceId(null);
+    };
+    audio.addEventListener("ended", clear, { once: true });
+    audio.addEventListener("error", clear, { once: true });
+    audio.play().catch(clear);
+  };
+
+  const soundIcon = (
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+      <path d="M18.5 5.5a8.5 8.5 0 0 1 0 13" />
+    </svg>
+  );
+
   return (
     <div className={`pv-chat${reportMode ? " report-mode" : ""}`} ref={chatRef}>
       {messages.map((message) => {
@@ -153,45 +194,41 @@ export default function PracticeChat({
             <div className="pv-msg-main">
               <span className="pv-time">{message.time}</span>
               <div className="pv-bubble">
-                {message.who === "user" && message.isVoice && (
-                  <span className="pv-voice-wave" aria-hidden="true">
-                    <i></i>
-                    <i></i>
-                    <i></i>
-                    <i></i>
-                  </span>
-                )}
                 {message.who === "ai" ? (
                   <>
-                    <div className="pv-ai-message-text">
+                    {!isTextMode && onToggleAiAudio && (
+                      <button
+                        className={`pv-ai-sound-icon${aiSpeaking && speakMsgId === message.id ? " playing" : ""}`}
+                        type="button"
+                        aria-label={aiSpeaking && speakMsgId === message.id ? "停止播放 AI 语音" : "播放 AI 语音"}
+                        onClick={() => onToggleAiAudio(message)}
+                      >
+                        {soundIcon}
+                      </button>
+                    )}
+                    <span className="pv-ai-message-text">
                       {aiDisp[message.id] != null && !ttsFailed[message.id]
                         ? message.text.slice(0, aiDisp[message.id])
                         : getFullTextFallback(message.text)}
-                    </div>
-                    {!isTextMode && ttsFailed[message.id] && onReplayAi && (
-                      <button className="pv-ai-replay" type="button" onClick={() => onReplayAi(message)}>
-                        重新播放
-                      </button>
-                    )}
+                    </span>
                   </>
                 ) : (
-                  message.text
+                  <>
+                    {message.isVoice && (
+                      <button
+                        className={`pv-voice-wave${playingUserVoiceId === message.id ? " playing" : ""}`}
+                        type="button"
+                        aria-label={playingUserVoiceId === message.id ? "停止播放学员语音" : "播放学员语音"}
+                        onClick={() => toggleUserVoice(message)}
+                        disabled={!message.voiceAudioUrl}
+                      >
+                        {soundIcon}
+                      </button>
+                    )}
+                    <span className="pv-user-message-text">{message.text}</span>
+                  </>
                 )}
               </div>
-              {message.who === "ai" && !isTextMode && onToggleAiAudio && (
-                <button
-                  className={`pv-ai-sound-icon${aiSpeaking && speakMsgId === message.id ? " playing" : ""}`}
-                  type="button"
-                  aria-label={aiSpeaking && speakMsgId === message.id ? "正在播放 AI 语音" : "播放 AI 语音"}
-                  onClick={() => onToggleAiAudio(message)}
-                >
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                    <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-                    <path d="M18.5 5.5a8.5 8.5 0 0 1 0 13" />
-                  </svg>
-                </button>
-              )}
               {message.who === "ai" && !(aiSpeaking && speakMsgId === message.id) && ttsPreparing === message.id && (
                 <div className="pv-ai-preparing" aria-hidden="true">
                   <b>语音准备中…</b>
