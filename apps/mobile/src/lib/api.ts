@@ -4,14 +4,24 @@ function isInsecureHttpApiBase(value: string) {
   return /^http:\/\//i.test(value);
 }
 
+function normalizeApiBase(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
 function resolveApiBase() {
-  const configured =
+  const configured = (
     process.env.NEXT_PUBLIC_MOBILE_API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
-    "";
+    ""
+  ).trim();
+
+  // 本地开发时浏览器统一走同源 /api，由移动端 Next 代理到 API 服务。
+  // 避免手机访问局域网地址时，把 localhost 或历史 IP 解析错导致验证码 Failed to fetch。
+  if (process.env.NODE_ENV === "development" && typeof window !== "undefined") return "/api";
+
   if (configured) {
     if (process.env.NODE_ENV === "production" && isInsecureHttpApiBase(configured)) return "/api";
-    return configured;
+    return normalizeApiBase(configured);
   }
   return process.env.NODE_ENV === "production" ? "/api" : "http://localhost:4000/api";
 }
@@ -102,12 +112,17 @@ async function request<T>(
     const token = getToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    credentials: "include",
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      credentials: "include",
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error("网络请求失败，请确认移动端与 API 服务已启动后重试");
+  }
   let json: any = null;
   try {
     json = await res.json();

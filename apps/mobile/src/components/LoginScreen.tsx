@@ -16,6 +16,25 @@ function safeCaptchaImageUrl(value?: string): string | null {
   return null;
 }
 
+function AccountIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 12.2a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" />
+      <path d="M4.8 20.2a7.2 7.2 0 0 1 14.4 0" />
+    </svg>
+  );
+}
+
+function PasswordIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <rect x="5.5" y="10" width="13" height="9.5" rx="2.2" />
+      <path d="M8.5 10V7.6a3.5 3.5 0 0 1 7 0V10" />
+      <path d="M12 14.1v2.1" />
+    </svg>
+  );
+}
+
 export default function LoginScreen({ onLoginSuccess, showToast }: LoginScreenProps) {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -62,14 +81,9 @@ export default function LoginScreen({ onLoginSuccess, showToast }: LoginScreenPr
               <span>智训通</span>
             </h1>
             <div className="sms-field phone-field">
-              <button
-                type="button"
-                className="country-code"
-                onClick={() => showToast("当前仅支持中国大陆 +86")}
-                aria-label="区号 +86"
-              >
-                +86⌄
-              </button>
+              <span className="login-field-icon account-icon" aria-hidden="true">
+                <AccountIcon />
+              </span>
               <input
                 inputMode="numeric"
                 maxLength={11}
@@ -80,6 +94,9 @@ export default function LoginScreen({ onLoginSuccess, showToast }: LoginScreenPr
               />
             </div>
             <div className="sms-field code-field password-field">
+              <span className="login-field-icon password-icon" aria-hidden="true">
+                <PasswordIcon />
+              </span>
               <input
                 type={showPwd ? "text" : "password"}
                 autoComplete="current-password"
