@@ -37,7 +37,7 @@ function AiAvatar({ reportMode = false }: { reportMode?: boolean }) {
   return (
     <span className={`pv-avatar ai${reportMode ? " report" : ""}`} aria-hidden="true">
       {reportMode ? (
-        <img src="/cute-3d-training-robot.png" alt="" />
+        <img src="cute-3d-training-robot.png" alt="" />
       ) : (
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" strokeWidth="1.7">
           <rect x="4.5" y="7" width="15" height="11" rx="3.2" />
