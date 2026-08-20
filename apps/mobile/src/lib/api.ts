@@ -305,7 +305,8 @@ export const dashboardApi = {
 export type AiChatRequest =
   | { sceneId: string; action: "start"; preview?: boolean }
   | { sceneId: string; action: "message"; sessionId: string; learnerText: string }
-  | { sceneId: string; action: "end"; sessionId: string };
+  | { sceneId: string; action: "end"; sessionId: string }
+  | { sceneId: string; action: "quit"; sessionId: string };
 
 export interface AiTurnScore {
   name: string;
