@@ -270,9 +270,19 @@ export interface ExamAttemptRow {
   createdAt: string;
 }
 
+export interface ExamAttemptQuestionDetail extends Omit<ExamQuestionRow, "score"> {
+  userAnswer: string;
+  isCorrect: number;
+  score: number;
+  maxScore: number;
+}
+
+export type ExamAttemptDetail = ExamAttemptRow & { questions: ExamAttemptQuestionDetail[] };
+
 export const attemptApi = {
   list: (examId?: string) =>
     request<ExamAttemptRow[]>(`/exam-attempts${examId ? `?examId=${examId}` : ""}`),
+  detail: (attemptId: string) => request<ExamAttemptDetail>(`/exam-attempts?id=${encodeURIComponent(attemptId)}`),
   start: (examId: string, userId?: string) =>
     request<any>("/exam-attempts", {
       method: "POST",
@@ -295,11 +305,40 @@ export const dashboardApi = {
 export type AiChatRequest =
   | { sceneId: string; action: "start"; preview?: boolean }
   | { sceneId: string; action: "message"; sessionId: string; learnerText: string }
-  | { sceneId: string; action: "end"; sessionId: string };
+  | { sceneId: string; action: "end"; sessionId: string }
+  | { sceneId: string; action: "quit"; sessionId: string };
+
+export interface AiTurnScore {
+  name: string;
+  score: number;
+  maxScore: number;
+  level: "excellent" | "pass" | "developing";
+  reason?: string;
+  issues?: string[];
+  advice?: string[];
+}
+
+export interface AiInspirationHint {
+  title: string;
+  body: string;
+}
+
+export interface AiChatResponse {
+  sessionId?: string;
+  aiReply?: string;
+  emotion?: string;
+  inspirationHint?: AiInspirationHint | null;
+  perTurnScores?: AiTurnScore[];
+  round?: number;
+  isFinished?: boolean;
+  outcome?: "continuing" | "cooperated" | "hesitating" | "left" | "complaint" | "off_topic_terminated" | "max_round" | "learner_ended" | "severe_misconduct";
+  recordPending?: boolean;
+  trainingRecord?: { score?: number | null } | null;
+}
 
 export const aiApi = {
   chat: (body: AiChatRequest) =>
-    request<any>("/ai/chat", { method: "POST", body }),
+    request<AiChatResponse>("/ai/chat", { method: "POST", body }),
   stt: (audioBase64: string, format = "webm") =>
     request<{ text: string; durationMs: number }>("/ai/stt/transcribe", {
       method: "POST",

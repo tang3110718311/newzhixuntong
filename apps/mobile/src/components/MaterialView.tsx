@@ -1,5 +1,7 @@
 "use client";
 
+import MobilePageAction from "./MobilePageAction";
+
 interface MaterialViewProps {
   scene: any;
   sceneMeta: any;
@@ -27,9 +29,7 @@ export default function MaterialView({ scene, sceneMeta, onBack, onDone, showToa
       <div className="material-modal" onClick={(e) => e.stopPropagation()}>
         <div className="material-modal-head">
           <span className="material-tag">在线资料预览</span>
-          <button className="material-close" type="button" onClick={onBack} aria-label="关闭">
-            ✕
-          </button>
+          <MobilePageAction kind="close" variant="overlay" onClick={onBack} />
         </div>
         <h2 className="material-modal-title">{sceneName}</h2>
         <p className="material-modal-sub">图文资料 · {scene?.materials?.length || 1} 篇</p>

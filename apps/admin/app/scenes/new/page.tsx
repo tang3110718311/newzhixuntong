@@ -16,6 +16,13 @@ type ScoringRuleForm = {
   evidenceRequired: string;
 };
 
+type EditAttachment = {
+  fileId?: string;
+  name: string;
+  status: "uploading" | "done" | "failed";
+  error?: string;
+};
+
 function defaultScoringRules(): ScoringRuleForm[] {
   return [
     { name: "需求理解", criteria: "准确识别并回应对方的核心需求", score: 40, deductionRule: "", evidenceRequired: "" },
@@ -87,7 +94,7 @@ export default function SceneNewPage() {
 
   // 附件
   const editAttachmentInputRef = useRef<HTMLInputElement>(null);
-  const [editAttachments, setEditAttachments] = useState<Array<{ name: string; status: "uploading" | "done" | "failed"; error?: string }>>([]);
+  const [editAttachments, setEditAttachments] = useState<EditAttachment[]>([]);
   const [editAttachmentsUploading, setEditAttachmentsUploading] = useState(false);
   const goalAttachmentInputRef = useRef<HTMLInputElement>(null);
   const [goalAttachments, setGoalAttachments] = useState<Array<{ name: string; status: "idle" | "analyzing" | "done" }>>([]);
@@ -120,22 +127,23 @@ export default function SceneNewPage() {
       return;
     }
     for (const file of files) {
-      setEditAttachments((prev) => [...prev, { name: file.name, status: "uploading" }]);
+      const localKey = `${file.name}-${file.size}-${file.lastModified}`;
+      setEditAttachments((prev) => [...prev, { fileId: localKey, name: file.name, status: "uploading" }]);
       try {
         const formData = new FormData();
         formData.append("folderId", folderId);
         formData.append("file", file);
-        await apiFetch<{ parseStatus: string }>("/knowledge/files", { method: "POST", body: formData });
-        setEditAttachments((prev) => prev.map((item) => (item.name === file.name ? { ...item, status: "done" } : item)));
+        const uploaded = await apiFetch<{ id: string; name: string; parseStatus: string; parseError?: string }>("/knowledge/files", { method: "POST", body: formData });
+        setEditAttachments((prev) => prev.map((item) => (item.fileId === localKey ? { ...item, fileId: uploaded.id, name: uploaded.name || file.name, status: "done" } : item)));
       } catch (err) {
-        setEditAttachments((prev) => prev.map((item) => (item.name === file.name ? { ...item, status: "failed", error: err instanceof Error ? err.message : "上传失败" } : item)));
+        setEditAttachments((prev) => prev.map((item) => (item.fileId === localKey ? { ...item, status: "failed", error: err instanceof Error ? err.message : "上传失败" } : item)));
       }
     }
     setEditAttachmentsUploading(false);
   }
 
-  function removeEditAttachment(name: string) {
-    setEditAttachments((prev) => prev.filter((item) => item.name !== name));
+  function removeEditAttachment(fileId?: string) {
+    setEditAttachments((prev) => prev.filter((item) => item.fileId !== fileId));
   }
 
   function handleGoalAttachmentsSelected(event: React.ChangeEvent<HTMLInputElement>) {
@@ -177,6 +185,10 @@ export default function SceneNewPage() {
       setError("评分规则总分需为 100 分，请调整各项分值");
       return;
     }
+    if (editAttachments.some((item) => item.status === "uploading")) {
+      setError("附件仍在上传解析中，请完成后再保存。");
+      return;
+    }
     setSubmitting(true);
     setMessage("");
     setError("");
@@ -211,6 +223,7 @@ export default function SceneNewPage() {
             deductionRule: r.deductionRule,
             evidenceRequired: r.evidenceRequired,
           })),
+          attachmentFileIds: editAttachments.filter((item) => item.status === "done" && item.fileId).map((item) => item.fileId as string),
         }),
       });
       setMessage("创建成功。");
@@ -328,11 +341,11 @@ export default function SceneNewPage() {
                   </div>
                   <div className="attachment-list">
                     {editAttachments.map((item) => (
-                      <span key={item.name} className="attachment-chip">
+                      <span key={item.fileId || item.name} className="attachment-chip">
                         📎 {item.name}
                         {item.status === "uploading" && "（解析中…）"}
                         {item.status === "failed" && "（失败）"}
-                        <button type="button" style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer", marginLeft: 4 }} onClick={() => removeEditAttachment(item.name)} aria-label={`删除附件 ${item.name}`}>×</button>
+                        <button type="button" style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer", marginLeft: 4 }} onClick={() => removeEditAttachment(item.fileId)} aria-label={`删除附件 ${item.name}`}>×</button>
                       </span>
                     ))}
                   </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { authApi, type CaptchaChallenge } from "@/lib/api";
+import MobilePageAction from "./MobilePageAction";
 
 interface LoginScreenProps {
   onLoginSuccess: (mobile: string, password: string, captchaToken: string) => Promise<any>;
@@ -217,9 +218,7 @@ function CaptchaModal({ onClose, onPass }: { onClose: () => void; onPass: (captc
       <div className="captcha-panel">
         <div className="captcha-panel-head">
           <h3>安全验证</h3>
-          <button className="captcha-close" type="button" onClick={onClose} aria-label="关闭">
-            ×
-          </button>
+          <MobilePageAction kind="close" variant="overlay" onClick={onClose} />
         </div>
         <p className="captcha-panel-sub">请拖动滑块，将拼图放入缺口</p>
         <div className="captcha-box">

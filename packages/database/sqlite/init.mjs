@@ -523,6 +523,18 @@ create table if not exists knowledge_files (
   updated_at text not null default current_timestamp,
   deleted_at text
 );
+
+create table if not exists scene_knowledge_files (
+  id text primary key,
+  tenant_id text not null,
+  scene_id text not null,
+  knowledge_file_id text not null,
+  sort_order integer not null default 0,
+  created_at text not null default current_timestamp,
+  updated_at text not null default current_timestamp,
+  deleted_at text,
+  unique(tenant_id, scene_id, knowledge_file_id)
+);
 `);
 
 function hasColumn(tableName, columnName) {
@@ -561,6 +573,8 @@ exec(`create index if not exists idx_tp_tenant_user on task_participants(tenant_
 exec(`create index if not exists idx_sr_tenant_scene on scoring_rules(tenant_id, scene_id)`);
 exec(`create index if not exists idx_sceneroles_tenant_scene on scene_roles(tenant_id, scene_id)`);
 exec(`create index if not exists idx_kf_folder on knowledge_files(folder_id)`);
+exec(`create index if not exists idx_skf_scene on scene_knowledge_files(tenant_id, scene_id)`);
+exec(`create index if not exists idx_skf_file on scene_knowledge_files(tenant_id, knowledge_file_id)`);
 exec(`create index if not exists idx_aicall_tenant_created on ai_call_logs(tenant_id, created_at)`);
 exec(`create index if not exists idx_tasks_tenant on tasks(tenant_id, deleted_at)`);
 exec(`create index if not exists idx_users_tenant on users(tenant_id, deleted_at)`);

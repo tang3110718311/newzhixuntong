@@ -2467,6 +2467,22 @@
   font-size: 10px;
   color: rgb(154, 168, 184);
 }
+.practice-page .practice-turn-score-card {
+  margin: -4px 0 20px 44px;
+  max-width: calc(76% - 12px);
+  padding: 12px 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #f8fbff;
+  box-shadow: 0 4px 12px rgba(49, 123, 230, .06);
+}
+.practice-page .practice-turn-score-head { display:flex; align-items:center; justify-content:space-between; color:#2563eb; font-size:13px; }
+.practice-page .practice-turn-score-head strong { font-size:15px; }
+.practice-page .practice-turn-score-list { display:grid; gap:8px; margin-top:10px; }
+.practice-page .practice-turn-score-item { display:grid; grid-template-columns:1fr auto; gap:3px 10px; font-size:12px; color:#475569; }
+.practice-page .practice-turn-score-item b { color:#1e40af; }
+.practice-page .practice-turn-score-item p { grid-column:1/-1; margin:0; color:#64748b; line-height:1.45; }
+.practice-page .practice-turn-score-empty { margin:8px 0 0; color:#64748b; font-size:12px; }
 .practice-page .practice-msg-meta .pc-replay-tts-btn {
   font-size: 10px;
   padding: 2px 7px;

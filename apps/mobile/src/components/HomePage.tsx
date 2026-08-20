@@ -128,7 +128,7 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
             今日有 {pending} 项培训任务待完成
           </p>
           <div className="hero-bot-wrap">
-            <img className="hero-bot-img" src="cute-3d-training-robot.png" alt="AI 智能培训助手" />
+            <img className="hero-bot-img" src={`${process.env.NEXT_PUBLIC_APP_BASE_PATH || ""}/cute-3d-training-robot.png`} alt="AI 智能培训助手" />
           </div>
         </div>
         <div className="learning-progress">
@@ -177,12 +177,14 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
         <div className="recent-tabs">
           <button
             className={`recent-tab ${recentTab === "tasks" ? "active" : ""}`}
+            type="button"
             onClick={() => setRecentTab("tasks")}
           >
             最近任务
           </button>
           <button
             className={`recent-tab ${recentTab === "exams" ? "active" : ""}`}
+            type="button"
             onClick={() => setRecentTab("exams")}
           >
             最近考试

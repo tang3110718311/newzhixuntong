@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { addExamCount, addExamRecord, type ExamRoundRecord } from "@/lib/sceneProgress";
+import MobilePageAction from "./MobilePageAction";
 
 interface ScenarioExamProps {
   scene: any;
@@ -13,11 +14,9 @@ interface ScenarioExamProps {
 
 interface ExamChatMsg {
   id: string;
-  who: "ai" | "user" | "feedback";
+  who: "ai" | "user";
   text: string;
   time?: string;
-  score?: number | null;
-  comment?: string;
 }
 
 export default function ScenarioExam({ scene, task, onBack, onFinished, showToast }: ScenarioExamProps) {
@@ -77,8 +76,7 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
           : "回答较简略，建议围绕对方关注点展开并给出明确方案。";
       setTotalScore((s) => s + score);
       setRounds((prev) => [...prev, { round, question: questions[round - 1], answer: text, score, comment }]);
-      // 反馈卡 + AI 引导（下一题或完成）
-      pushMsg({ who: "feedback", text: comment, score, comment });
+      // 继续对话（评分数据保留在考试记录中，报告页统一展示）
       if (round >= 3) {
         setFinished(true);
         pushMsg({
@@ -121,41 +119,39 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
   };
 
   return (
-    <div className="pv-shell exam-page">
+    <div className="exam-dialogue-page mobile-page-background">
       {/* ===== 顶部导航 ===== */}
-      <header className="pv-nav">
-        <button className="pv-nav-back" type="button" onClick={onBack} aria-label="返回场景工作台">
-          ‹
-        </button>
-        <div className="pv-nav-title">
+      <header className="exam-dialogue-nav">
+        <MobilePageAction kind="back" variant="immersive" onClick={onBack} aria-label="返回场景工作台" />
+        <div className="exam-dialogue-nav-title">
           <h1>场景考试</h1>
         </div>
-        <span className="pv-nav-spacer"></span>
+        <span className="exam-dialogue-nav-spacer"></span>
       </header>
 
       {/* ===== 考试信息条（三栏，对齐原型） ===== */}
-      <div className="pv-scene-card exam-info">
-        <div className="pv-scene-col">
+      <div className="exam-dialogue-scene-card exam-info">
+        <div className="exam-dialogue-scene-col">
           <span>对练场景 · AI角色</span>
           <b>
             {sceneName} · {aiName}
           </b>
         </div>
-        <div className="pv-scene-col">
+        <div className="exam-dialogue-scene-col">
           <span>考试次数</span>
           <b className="blue">第 {(rounds.length || 0) + 1} 次考试</b>
         </div>
-        <div className="pv-scene-col">
+        <div className="exam-dialogue-scene-col">
           <span>本轮得分</span>
           <b className="blue">{rounds.length ? `${Math.round(totalScore / rounds.length)}分` : "—"}</b>
         </div>
       </div>
 
       {/* ===== 对话区 ===== */}
-      <div className="pv-chat" ref={chatRef}>
+      <div className="exam-dialogue-chat" ref={chatRef}>
         {messages.length === 0 && (
-          <div className="pv-msg ai">
-            <span className="pv-avatar ai" aria-hidden="true">
+          <div className="exam-dialogue-msg ai">
+            <span className="exam-dialogue-avatar ai" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" strokeWidth="1.7">
                 <rect x="4.5" y="7" width="15" height="11" rx="3.2" />
                 <circle cx="9.2" cy="12.2" r="1.2" fill="#fff" stroke="none" />
@@ -165,35 +161,19 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
                 <path d="M7 16.6h.01M11.5 16.6h.01M16 16.6h.01" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </span>
-            <div className="pv-msg-main">
-              <span className="pv-time">{now()}</span>
-              <div className="pv-bubble">
+            <div className="exam-dialogue-msg-main">
+              <span className="exam-dialogue-time">{now()}</span>
+              <div className="exam-dialogue-bubble">
                 欢迎参加“{sceneName}”。请先完成一次自然、专业的开场回答，说明你对本次考试主题的理解。
               </div>
             </div>
           </div>
         )}
         {messages.map((m) => {
-          if (m.who === "feedback") {
-            return (
-              <div className="pv-msg feedback" key={m.id}>
-                <div className="pv-feedback-card">
-                  <div className="pv-feedback-head">
-                    <b>本轮评分</b>
-                    <span>{m.score != null ? `${m.score}分` : "—"}</span>
-                  </div>
-                  <div className="pv-feedback-sec">
-                    <span>点评</span>
-                    <p>{m.comment}</p>
-                  </div>
-                </div>
-              </div>
-            );
-          }
           return (
-            <div className={`pv-msg ${m.who}`} key={m.id}>
+            <div className={`exam-dialogue-msg ${m.who}`} key={m.id}>
               {m.who === "ai" ? (
-                <span className="pv-avatar ai" aria-hidden="true">
+                <span className="exam-dialogue-avatar ai" aria-hidden="true">
                   <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" strokeWidth="1.7">
                     <rect x="4.5" y="7" width="15" height="11" rx="3.2" />
                     <circle cx="9.2" cy="12.2" r="1.2" fill="#fff" stroke="none" />
@@ -204,34 +184,34 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
                   </svg>
                 </span>
               ) : (
-                <span className="pv-avatar user" aria-hidden="true"></span>
+                <span className="exam-dialogue-avatar user" aria-hidden="true"></span>
               )}
-              <div className="pv-msg-main">
-                <span className="pv-time">{m.time}</span>
-                <div className="pv-bubble">{m.text}</div>
+              <div className="exam-dialogue-msg-main">
+                <span className="exam-dialogue-time">{m.time}</span>
+                <div className="exam-dialogue-bubble">{m.text}</div>
               </div>
             </div>
           );
         })}
         {sending && (
-          <div className="pv-msg ai">
-            <span className="pv-avatar ai" aria-hidden="true">
+          <div className="exam-dialogue-msg ai">
+            <span className="exam-dialogue-avatar ai" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" strokeWidth="1.7">
                 <rect x="4.5" y="7" width="15" height="11" rx="3.2" />
                 <circle cx="9.2" cy="12.2" r="1.2" fill="#fff" stroke="none" />
                 <circle cx="14.8" cy="12.2" r="1.2" fill="#fff" stroke="none" />
               </svg>
             </span>
-            <div className="pv-msg-main">
-              <span className="pv-time">{now()}</span>
-              <div className="pv-bubble">评分中…</div>
+            <div className="exam-dialogue-msg-main">
+              <span className="exam-dialogue-time">{now()}</span>
+              <div className="exam-dialogue-bubble">评分中…</div>
             </div>
           </div>
         )}
       </div>
 
       {/* ===== 提示条 + 输入区 ===== */}
-      <div className="pv-composer exam-composer">
+      <div className="exam-dialogue-composer">
         <div className="exam-compose-meta">
           <span>共 3 题</span>
           <strong>{finished ? "考试已完成，可返回查看报告" : "完成考试后自动生成考试报告"}</strong>
@@ -241,9 +221,9 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
             返回场景工作台
           </button>
         ) : (
-          <div className="pv-text-bar">
+          <div className="exam-dialogue-text-bar">
             <input
-              className="pv-text-input"
+              className="exam-dialogue-text-input"
               placeholder="输入你的考试回答…"
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
@@ -252,7 +232,7 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
               }}
               maxLength={500}
             />
-            <button className="pv-text-send" type="button" onClick={submitRound} disabled={sending || !answer.trim()}>
+            <button className="exam-dialogue-text-send" type="button" onClick={submitRound} disabled={sending || !answer.trim()}>
               <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
                 <path d="M3.5 11.8 20.5 3.5l-4.2 17-4.1-6.1-8.7-2.6Z" fill="#fff" stroke="none" />
                 <path d="m12.2 14.4 8.3-10.7" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" fill="none" />

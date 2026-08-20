@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { taskApi, type TaskRow } from "@/lib/api";
 import { statusClass, taskTypeText, taskFormText, fmtDate, taskDisplayStatus } from "@/lib/types";
 import type { PageKey } from "./MobileApp";
+import UnifiedTabs from "./UnifiedTabs";
 
 interface TasksPageProps {
   onNavigate: (p: PageKey) => void;
@@ -94,19 +95,13 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
           </button>
         </div>
       </div>
-      <div className="task-tabs" role="tablist" aria-label="任务状态">
-        {STATUS_TABS.map((s) => (
-          <button
-            key={s}
-            className={`task-tab ${statusTab === s || (s === "全部" && statusTab === "") ? "active" : ""}`}
-            data-task-status={s}
-            role="tab"
-            onClick={() => setStatusTab(s === "全部" ? "" : s)}
-          >
-            {s}
-          </button>
-        ))}
-      </div>
+      <UnifiedTabs
+        ariaLabel="任务状态"
+        className="unified-tabs--filter"
+        items={STATUS_TABS.map((label) => ({ value: label === "全部" ? "" : label, label }))}
+        onChange={setStatusTab}
+        value={statusTab}
+      />
       <div className="task-list reference-list" id="taskList">
         {loading && <div className="task-empty">加载中…</div>}
         {!loading && filtered.length === 0 && <div className="task-empty">暂无相关任务</div>}

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import type { ExamRecord } from "@/lib/sceneProgress";
+import MobilePageAction from "./MobilePageAction";
+import UnifiedTabs from "./UnifiedTabs";
 
 interface ExamReportProps {
   record: ExamRecord;
@@ -72,20 +74,12 @@ export default function ExamReport({ record, sceneName, taskName, onClose }: Exa
     <div className="er-shell">
       {/* ===== 顶部导航 ===== */}
       <header className="er-head">
-        <button className="er-head-btn" type="button" onClick={onClose} aria-label="返回">
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 5l-7 7 7 7" />
-          </svg>
-        </button>
+        <MobilePageAction kind="back" variant="immersive" onClick={onClose} />
         <div className="er-head-text">
           <h1>场景考试报告</h1>
           <p>{subTitle}</p>
         </div>
-        <button className="er-head-close" type="button" onClick={onClose} aria-label="关闭报告">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
+        <MobilePageAction kind="close" variant="immersive" onClick={onClose} aria-label="关闭报告" />
       </header>
 
       {/* ===== 顶部得分区 ===== */}
@@ -101,14 +95,16 @@ export default function ExamReport({ record, sceneName, taskName, onClose }: Exa
       </div>
 
       {/* ===== Tab ===== */}
-      <div className="er-tabs">
-        <button className={`er-tab ${tab === "report" ? "active" : ""}`} type="button" onClick={() => setTab("report")}>
-          考试报告
-        </button>
-        <button className={`er-tab ${tab === "transcript" ? "active" : ""}`} type="button" onClick={() => setTab("transcript")}>
-          对话记录
-        </button>
-      </div>
+      <UnifiedTabs
+        ariaLabel="场景考试报告内容"
+        className="unified-tabs--report"
+        items={[
+          { value: "report", label: "考试报告" },
+          { value: "transcript", label: "对话记录" },
+        ]}
+        onChange={setTab}
+        value={tab}
+      />
 
       {tab === "report" ? (
         /* ===== 考试报告 tab ===== */

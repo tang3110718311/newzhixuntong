@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ApiResponse, AuthSession } from "@zxt/shared";
 import AppShell, { type RightRailData } from "@/components/AppShell";
- import { getPathId, navigateBackOr, navigateTo } from "@/lib/navigation";
+import { getPathId, navigateTo } from "@/lib/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -56,6 +56,7 @@ type SceneDetail = {
     sortOrder?: number;
   }>;
   materials: Array<{ id: string; name: string; type: string; status: string }>;
+  attachments: Array<{ id: string; name: string; mimeType: string; size: number; parseStatus: string; parseError?: string }>;
 };
 
 function statusLabel(status: string) {
@@ -207,7 +208,7 @@ export default function SceneDetailPage() {
               </div>
             </div>
             <div className="scene-actions">
-               <button className="btn outline" type="button" onClick={() => navigateBackOr('/?section=scenes')}>返回列表</button>
+                <button className="btn outline" type="button" onClick={() => navigateTo('/?section=scenes')}>返回列表</button>
               <button className="btn" type="button" onClick={() => { navigateTo('/scenes/' + scene.id + '/edit'); }}>编辑</button>
             </div>
           </div>
@@ -415,13 +416,15 @@ export default function SceneDetailPage() {
                   <span className="muted">已上传</span>
                 </div>
                 <div className="preview-attachment-list">
-                  {detail.materials.length === 0 ? (
+                  {(detail.attachments || []).length === 0 ? (
                     <div className="preview-empty">暂无附件</div>
                   ) : (
-                    detail.materials.map((m) => (
-                      <div key={m.id} className="preview-attachment">
+                    (detail.attachments || []).map((item) => (
+                      <div key={item.id} className="preview-attachment" title={item.parseError || item.name}>
                         <span className="preview-attachment-icon">📎</span>
-                        <span>{m.name}</span>
+                        <span>{item.name}</span>
+                        {item.parseStatus === "parsing" && <small>解析中</small>}
+                        {item.parseStatus === "failed" && <small>解析失败</small>}
                       </div>
                     ))
                   )}

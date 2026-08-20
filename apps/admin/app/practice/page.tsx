@@ -32,7 +32,9 @@ type Scene = {
   description?: string;
 };
 
-type ChatMessage = { role: "ai" | "learner"; content: string; emotion?: string };
+type ChatMessage = { role: "ai" | "learner" | "feedback"; content: string; emotion?: string; scores?: TurnScore[] };
+type TurnScore = { name: string; score: number; maxScore: number; level: "excellent" | "pass" | "developing"; reason?: string };
+type AiInspirationHint = { title: string; body: string };
 
 type ScoreDetail = {
   id: string;
@@ -148,7 +150,10 @@ export default function PracticePage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatSending, setChatSending] = useState(false);
-  const [coachTip, setCoachTip] = useState<string | null>(null);
+  // 使用同步锁阻止语音识别延迟回调与手动发送并行提交，避免评分卡错位。
+  const chatSendingRef = useRef(false);
+  const [currentTurnScores, setCurrentTurnScores] = useState<TurnScore[]>([]);
+  const [inspirationHint, setInspirationHint] = useState<AiInspirationHint | null>(null);
   const [voiceMode, setVoiceMode] = useState(true); // 默认语音模式：AI 默认播报、学员默认语音输入
   const [chatFinished, setChatFinished] = useState(false);
   const [chatResult, setChatResult] = useState<TrainingRecordResult | null>(null);
@@ -230,6 +235,8 @@ export default function PracticePage() {
 
   // 当前播放的音频引用（用于退出/切换时停止）
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const quitRequestedRef = useRef(false);
+  const recordingCancelRef = useRef(false);
   // 当前场景固定声音
   const sceneVoiceRef = useRef<string | null>(null);
   // 记录当前已由哪个 sceneId 锁定了声音，避免重复进入时换声
@@ -474,6 +481,7 @@ export default function PracticePage() {
       }
       pickSceneVoice(scene.id);
       // 新会话开始前：停止上一会话遗留的评分轮询，清空结束过渡状态
+      quitRequestedRef.current = false;
       if (pollTimerRef.current) {
         window.clearTimeout(pollTimerRef.current);
         pollTimerRef.current = null;
@@ -483,7 +491,8 @@ export default function PracticePage() {
       setSelectedScene(scene);
       setChatMessages([]);
       setChatInput("");
-      setCoachTip(null);
+      setCurrentTurnScores([]);
+      setInspirationHint(null);
       setChatFinished(false);
       setChatResult(null);
       // sessionId 由服务端创建，避免客户端伪造会话和成绩
@@ -531,15 +540,16 @@ export default function PracticePage() {
     async (scene: Scene, _rules: Array<{ id: string; name: string; score: number }>) => {
       setChatSending(true);
       try {
-        const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; coachTip: string | null; emotion: string; round?: number; sessionId?: string }>(`/ai/chat`, {
+        const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; emotion: string; round?: number; sessionId?: string; perTurnScores?: TurnScore[]; inspirationHint?: AiInspirationHint | null }>(`/ai/chat`, {
           sceneId: scene.id,
           action: "start",
         });
+        if (quitRequestedRef.current) return;
         if (data.sessionId) sessionIdRef.current = data.sessionId;
         const emotion = data.emotion || "default";
         const voice = ttsVoice || pickSceneVoice(scene.id);
         setChatMessages([{ role: "ai", content: data.aiReply, emotion }]);
-        setCoachTip(data.coachTip || null);
+        setInspirationHint(data.inspirationHint ?? null);
         setChatRound(data.round ?? 0);
         // AI 先开口默认自动语音播报；若首问即结束，则等播完再切评分页
         isFirstAiRef.current = true;
@@ -582,28 +592,37 @@ export default function PracticePage() {
   const sendChatMessage = useCallback(
     async (text: string) => {
       const content = text.trim();
-      if (!content || !selectedScene || chatSending) return;
+      if (!content || !selectedScene || chatSendingRef.current) return;
       if (!sessionIdRef.current) {
         setError("对练会话尚未建立，请重新开始训练。");
         return;
       }
       const nextMessages: ChatMessage[] = [...chatMessages, { role: "learner", content }];
-      setChatMessages(nextMessages);
-      setChatInput("");
+      chatSendingRef.current = true;
       setChatSending(true);
-      setCoachTip(null);
       try {
-        const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; coachTip: string | null; emotion: string; round?: number; sessionId?: string }>(`/ai/chat`, {
+        const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; emotion: string; round?: number; sessionId?: string; perTurnScores?: TurnScore[]; inspirationHint?: AiInspirationHint | null }>(`/ai/chat`, {
           sceneId: selectedScene.id,
           action: "message",
           sessionId: sessionIdRef.current,
           learnerText: content,
         });
+        if (quitRequestedRef.current) return;
         if (data.sessionId) sessionIdRef.current = data.sessionId;
         const emotion = data.emotion || "default";
         const voice = ttsVoice || pickSceneVoice(selectedScene.id);
-        setChatMessages([...nextMessages, { role: "ai", content: data.aiReply, emotion }]);
-        setCoachTip(data.coachTip || null);
+        const turnScores = data.perTurnScores ?? [];
+        const messagesWithFeedback: ChatMessage[] = [
+          ...nextMessages,
+          { role: "feedback", content: turnScores.length ? "" : "本轮暂无可用评分，已继续进行对练。", scores: turnScores },
+        ];
+        setChatMessages(messagesWithFeedback);
+        setCurrentTurnScores(turnScores);
+        setInspirationHint(data.inspirationHint ?? null);
+        // 先让评分卡完成首帧渲染，再展示或播报 AI 的下一句。
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        if (quitRequestedRef.current) return;
+        setChatMessages([...messagesWithFeedback, { role: "ai", content: data.aiReply, emotion }]);
         setChatRound(data.round ?? 0);
         // 结束:先播 AI 收尾话(语音模式),播完再切评分页;未结束则正常播报
         if (data.isFinished) {
@@ -614,15 +633,16 @@ export default function PracticePage() {
       } catch (err) {
         setError(err instanceof Error ? err.message : "对话失败");
       } finally {
+        chatSendingRef.current = false;
         setChatSending(false);
       }
     },
-    [apiPost, chatMessages, chatSending, pickSceneVoice, playTts, selectedScene, ttsVoice, voiceMode, pollTrainingResult],
+    [apiPost, chatMessages, pickSceneVoice, playTts, selectedScene, ttsVoice, voiceMode, pollTrainingResult],
   );
 
   // ===== 结束训练（主动） =====
   const endTraining = useCallback(async () => {
-    if (!selectedScene || chatSending) return;
+    if (quitRequestedRef.current || !selectedScene || chatSending) return;
     if (!sessionIdRef.current) {
       setError("对练会话尚未建立，请重新开始训练。");
       return;
@@ -630,7 +650,7 @@ export default function PracticePage() {
     setChatSending(true);
     setError("");
     try {
-      const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean; coachTip: string | null }>(`/ai/chat`, {
+      const data = await apiPost<{ aiReply: string; isFinished: boolean; trainingRecord: TrainingRecordResult | null; recordPending?: boolean }>(`/ai/chat`, {
         sceneId: selectedScene.id,
         action: "end",
         sessionId: sessionIdRef.current,
@@ -639,7 +659,7 @@ export default function PracticePage() {
       // 等 AI 收尾话播完(语音模式)再切评分页
       void beginEnding({ aiReply: data.aiReply, trainingRecord: data.trainingRecord, recordPending: data.recordPending, emotion: "default" });
       if (!data.trainingRecord && !data.recordPending) {
-        setError("训练记录保存失败，请重试。");
+        setError("对练结束，正在生成报告，请稍候。");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "结束训练失败");
@@ -705,13 +725,13 @@ export default function PracticePage() {
         };
       });
       if (!result) {
-        stream.getTracks().forEach((t) => t.stop());
+        // 仅销毁流式识别资源；麦克风流仍需交给一次性转写兜底复用。
         return false;
       }
       liveStreamRef.current = state;
       return true;
     } catch {
-      stream.getTracks().forEach((t) => t.stop());
+      // 初始化流式识别失败时保留麦克风流，以便回退到一次性转写。
       return false;
     }
   }, []);
@@ -754,6 +774,11 @@ export default function PracticePage() {
       recorder.onstop = async () => {
         stream?.getTracks().forEach((t) => t.stop());
         setIsRecording(false);
+        if (recordingCancelRef.current) {
+          recordingCancelRef.current = false;
+          audioChunksRef.current = [];
+          return;
+        }
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
         // 优先转 16kHz/16bit PCM 走自有 FunASR 桥接服务;解码失败回退 webm 走 Whisper
         const pcmBase64 = await blobToPcm16Base64(blob);
@@ -837,17 +862,52 @@ export default function PracticePage() {
     }
   }, [isRecording, startRecording, stopRecording]);
 
-  // ===== 返回历史记录（中途退出，丢弃对话） =====
-  const backToHistory = useCallback(() => {
+  const cancelRecording = useCallback(() => {
+    recordingCancelRef.current = true;
+    setLiveTranscript("");
+    if (liveStreamRef.current) {
+      const live = liveStreamRef.current;
+      liveStreamRef.current = null;
+      live.scriptNode.onaudioprocess = null;
+      try { live.source.disconnect(); live.scriptNode.disconnect(); } catch { /* noop */ }
+      live.stream.getTracks().forEach((t) => t.stop());
+      try { void live.ctx.close(); } catch { /* noop */ }
+      try { live.ws.close(); } catch { /* noop */ }
+    }
+    if (mediaRecorderRef.current && recordingRef.current) {
+      try { mediaRecorderRef.current.stop(); } catch { /* noop */ }
+    }
+    recordingRef.current = false;
+    setIsRecording(false);
+  }, []);
+
+  // ===== 返回任务详情 / 历史记录（中途退出，丢弃对话） =====
+  const backToHistory = useCallback(async () => {
     if (!chatFinished && chatMessages.length > 0) {
-      const ok = window.confirm("中途退出将丢弃当前对话，不保存、不计分。确认退出？");
+      const ok = window.confirm("确定退出当前对练吗？");
       if (!ok) return;
     }
+    quitRequestedRef.current = true;
+    chatSendingRef.current = true;
+    setChatSending(false);
+    setChatEnding(false);
     stopAudio();
+    cancelRecording();
     // 离开对话视图：停止上一会话的评分轮询，避免串场更新新会话状态
     if (pollTimerRef.current) {
       window.clearTimeout(pollTimerRef.current);
       pollTimerRef.current = null;
+    }
+    if (!chatFinished && selectedScene && sessionIdRef.current) {
+      try {
+        await apiPost(`/ai/chat`, {
+          sceneId: selectedScene.id,
+          action: "quit",
+          sessionId: sessionIdRef.current,
+        });
+      } catch {
+        /* 退出不生成报告；会话清理失败不阻塞返回 */
+      }
     }
     // 如果从任务详情页跳来，返回任务详情页
     const storedTaskId = window.sessionStorage.getItem("zxt-practice-taskId");
@@ -858,14 +918,18 @@ export default function PracticePage() {
     setView("history");
     setSelectedScene(null);
     setChatMessages([]);
-    setCoachTip(null);
+    setChatInput("");
     setChatFinished(false);
     setChatResult(null);
+    setCurrentTurnScores([]);
+    setInspirationHint(null);
     setSceneRules([]);
+    sessionIdRef.current = "";
     sceneVoiceRef.current = null;
     sceneVoiceSceneIdRef.current = null;
     setTtsVoice(null);
-  }, [chatFinished, chatMessages.length, stopAudio]);
+    chatSendingRef.current = false;
+  }, [apiPost, cancelRecording, chatFinished, chatMessages.length, selectedScene, stopAudio]);
 
   // ===== 再来一次 =====
   const restartChat = useCallback(() => {
@@ -1019,11 +1083,12 @@ export default function PracticePage() {
     };
   })();
 
-  // 训练提示（左栏训练目标卡片）：按轮次给方向性话术建议
+  // 训练提示（左栏训练目标卡片）：优先展示后端基于当前对话和评分缺口生成的实时灵感提示
   const hint = (() => {
-    if (chatRound === 0) return { title: "开场回答方向", body: `先礼貌问候并说明来意，再结合"${selectedScene?.name || ""}"询问对方当前最关注的问题。` };
-    if (chatRound === 1) return { title: "需求推进方向", body: "先复述并确认对方需求，再分步骤说明方案，最后明确下一步行动和时间。" };
-    return { title: "收尾回答方向", body: "总结已经确认的信息，回应对方最后的顾虑，并自然提出后续跟进或复盘安排。" };
+    if (inspirationHint) return inspirationHint;
+    if (chatRound === 0) return { title: "思考方向", body: `【思考方向】\n先判断客户在"${selectedScene?.name || "当前场景"}"里最需要被回应的问题。\n【建议关注】\n1. 先理解客户诉求和情绪\n2. 明确下一步需要确认的信息\n【避免】\n避免一开始就给空泛承诺或标准话术。` };
+    if (chatRound === 1) return { title: "思考方向", body: "【思考方向】\n围绕客户最新追问补充关键信息。\n【建议关注】\n1. 复核客户真实需求\n2. 补齐处理动作和时间边界\n3. 说明下一步跟进方式\n【避免】\n避免只安抚客户但不推进问题。" };
+    return { title: "思考方向", body: "【思考方向】\n聚焦尚未消除的顾虑并推进收束。\n【建议关注】\n1. 总结已确认信息\n2. 回应最后一个关键顾虑\n3. 明确后续行动或确认方式\n【避免】\n避免替客户下结论或跳过必要确认。" };
   })();
 
   // ================= 渲染 =================
@@ -1065,7 +1130,7 @@ export default function PracticePage() {
                   {chatFinished ? "对练已完成" : "对练进行中"}
                 </span>
                 {!chatFinished && !chatEnding && (
-                  <button className="btn outline" type="button" onClick={backToHistory}>
+                  <button className="btn outline" type="button" onClick={() => void backToHistory()}>
                     退出对练
                   </button>
                 )}
@@ -1074,7 +1139,7 @@ export default function PracticePage() {
                     className="btn danger"
                     type="button"
                     disabled={chatSending || chatMessages.length < 2}
-                    onClick={() => { if (window.confirm("确定结束本次对练并查看评分？")) void endTraining(); }}
+                    onClick={() => { if (window.confirm("确定结束本次对练？结束后将生成本次报告。")) void endTraining(); }}
                   >
                     结束对练
                   </button>
@@ -1101,7 +1166,7 @@ export default function PracticePage() {
                     </div>
                     <div className="practice-info-row">
                       <span>当前轮数</span>
-                      <strong><em>{chatRound}</em> / 6</strong>
+                      <strong><em>{chatRound}</em> / 15</strong>
                     </div>
                     <div className="practice-info-row">
                       <span>回答方式</span>
@@ -1274,13 +1339,31 @@ export default function PracticePage() {
                           <button
                             className="pc-btn-ghost pc-opening-cancel"
                             type="button"
-                            onClick={() => { stopAudio(); backToHistory(); }}
+                            onClick={() => void backToHistory()}
                           >
                             取消并返回
                           </button>
                         </div>
                       )}
-                      {chatMessages.map((m, idx) => (
+                      {chatMessages.map((m, idx) => m.role === "feedback" ? (
+                        <div className="practice-turn-score-card" key={`feedback-${idx}`}>
+                          <div className="practice-turn-score-head">
+                            <b>本轮评分</b>
+                            <strong>{m.scores?.reduce((sum, item) => sum + item.score, 0) ?? 0} 分</strong>
+                          </div>
+                          {m.scores?.length ? (
+                            <div className="practice-turn-score-list">
+                              {m.scores.map((score) => (
+                                <div className="practice-turn-score-item" key={score.name}>
+                                  <span>{score.name}</span>
+                                  <b>{score.score}/{score.maxScore}</b>
+                                  {score.reason && <p>{score.reason}</p>}
+                                </div>
+                              ))}
+                            </div>
+                          ) : <p className="practice-turn-score-empty">{m.content}</p>}
+                        </div>
+                      ) : (
                         <div className={`practice-message ${m.role}`} key={`${m.role}-${idx}`}>
                           <span className={`practice-avatar${m.role === "learner" ? " student-avatar" : ""}`}>
                             {m.role === "ai" ? "AI" : "我"}
@@ -1316,26 +1399,6 @@ export default function PracticePage() {
                         </div>
                       )}
                     </div>
-
-                    {coachTip && (
-                      <div className="pc-coachtip-float">
-                        <span className="pc-coachtip-icon">🎯</span>
-                        <div className="pc-coachtip-body">
-                          <div className="pc-coachtip-label">
-                            <span>教练提示</span>
-                            <button
-                              type="button"
-                              className="pc-coachtip-copy"
-                              onClick={() => void navigator.clipboard?.writeText(coachTip)}
-                              title="复制参考话术"
-                            >
-                              📋 复制话术
-                            </button>
-                          </div>
-                          <p className="pc-coachtip-text">{coachTip}</p>
-                        </div>
-                      </div>
-                    )}
 
                     {chatEnding ? (
                       <div className="pc-chat-ending">
@@ -1413,20 +1476,20 @@ export default function PracticePage() {
                 <div className="practice-score-head">
                   <div>
                     <h2>实时评分</h2>
-                    <p>AI根据场景评分维度评估</p>
+                    <p>仅展示本轮实际触发的评分维度</p>
                   </div>
                   <div className="practice-score-total">
-                    <strong>{chatResult?.record?.score ?? 0}</strong>
-                    <small>综合分</small>
+                    <strong>{currentTurnScores.reduce((sum, item) => sum + item.score, 0)}</strong>
+                    <small>本轮得分</small>
                   </div>
                 </div>
                 <div className="practice-score-list">
-                  {(sceneRules.length > 0 ? sceneRules : [{ id: "t1", name: "需求理解", score: 100 }, { id: "t2", name: "沟通表达", score: 100 }, { id: "t3", name: "问题解决", score: 100 }]).map((r) => {
-                    const got = chatResult?.scores?.find((s) => (s as { scoringRuleId?: string }).scoringRuleId === r.id)?.score ?? 0;
-                    const max = r.score || 100;
+                  {currentTurnScores.map((r) => {
+                    const got = r.score;
+                    const max = r.maxScore || 100;
                     const pct = max > 0 ? Math.min(100, (got / max) * 100) : 0;
                     return (
-                      <div className="practice-score-item" key={r.id}>
+                      <div className="practice-score-item" key={r.name}>
                         <div className="practice-score-item-head">
                           <span className="practice-score-name">{r.name}</span>
                           <b>{got > 0 ? got : 0}</b>
@@ -1437,8 +1500,9 @@ export default function PracticePage() {
                       </div>
                     );
                   })}
+                  {!currentTurnScores.length && <div className="practice-score-note">发送回答后，将展示本轮实际触发的维度评分。</div>}
                 </div>
-                <div className="practice-score-note">评分会随每次回答实时更新，结束对练后生成本次记录。</div>
+                <div className="practice-score-note">本轮总分为已触发维度得分之和；最终得分按全部参与评价的维度满分归一化计算。</div>
               </aside>
             </div>
           </section>

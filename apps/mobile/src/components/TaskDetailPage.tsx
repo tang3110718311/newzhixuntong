@@ -5,6 +5,7 @@ import { taskApi, sceneApi, recordApi, aiApi } from "@/lib/api";
 import { taskDisplayStatus, taskTypeText, taskFormText } from "@/lib/types";
 import { isMaterialDone, markMaterialDone, getExamCount } from "@/lib/sceneProgress";
 import PracticeReport from "./PracticeReport";
+import MobilePageAction from "./MobilePageAction";
 
 interface TaskDetailPageProps {
   taskId: string | null;
@@ -86,9 +87,7 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
     return (
       <>
         <div className="task-detail-head">
-          <button className="task-detail-back" type="button" onClick={onBack} aria-label="返回任务列表">
-            ‹
-          </button>
+          <MobilePageAction kind="back" onClick={onBack} aria-label="返回任务列表" />
           <div className="task-detail-title">
             <h1>任务详情</h1>
             <p>查看任务要求与学习进度</p>
@@ -103,9 +102,7 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
     return (
       <>
         <div className="task-detail-head">
-          <button className="task-detail-back" type="button" onClick={onBack} aria-label="返回任务列表">
-            ‹
-          </button>
+          <MobilePageAction kind="back" onClick={onBack} aria-label="返回任务列表" />
           <div className="task-detail-title">
             <h1>任务详情</h1>
             <p>查看任务要求与学习进度</p>
@@ -145,7 +142,7 @@ const cls = isStopped ? "overdue" : task.status === "completed" ? "done" : taskD
       <PracticeView
         scene={sceneDetail}
         task={task}
-        onBack={() => setView("workspace")}
+        onBack={() => setView("detail")}
         showToast={showToast}
         onReport={(sessionId) => {
           setReportSessionId(sessionId);
@@ -198,9 +195,7 @@ const cls = isStopped ? "overdue" : task.status === "completed" ? "done" : taskD
   return (
     <>
       <div className="task-detail-head">
-        <button className="task-detail-back" type="button" onClick={onBack} aria-label="返回任务列表">
-          ‹
-        </button>
+        <MobilePageAction kind="back" onClick={onBack} aria-label="返回任务列表" />
         <div className="task-detail-title">
           <h1>任务详情</h1>
           <p>查看任务要求与学习进度</p>

@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { aiApi, recordApi, type AiTurnScore } from "@/lib/api";
-import { getDisplayedLength, getFullTextFallback, splitSpeechSegments } from "@/lib/speech-sync";
+import { aiApi, recordApi, type AiInspirationHint } from "@/lib/api";
+import { getDisplayedLength, splitSpeechSegments } from "@/lib/speech-sync";
+import PracticeChat, { type PracticeChatMsg } from "./PracticeChat";
 import { createAsyncSubmitGuard } from "@/lib/submit-guard";
+import MobilePageAction from "./MobilePageAction";
 
 interface PracticeViewProps {
   scene: any;
@@ -13,44 +15,7 @@ interface PracticeViewProps {
   onReport: (sessionId: string) => void;
 }
 
-interface ChatMsg {
-  id: string;
-  who: "ai" | "user" | "feedback";
-  text: string;
-  time?: string;
-  isVoice?: boolean;
-  // 反馈卡结构化数据
-  score?: number | null;
-  dimensions?: AiTurnScore[];
-  issues?: string[];
-  advice?: string[];
-}
-
-/**
- * 解析教练提示（兼容两种格式）：
- * 1. 新版两段式（后端 9b287e7 起）："点评｜可以说：建议"，用 ｜ 分隔，点评 ≤12字、建议 20-35字
- * 2. 旧版："点评，可以说：建议"
- * 映射：点评 → 问题定位，建议 → 改进建议
- */
-function parseCoachTip(tip: string): { issues: string[]; advice: string[] } {
-  const t = (tip || "").trim();
-  if (!t) return { issues: [], advice: [] };
-  // 新版两段式：按 ｜ 分隔
-  const pipeIdx = t.indexOf("｜");
-  if (pipeIdx > -1) {
-    const issues = [t.slice(0, pipeIdx).replace(/[，,。；;\s|｜]+$/, "").trim()].filter(Boolean);
-    const advicePart = t.slice(pipeIdx + 1).replace(/^可以说[:：]?\s*/, "可以说：").trim();
-    return { issues, advice: advicePart ? [advicePart] : [] };
-  }
-  // 旧版：按"可以说"拆分
-  const idx = t.indexOf("可以说");
-  if (idx > -1) {
-    const issues = [t.slice(0, idx).replace(/[，,。；;\s]+$/, "").trim()].filter(Boolean);
-    const advicePart = t.slice(idx).replace(/^可以说[:：]?\s*/, "可以说：");
-    return { issues, advice: [advicePart] };
-  }
-  return { issues: [t].filter(Boolean), advice: [] };
-}
+type ChatMsg = PracticeChatMsg;
 
 /**
  * 并发受限的任务池：按 limit 并发执行 fn，返回与 items 一一对应的 promise 数组。
@@ -88,7 +53,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [round, setRound] = useState(0);
+  const [inspirationHint, setInspirationHint] = useState<AiInspirationHint | null>(null);
   const [recording, setRecording] = useState(false);
   const [liveText, setLiveText] = useState("");
   // AI 语音播报状态：播报中禁止录音
@@ -143,6 +108,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   // 分句播放会话 token：stopAiSpeak / 新播放 / 组件卸载时递增，播放循环检测变化即退出
   const speakSeqRef = useRef(0);
   const ttsCacheRef = useRef(new Map<string, Promise<{ audioBase64: string; format: string }>>());
+  const quitRequestedRef = useRef(false);
 
   const sceneName = scene?.scene?.name || "场景对练";
   const aiRole = scene?.roles?.find((r: any) => r.roleType === "ai");
@@ -166,12 +132,22 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         action: "start",
       })
       .then((res) => {
+        if (quitRequestedRef.current) {
+          if (res.sessionId) {
+            void aiApi.chat({ sceneId, action: "quit", sessionId: res.sessionId }).catch(() => undefined);
+          }
+          return;
+        }
         if (res.sessionId) setSessionId(res.sessionId);
-        pushAiMsgAndSpeak(res.aiReply || "你好，我是" + aiName + "，我们开始吧。");
-        setRound(res.round || 0);
+        setInspirationHint(res.inspirationHint ?? null);
+        void pushAiMsgAndSpeak(res.aiReply || "你好，我是" + aiName + "，我们开始吧。", res.emotion || "default");
       })
-      .catch(() => pushMsg({ who: "ai", text: "（AI 对练服务暂时不可用，请稍后重试）" }))
-      .finally(() => setSending(false));
+      .catch(() => {
+        if (!quitRequestedRef.current) pushMsg({ who: "ai", text: "（AI 对练服务暂时不可用，请稍后重试）" });
+      })
+      .finally(() => {
+        if (!quitRequestedRef.current) setSending(false);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sceneId]);
 
@@ -225,6 +201,13 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     }
     chatSubmittingRef.current = true;
     pushMsg({ who: "user", text: text.trim(), time: now(), isVoice });
+    // 先占位渲染评分卡，避免评分服务超时或返回空数组时整张卡片不可见。
+    const feedbackId = pushMsg({
+      who: "feedback",
+      text: "",
+      score: null,
+      feedbackMessage: "正在生成本轮点评…",
+    });
     setInput("");
     setSending(true);
     try {
@@ -234,29 +217,25 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         sessionId,
         learnerText: text.trim(),
       });
+      if (quitRequestedRef.current) return;
       const activeSessionId = res.sessionId || sessionId;
       if (res.sessionId && res.sessionId !== sessionId) setSessionId(res.sessionId);
-      // 参考图顺序：用户消息 → 反馈卡 → AI 回复
-      if (res.coachTip || res.perTurnScores?.length) {
-        const { issues, advice } = parseCoachTip(res.coachTip || "");
-        // 反馈卡右上角分数 = 本轮各维度得分之和（后端单轮评分 perTurnScores）
-        const turnTotal =
-          Array.isArray(res.perTurnScores) && res.perTurnScores.length
-            ? res.perTurnScores.reduce((acc, item) => acc + (Number(item.score) || 0), 0)
-            : null;
-        pushMsg({
-          who: "feedback",
-          text: res.coachTip || "",
-          issues,
-          advice,
-          score: turnTotal,
-          dimensions: res.perTurnScores,
-        });
-      }
-      // 先完成评分卡的首帧渲染，再创建并播报 AI 回复，保证反馈优先可见。
+      const turnScores = res.perTurnScores ?? [];
+      setMessages((prev) => prev.map((message) => message.id === feedbackId ? {
+        ...message,
+        score: turnScores.length
+          ? turnScores.reduce((total, item) => total + (Number(item.score) || 0), 0)
+          : null,
+        dimensions: turnScores,
+        issues: turnScores.flatMap((item) => item.issues ?? []).filter(Boolean),
+        advice: turnScores.flatMap((item) => item.advice ?? []).filter(Boolean),
+        feedbackMessage: turnScores.length ? undefined : "本轮暂无可用评分，已继续进行对练。",
+      } : message));
+      // 评分卡必须先完成首帧渲染，再继续展示或播报 AI 的下一句。
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      const speakPromise = res.aiReply ? pushAiMsgAndSpeak(res.aiReply) : null;
-      setRound(res.round || 0);
+      if (quitRequestedRef.current) return;
+      const speakPromise = res.aiReply ? pushAiMsgAndSpeak(res.aiReply, res.emotion || "default") : null;
+      setInspirationHint(res.inspirationHint ?? null);
       if (res.isFinished) {
         // 优先使用同步返回的训练记录得分；异步评分时稍后轮询一次
         if (res.trainingRecord?.score != null) {
@@ -271,7 +250,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
               .catch(() => { /* 轮询失败不影响主流程 */ });
           }, 2500);
         }
-        showToast("对练完成，正在生成报告…");
+        showToast("对练结束，正在生成报告…");
         // 等 AI 收尾话 TTS 播完再进入报告页；最长等待 30s，避免 TTS 异常导致永久阻塞
         if (speakPromise) {
           try {
@@ -281,9 +260,14 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
             ]);
           } catch { /* 等待失败不影响进入报告页 */ }
         }
+        if (quitRequestedRef.current) return;
         onReport(activeSessionId);
       }
     } catch (e: any) {
+      setMessages((prev) => prev.map((message) => message.id === feedbackId ? {
+        ...message,
+        feedbackMessage: "本轮评分服务暂时不可用，请继续完成对练。",
+      } : message));
       pushMsg({ who: "ai", text: "（回复失败：" + (e.message || "网络错误") + "）" });
     } finally {
       chatSubmittingRef.current = false;
@@ -294,6 +278,23 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const handleSend = () => {
     if (sending) return;
     sendText(input);
+  };
+
+  const endPractice = async () => {
+    if (quitRequestedRef.current || sending || !sceneId || !sessionId) return;
+    setSending(true);
+    try {
+      const res = await aiApi.chat({ sceneId, action: "end", sessionId });
+      if (quitRequestedRef.current) return;
+      if (res.aiReply) await pushAiMsgAndSpeak(res.aiReply, res.emotion || "default");
+      if (quitRequestedRef.current) return;
+      showToast("对练结束，正在生成报告…");
+      onReport(res.sessionId || sessionId);
+    } catch (e: any) {
+      showToast(e.message || "结束对练失败，请稍后重试");
+    } finally {
+      setSending(false);
+    }
   };
 
   // ===== 语音链路 =====
@@ -438,7 +439,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   );
 
   const speakText = useCallback(
-    async (text: string, msgId?: string): Promise<void> => {
+    async (text: string, msgId?: string, emotion = "default"): Promise<void> => {
       // 播完信号：自然播完 / 出错 / 被 stopAiSpeak 或新音频抢占时 resolve，供对练结束等关键节点等待
       const playEndResolvers: Array<() => void> = [];
       const playEndPromise = new Promise<void>((resolve: () => void) => {
@@ -476,20 +477,21 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         setSpeakMsgId(msgId || null);
             // 分句并行合成（并发 3，避免触发后端 tts 限流），按句序 await 即"边合边播"
         const ttsPromises = makePooledTasks(segments, 3, (segment) => {
-          const cached = ttsCacheRef.current.get(segment.ttsText);
+          const cacheKey = `${emotion}::${segment.ttsText}`;
+          const cached = ttsCacheRef.current.get(cacheKey);
           if (cached) return cached;
-          const request = aiApi.tts(segment.ttsText).then((tts) => {
+          const request = aiApi.tts(segment.ttsText, "xiaoyan", emotion).then((tts) => {
             if (!tts?.audioBase64) {
-              ttsCacheRef.current.delete(segment.ttsText);
+              ttsCacheRef.current.delete(cacheKey);
               throw new Error("TTS returned empty audio");
             }
             return tts;
           }).catch((error) => {
             // 失败或空音频不能进入长期缓存，否则“重新播放”会重复复用失败 Promise。
-            ttsCacheRef.current.delete(segment.ttsText);
+            ttsCacheRef.current.delete(cacheKey);
             throw error;
           });
-          ttsCacheRef.current.set(segment.ttsText, request);
+          ttsCacheRef.current.set(cacheKey, request);
           return request;
         });
         let allPlayed = true;
@@ -560,9 +562,9 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   );
 
   const pushAiMsgAndSpeak = useCallback(
-    (text: string): Promise<void> => {
-      // 防御性剥离模型可能残留的 [COACH_TIP:...]/【COACH_TIP:...】标记（后端已剥离，此处兜底）
-      const cleaned = text.replace(/[\[【]\s*COACH_TIP\s*[:：][\s\S]*?[\]】]/g, "").trim();
+    (text: string, emotion = "default"): Promise<void> => {
+      // 防御性剥离模型可能残留的系统决策标记（后端已剥离，此处兜底）
+      const cleaned = text.replace(/[\[【]\s*DECISION\s*[:：]\s*[a-z_]+\s*[\]】]/gi, "").trim();
       const msgId = pushMsg({ who: "ai", text: cleaned, time: now() });
       // 文本形式无需合成或播放语音，直接展示完整回复。
       if (isTextMode) return Promise.resolve();
@@ -580,7 +582,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       // TTS 合成期间气泡下显示"语音准备中…"
       setTtsPreparing(msgId);
       // 返回播完 promise，供对练结束等场景等待收尾话播完
-      return speakText(cleaned, msgId);
+      return speakText(cleaned, msgId, emotion);
     },
     [isTextMode, pushMsg, speakText]
   );
@@ -850,26 +852,46 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     }, 300);
   };
 
-  const hint = (() => {
-    if (round === 0) return { title: "开场回答方向", body: `先礼貌问候并说明来意，再结合“${sceneName}”询问对方当前最关注的问题。` };
-    if (round === 1) return { title: "需求推进方向", body: "先复述并确认对方需求，再分步骤说明方案，最后明确下一步行动和时间。" };
-    return { title: "收尾回答方向", body: "总结已经确认的信息，回应对方最后的顾虑，并自然提出后续跟进或复盘安排。" };
-  })();
+  const quitPractice = async () => {
+    const confirmed = window.confirm("确定退出当前对练吗？");
+    if (!confirmed) return;
+    quitRequestedRef.current = true;
+    chatSubmittingRef.current = true;
+    stopAiSpeak();
+    setRecording(false);
+    stopLiveRecognition();
+    voiceTextSentRef.current = true;
+    stopRecorderAndStream();
+    setLiveText("");
+    liveTextRef.current = "";
+    setSending(false);
+    if (sceneId && sessionId) {
+      try {
+        await aiApi.chat({ sceneId, action: "quit", sessionId });
+      } catch {
+        /* 退出不生成报告；会话清理失败不阻塞返回任务详情 */
+      }
+    }
+    onBack();
+  };
+
+  const hint = inspirationHint ?? {
+    title: "回答方向",
+    body: "暂无新的上下文提示，请先结合 AI 最新追问自行组织回答。",
+  };
 
   return (
-    <div className="pv-shell">
+    <div className="pv-shell mobile-page-background">
       {/* ===== 顶部导航（淡天蓝渐变） ===== */}
       <header className="pv-nav">
-        <button className="pv-nav-back" type="button" onClick={onBack} aria-label="返回场景工作台">
-          ‹
-        </button>
+        <MobilePageAction kind="back" variant="immersive" onClick={() => void quitPractice()} aria-label="退出对练" />
         <div className="pv-nav-title">
           <h1>AI对练</h1>
           <span className="pv-live-badge">
             <i></i>进行中
           </span>
         </div>
-        <span className="pv-nav-spacer"></span>
+        <button className="pv-end-practice" type="button" onClick={() => void endPractice()} disabled={sending || !sessionId}>结束对练</button>
       </header>
 
       {/* ===== 场景信息三栏卡 ===== */}
@@ -885,164 +907,49 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
           <b className="orange">第 {practiceTimes > 0 ? practiceTimes : 1} 次</b>
         </div>
         <div className="pv-scene-col">
-          <span>本轮得分</span>
+          <span>最终得分</span>
           <b className="blue">{score != null ? `${score}分` : "—"}</b>
         </div>
       </div>
 
       {/* ===== 对话区 ===== */}
-      <div className="pv-chat" ref={chatRef}>
-        {messages.map((m) => {
-          if (m.who === "feedback") {
-            return (
-              <div className="pv-msg feedback" key={m.id}>
-                <div className="pv-feedback-card">
-                  <div className="pv-feedback-head">
-                    <b>实时点评</b>
-                    <span>{m.score != null ? <><strong>{m.score}</strong>分</> : "—"}</span>
-                  </div>
-                  {m.dimensions && m.dimensions.length > 0 && (
-                    <div className="pv-feedback-dimensions" aria-label="本轮评分维度">
-                      {m.dimensions.map((dimension, index) => (
-                        <span className={`pv-feedback-dimension ${dimension.level}`} key={`${dimension.name}-${index}`}>
-                          <em>{dimension.name}</em>
-                          <b>{dimension.score}/{dimension.maxScore}</b>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {m.issues && m.issues.length > 0 && (
-                    <div className="pv-feedback-sec">
-                      <span>问题定位</span>
-                      <p>{m.issues.join("；")}</p>
-                    </div>
-                  )}
-                  {m.advice && m.advice.length > 0 && (
-                    <>
-                      <div className="pv-feedback-divider"></div>
-                      <div className="pv-feedback-sec green">
-                        <span>改进建议</span>
-                        <p>{m.advice.join("；")}</p>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            );
+      <PracticeChat
+        messages={messages}
+        chatRef={chatRef}
+        sending={sending}
+        sendingTime={now()}
+        isTextMode={isTextMode}
+        aiDisp={aiDisp}
+        ttsFailed={ttsFailed}
+        ttsPreparing={ttsPreparing}
+        aiSpeaking={aiSpeaking}
+        speakMsgId={speakMsgId}
+        onReplayAi={(message) => {
+          stopAiSpeak();
+          setTtsFailed((prev) => {
+            const next = { ...prev };
+            delete next[message.id];
+            return next;
+          });
+          setTtsPreparing(message.id);
+          void speakText(message.text, message.id);
+        }}
+        onToggleAiAudio={(message) => {
+          // 同一条消息再次点击：立即停止，并由 stopAiSpeak 补全全文。
+          if (aiSpeakingRef.current && aiAudioMsgIdRef.current === message.id) {
+            stopAiSpeak();
+            return;
           }
-          return (
-            <div className={`pv-msg ${m.who}`} key={m.id}>
-              {m.who === "ai" ? (
-                <span className="pv-avatar ai" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" strokeWidth="1.7">
-                    <rect x="4.5" y="7" width="15" height="11" rx="3.2" />
-                    <circle cx="9.2" cy="12.2" r="1.2" fill="#fff" stroke="none" />
-                    <circle cx="14.8" cy="12.2" r="1.2" fill="#fff" stroke="none" />
-                    <path d="M12 4.5v2.5" />
-                    <circle cx="12" cy="3.6" r="1.1" fill="#fff" stroke="none" />
-                    <path d="M7 16.6h.01M11.5 16.6h.01M16 16.6h.01" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                </span>
-              ) : (
-                <span className="pv-avatar user" aria-hidden="true"></span>
-              )}
-              <div className="pv-msg-main">
-                <span className="pv-time">{m.time}</span>
-                <div className="pv-bubble">
-                  {m.who === "user" && m.isVoice && (
-                    <span className="pv-voice-wave" aria-hidden="true">
-                      <i></i>
-                      <i></i>
-                      <i></i>
-                      <i></i>
-                    </span>
-                  )}
-                  {m.who === "ai" ? (
-                    <>
-                      <div className="pv-ai-message-text">
-                          {aiDisp[m.id] != null && !ttsFailed[m.id]
-                            ? m.text.slice(0, aiDisp[m.id])
-                            : getFullTextFallback(m.text)}
-                       </div>
-                       {!isTextMode && ttsFailed[m.id] && (
-                         <button
-                           className="pv-ai-replay"
-                           type="button"
-                           onClick={() => {
-                             stopAiSpeak();
-                             setTtsFailed((prev) => {
-                               const next = { ...prev };
-                               delete next[m.id];
-                               return next;
-                             });
-                              setTtsPreparing(m.id);
-                             void speakText(m.text, m.id);
-                           }}
-                         >
-                           重新播放
-                         </button>
-                       )}
-                    </>
-                  ) : (
-                    m.text
-                  )}
-                </div>
-                {m.who === "ai" && !isTextMode && (
-                  <button
-                    className={`pv-ai-sound-icon${aiSpeaking && speakMsgId === m.id ? " playing" : ""}`}
-                    type="button"
-                    aria-label={aiSpeaking && speakMsgId === m.id ? "正在播放 AI 语音" : "播放 AI 语音"}
-                    onClick={() => {
-                      // 同一条消息再次点击：立即停止，并由 stopAiSpeak 补全全文。
-                      if (aiSpeakingRef.current && aiAudioMsgIdRef.current === m.id) {
-                        stopAiSpeak();
-                        return;
-                      }
-                      stopAiSpeak();
-                      setTtsFailed((prev) => {
-                        const next = { ...prev };
-                        delete next[m.id];
-                        return next;
-                      });
-                      setTtsPreparing(m.id);
-                      void speakText(m.text, m.id);
-                    }}
-                  >
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-                      <path d="M18.5 5.5a8.5 8.5 0 0 1 0 13" />
-                    </svg>
-                  </button>
-                )}
-                {/* TTS 合成期间（音频尚未就绪）：语音条下方"语音准备中…"浅色占位 */}
-                {m.who === "ai" && !(aiSpeaking && speakMsgId === m.id) && ttsPreparing === m.id && (
-                  <div className="pv-ai-preparing" aria-hidden="true">
-                    <b>语音准备中…</b>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-        {sending && (
-          <div className="pv-msg ai">
-            <span className="pv-avatar ai" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" strokeWidth="1.7">
-                <rect x="4.5" y="7" width="15" height="11" rx="3.2" />
-                <circle cx="9.2" cy="12.2" r="1.2" fill="#fff" stroke="none" />
-                <circle cx="14.8" cy="12.2" r="1.2" fill="#fff" stroke="none" />
-                <path d="M12 4.5v2.5" />
-                <circle cx="12" cy="3.6" r="1.1" fill="#fff" stroke="none" />
-              </svg>
-            </span>
-            <div className="pv-msg-main">
-              <span className="pv-time">{now()}</span>
-              <div className="pv-bubble">正在思考…</div>
-            </div>
-          </div>
-        )}
-      </div>
+          stopAiSpeak();
+          setTtsFailed((prev) => {
+            const next = { ...prev };
+            delete next[message.id];
+            return next;
+          });
+          setTtsPreparing(message.id);
+          void speakText(message.text, message.id);
+        }}
+      />
 
         {/* ===== 底部输入区 ===== */}
       <div className="pv-composer">

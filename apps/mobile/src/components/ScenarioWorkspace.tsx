@@ -6,6 +6,8 @@ import { isMaterialDone, getExamCount, getExamRecords, type ExamRecord } from "@
 import { taskFormText } from "@/lib/types";
 import PracticeReport from "./PracticeReport";
 import ExamReport from "./ExamReport";
+import MobilePageAction from "./MobilePageAction";
+import UnifiedTabs from "./UnifiedTabs";
 
 interface ScenarioWorkspaceProps {
   scene: any;
@@ -108,9 +110,7 @@ export default function ScenarioWorkspace({
     <>
       {/* ===== 顶部导航 ===== */}
       <div className="task-detail-head">
-        <button className="task-detail-back" type="button" onClick={onBackToDetail} aria-label="返回任务详情">
-          ‹
-        </button>
+        <MobilePageAction kind="back" onClick={onBackToDetail} aria-label="返回任务详情" />
         <div className="task-detail-title">
           <h1>场景详情</h1>
           <p>查看场景要求与学习进度</p>
@@ -204,22 +204,16 @@ export default function ScenarioWorkspace({
       <div className="scene-info-card">
         <h3>历史记录</h3>
         <p className="card-sub">查看本场景的 AI 对练与考试记录。</p>
-        <div className="history-tabs">
-          <button
-            type="button"
-            className={`history-tab ${recordTab === "practice" ? "active" : ""}`}
-            onClick={() => setRecordTab("practice")}
-          >
-            对练记录
-          </button>
-          <button
-            type="button"
-            className={`history-tab ${recordTab === "exam" ? "active" : ""}`}
-            onClick={() => setRecordTab("exam")}
-          >
-            考试记录
-          </button>
-        </div>
+        <UnifiedTabs
+          ariaLabel="历史记录类型"
+          className="unified-tabs--compact"
+          items={[
+            { value: "practice", label: "对练记录" },
+            { value: "exam", label: "考试记录" },
+          ]}
+          onChange={setRecordTab}
+          value={recordTab}
+        />
         <div className="history-stat">
           <div className="history-stat-item">
             <strong>{recordTab === "practice" ? records.length : examRecords.length}</strong>

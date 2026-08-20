@@ -1,6 +1,7 @@
 import { createExamAttemptSchema, submitExamAttemptSchema } from "@zxt/shared";
 import {
   createExamAttempt,
+  getCompletedExamAttemptDetail,
   listExamAttempts,
   submitExamAttempt,
 } from "@zxt/database";
@@ -17,9 +18,16 @@ export async function GET(request: Request) {
     const examId = url.searchParams.get("examId") || undefined;
     const taskId = url.searchParams.get("taskId") || undefined;
     const sceneId = url.searchParams.get("sceneId") || undefined;
+    const attemptId = url.searchParams.get("id") || undefined;
     const currentUserId = user?.id;
     const isAdmin = user?.roleCode === "tenant_admin";
     if (!isAdmin && !currentUserId) return fail("AUTH_REQUIRED", "请先登录后再访问考试记录。", 401);
+
+    if (attemptId) {
+      const detail = getCompletedExamAttemptDetail(tenantId, attemptId, { userId: currentUserId });
+      if (!detail) return fail("ATTEMPT_NOT_FOUND", "考试记录不存在、无权访问或尚未完成。", 404);
+      return ok(detail);
+    }
 
     return ok(listExamAttempts(tenantId, {
       examId,

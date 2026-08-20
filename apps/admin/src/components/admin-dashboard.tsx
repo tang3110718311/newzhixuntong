@@ -8,6 +8,8 @@ import {
   Briefcase,
   Building2,
   CheckCircle2,
+  Eye,
+  EyeOff,
   KeyRound,
   Landmark,
   Loader2,
@@ -758,6 +760,7 @@ export function AdminDashboard() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showInitialPassword, setShowInitialPassword] = useState(false);
   const [showSceneWizard, setShowSceneWizard] = useState(false);
   const [showSceneModePicker, setShowSceneModePicker] = useState(false);
   const [sceneWizardStep, setSceneWizardStep] = useState(1);
@@ -1418,12 +1421,13 @@ export function AdminDashboard() {
 
   async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await submitAction("学员已创建，可用于任务发布对象。", async () => {
+    await submitAction("人员创建成功，已返回用户管理列表。", async () => {
       await apiFetch<User>("/users", {
         method: "POST",
         body: JSON.stringify({ ...userForm, orgId: userForm.orgId || null }),
       });
       setUserForm((prev) => ({ ...initialUserForm, orgId: prev.orgId }));
+      setShowUserCreate(false);
     });
   }
 
@@ -1654,9 +1658,9 @@ export function AdminDashboard() {
   }
 
   async function publishTask(taskId: string) {
-    await submitAction("任务已发布。", async () => {
+    await submitAction("发布成功！", async () => {
       await apiFetch(`/tasks/${taskId}/publish`, { method: "POST", body: JSON.stringify({}) });
-      await viewTaskDetail(taskId);
+      await loadData();
     });
   }
 
@@ -1893,13 +1897,14 @@ export function AdminDashboard() {
   // 首次加载：从本地恢复登录态，再从 URL ?section=xxx 恢复目标菜单区块（从其他页面跳转回来时生效）
   useEffect(() => {
     const storedAuth = readStoredAuth();
+    const sectionParam = new URLSearchParams(window.location.search).get("section");
+    const nextSection = sectionParam && VALID_SECTIONS.has(sectionParam)
+      ? (sectionParam as ActiveSection)
+      : "overview";
+    setActiveSection(nextSection);
     setAuth(storedAuth);
     setAuthResolved(true);
     if (!storedAuth) return;
-    const sectionParam = new URLSearchParams(window.location.search).get("section");
-    if (sectionParam && VALID_SECTIONS.has(sectionParam)) {
-      setActiveSection(sectionParam as ActiveSection);
-    }
     // 从任务详情"开始考试"跳转带入的 taskId/sceneId：读取后立即从 URL 清除，避免后续考试误关联
     const qp = new URLSearchParams(window.location.search);
     const taskId = qp.get("taskId") || "";
@@ -2228,7 +2233,14 @@ export function AdminDashboard() {
         {error ? <div className="notice"><AlertCircle size={16} /> {error}</div> : null}
         {message ? <div className="success"><CheckCircle2 size={16} /> {message}</div> : null}
 
-        {(activeSection === "overview" || loading) && (
+        {loading ? (
+          <div className="dashboard-loading-overlay" role="status" aria-live="polite">
+            <div className="navigation-loading-spinner" />
+            <span>正在加载页面…</span>
+          </div>
+        ) : null}
+
+        {activeSection === "overview" && (
           <HomeSection auth={auth} submitting={submitting} onRefresh={() => loadData()} />
         )}
 
@@ -2901,8 +2913,8 @@ export function AdminDashboard() {
                 <div className="modal-card" onClick={(e) => e.stopPropagation()}>
                   <div className="section-head">
                     <div>
-                      <h2 className="section-title">新增参训人员</h2>
-                      <p className="section-note">人员会写入 SQLite，并可绑定到本租户组织。</p>
+                      <h2 className="section-title">新增人员</h2>
+                      <p className="section-note">创建人员并绑定所属组织。</p>
                     </div>
                   </div>
                   <form onSubmit={handleCreateUser}>
@@ -2912,7 +2924,14 @@ export function AdminDashboard() {
                       <Field label="邮箱"><input value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} placeholder="选填" /></Field>
                       <Field label="所属组织"><select value={userForm.orgId} onChange={(e) => setUserForm({ ...userForm, orgId: e.target.value })}><option value="">未分配</option>{organizations.map((org) => <option value={org.id} key={org.id}>{org.name}</option>)}</select></Field>
                       <Field label="角色"><select value={userForm.roleCode} onChange={(e) => setUserForm({ ...userForm, roleCode: e.target.value })}><option value="learner">学员</option><option value="trainer">内训师</option><option value="tenant_admin">管理员</option></select></Field>
-                      <Field label="初始密码"><input value={userForm.initialPassword} onChange={(e) => setUserForm({ ...userForm, initialPassword: e.target.value })} type="password" minLength={8} required /></Field>
+                      <Field label="初始密码">
+                        <div className="form-password-input">
+                          <input value={userForm.initialPassword} onChange={(e) => setUserForm({ ...userForm, initialPassword: e.target.value })} type={showInitialPassword ? "text" : "password"} autoComplete="new-password" minLength={8} required />
+                          <button className="form-password-toggle" type="button" onClick={() => setShowInitialPassword((visible) => !visible)} aria-label={showInitialPassword ? "隐藏密码" : "显示密码"} title={showInitialPassword ? "隐藏密码" : "显示密码"}>
+                            {showInitialPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                          </button>
+                        </div>
+                      </Field>
                       <div className="wizard-footer" style={{ justifyContent: "flex-end", gap: 12 }}>
                         <button className="btn" type="button" onClick={() => setShowUserCreate(false)}>取消</button>
                         <button className="btn primary" disabled={submitting} type="submit"><Plus size={16} /> 保存人员</button>

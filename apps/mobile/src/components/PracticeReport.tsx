@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { recordApi } from "@/lib/api";
+import PracticeChat, { type PracticeChatMsg } from "./PracticeChat";
+import MobilePageAction from "./MobilePageAction";
+import UnifiedTabs from "./UnifiedTabs";
 
 interface PracticeReportProps {
   /** 对练会话（练习完成后进入报告流程时使用，轮询 by-session 等待后台评分） */
@@ -21,6 +24,33 @@ function fmtTimeFull(iso?: string | null): string {
   if (Number.isNaN(d.getTime())) return "";
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function fmtChatTime(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+type TranscriptTurnScore = {
+  ruleName: string | null;
+  score: number;
+  maxScore?: number | null;
+  deductionReason?: string;
+  level?: string | null;
+  issues?: string[];
+  advice?: string[];
+};
+
+function normalizeLevel(score: number, maxScore = 100, level?: string | null): "excellent" | "pass" | "developing" {
+  const raw = (level || "").toLowerCase();
+  if (raw === "excellent" || raw === "pass" || raw === "developing") return raw;
+  const ratio = maxScore > 0 ? score / maxScore : 0;
+  if (ratio >= 0.9) return "excellent";
+  if (ratio >= 0.6) return "pass";
+  return "developing";
 }
 
 /** 环形进度（对练报告：绿色） */
@@ -147,31 +177,81 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
   const passed = score >= passScore;
   const overallScores: Array<{ ruleName: string | null; score: number; level?: string | null; deductionReason?: string; evidenceText?: string }> =
     detail?.scores ?? [];
-  // 原型能力均分 = 综合得分（各维度加权后），对齐显示
+  // 能力均分以已触发维度的累计表现归一化结果展示。
   const avgScore = score;
-  // 后端暂未返回权重：按维度数均分兜底（展示格式对齐原型「维度名（权重%）得分」）
-  const dimWeight = overallScores.length ? Math.round(100 / overallScores.length) : 0;
 
-  // 对话记录 tab：第 n 条学员消息 = 第 n 轮，匹配 turnScores
-  const transcript = useMemo(() => {
+  // 对话记录 tab：把历史 turns/turnScores 转成 AI 对练页同款消息列表，渲染时直接复用 PracticeChat。
+  const transcriptMessages = useMemo<PracticeChatMsg[]>(() => {
     if (!detail) return [];
-    const turnScores: Array<{ roundNo: number; scores: Array<{ ruleName: string | null; score: number; deductionReason?: string; level?: string }> }> =
-      detail.turnScores ?? [];
+    const turnScores: Array<{ roundNo: number; scores: TranscriptTurnScore[] }> = detail.turnScores ?? [];
+    const messages: PracticeChatMsg[] = [];
     let learnerIdx = 0;
-    return (detail.turns ?? []).map((t: any, i: number) => {
-      if (t.speaker === "learner") {
-        learnerIdx += 1;
-        const ts = turnScores.find((x) => x.roundNo === learnerIdx);
-        const turnTotal = ts?.scores?.reduce((a, s) => a + (Number(s.score) || 0), 0) ?? null;
-        const reasons = (ts?.scores?.map((s) => s.deductionReason).filter(Boolean) as string[]) ?? [];
-        return { ...t, key: i, turnTotal, reasons };
+
+    (detail.turns ?? []).forEach((t: any, i: number) => {
+      const time = fmtChatTime(t.startedAt || detail.record?.startedAt);
+      const text = t.text || "";
+      if (t.speaker === "ai") {
+        messages.push({ id: `turn-${i}-ai`, who: "ai", text, time });
+        return;
       }
-      return { ...t, key: i };
+
+      if (t.speaker !== "learner") return;
+      learnerIdx += 1;
+      messages.push({ id: `turn-${i}-learner`, who: "user", text, time, isVoice: Number(t.durationMs) > 0 });
+
+      // 仅展示本轮实际触发并参与评价的维度，整场评分不伪装为单轮评分。
+      let dimensions: Array<{ name: string; score: number; maxScore: number; level: "excellent" | "pass" | "developing"; reason: string; issues: string[]; advice: string[] }> = [];
+      const ts = turnScores.find((x) => x.roundNo === learnerIdx);
+      dimensions =
+        ts?.scores?.map((s) => {
+          const scoreValue = Number(s.score) || 0;
+          const maxScore = Number(s.maxScore) || 100;
+          return {
+            name: s.ruleName || "评分维度",
+            score: scoreValue,
+            maxScore,
+            level: normalizeLevel(scoreValue, maxScore, s.level),
+            reason: s.deductionReason || "",
+            issues: Array.isArray(s.issues) ? s.issues : [],
+            advice: Array.isArray(s.advice) ? s.advice : [],
+          };
+        }) ?? [];
+
+      const turnTotal = dimensions.length ? dimensions.reduce((a, s) => a + (Number(s.score) || 0), 0) : null;
+      const issues = dimensions.flatMap((s) => s.issues).filter(Boolean);
+      const advice = dimensions.flatMap((s) => s.advice).filter(Boolean);
+
+      if (turnTotal != null || dimensions.length > 0 || issues.length > 0 || advice.length > 0) {
+        messages.push({
+          id: `turn-${i}-feedback`,
+          who: "feedback",
+          text: advice.join("；"),
+          score: turnTotal,
+          dimensions,
+          issues,
+          advice,
+        });
+      }
     });
+
+    return messages;
   }, [detail]);
 
-  // 中转页：对练报告生成中（对齐原型 report-generating-modal）
-  if (!detail && !failed) {
+
+  // 历史记录入口（recordId）：直接拉取详情，加载期间仅显示轻量加载提示，不出现"生成报告中"中转弹窗
+  if (recordId && !detail && !failed) {
+    return (
+      <div className="pr-shell">
+        <div className="pr-light-loading" role="status" aria-live="polite">
+          <div className="pr-light-spinner" />
+          <p>正在加载报告…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 中转页：仅 sessionId 模式（刚练完、后台异步评分轮询中）显示"生成报告中"
+  if (!recordId && sessionId && !detail && !failed) {
     return (
       <div className="pr-shell">
         <div className="report-generating-modal show" role="status" aria-live="polite">
@@ -216,22 +296,14 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
 
   return (
     <div className="pr-shell">
-      {/* ===== 顶部导航（白底，标题居中） ===== */}
+      {/* ===== 顶部导航（复用任务详情返回样式） ===== */}
       <header className="pr-head">
-        <button className="pr-head-btn" type="button" onClick={onClose} aria-label="返回">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 5l-7 7 7 7" />
-          </svg>
-        </button>
+        <MobilePageAction kind="back" onClick={onClose} />
         <div className="pr-head-text">
           <h1>AI对练报告</h1>
           <p>{subTitle}</p>
         </div>
-        <button className="pr-head-close" type="button" onClick={onClose} aria-label="关闭报告">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
+        <MobilePageAction kind="close" variant="overlay" onClick={onClose} aria-label="关闭报告" />
       </header>
 
       {/* ===== 顶部得分区 ===== */}
@@ -247,14 +319,16 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
       </div>
 
       {/* ===== Tab ===== */}
-      <div className="pr-tabs">
-        <button className={`pr-tab ${tab === "report" ? "active" : ""}`} type="button" onClick={() => setTab("report")}>
-          AI对练报告
-        </button>
-        <button className={`pr-tab ${tab === "transcript" ? "active" : ""}`} type="button" onClick={() => setTab("transcript")}>
-          对话记录
-        </button>
-      </div>
+      <UnifiedTabs
+        ariaLabel="AI对练报告内容"
+        className="unified-tabs--report"
+        items={[
+          { value: "report", label: "AI对练报告" },
+          { value: "transcript", label: "对话记录" },
+        ]}
+        onChange={setTab}
+        value={tab}
+      />
 
       {tab === "report" ? (
         /* ===== AI对练报告 tab ===== */
@@ -264,7 +338,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
             <div className="pr-eval-head">
               <div className="pr-eval-text">
                 <h3>本次AI对练评估</h3>
-                <p>综合得分 = 各能力维度得分 × 后台配置权重</p>
+                <p>综合得分 = 已触发维度实际得分 ÷ 已触发维度满分之和 × 100</p>
               </div>
               <PassTag score={score} />
             </div>
@@ -279,7 +353,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
               </div>
               <div className="pr-total-text">
                 <b>{passed ? "表现达到合格要求，继续保持优势能力" : "表现未达合格线，建议针对短板加强练习"}</b>
-                <p>系统依据评分维度与后台配置权重，综合评估你本次对练各能力维度的表现。得分越高代表该维度行为越规范。</p>
+                <p>系统仅统计对话中实际触发的评分维度，按各轮实际得分与对应满分归一化计算，避免未涉及维度产生扣分。</p>
                 <div className="pr-total-stats">
                   能力均分 {avgScore}　评价维度 {overallScores.length}
                 </div>
@@ -311,7 +385,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
                   {overallScores.map((s, i) => (
                     <div className="pr-radar-item" key={i}>
                       <span>
-                        {s.ruleName || `维度${i + 1}`}（{dimWeight}%）
+                        {s.ruleName || `维度${i + 1}`}
                       </span>
                       <b>{s.score}</b>
                     </div>
@@ -338,7 +412,6 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
                       <div className="pr-dim-top">
                         <span className={`pr-dim-dot ${isGood ? "good" : "warn"}`}></span>
                         <b>{s.ruleName || `维度${i + 1}`}</b>
-                        <span className="pr-dim-weight">{dimWeight}%</span>
                         <span className="pr-dim-score">{s.score}</span>
                       </div>
                       <div className="pr-dim-bar">
@@ -403,77 +476,15 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
             关闭报告
           </button>
         </div>
-      ) : (
+      ) : transcriptMessages.length === 0 ? (
         /* ===== 对话记录 tab ===== */
         <div className="pr-transcript">
-          {transcript.length === 0 && <div className="pr-empty">暂无对话记录</div>}
-          {transcript.map((t: any) => {
-            if (t.speaker === "ai") {
-              return (
-                <div className="pr-msg ai" key={t.key}>
-                  <span className="pr-avatar ai" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#fff" strokeWidth="1.7">
-                      <rect x="4.5" y="7" width="15" height="11" rx="3.2" />
-                      <circle cx="9.2" cy="12.2" r="1.2" fill="#fff" stroke="none" />
-                      <circle cx="14.8" cy="12.2" r="1.2" fill="#fff" stroke="none" />
-                      <path d="M12 4.5v2.5" />
-                      <circle cx="12" cy="3.6" r="1.1" fill="#fff" stroke="none" />
-                      <path d="M7 16.6h.01M11.5 16.6h.01M16 16.6h.01" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                  </span>
-                  <div className="pr-msg-main">
-                    <span className="pr-time">{fmtTimeFull(detail.record?.startedAt)}</span>
-                    <div className="pr-bubble ai">{t.text}</div>
-                  </div>
-                </div>
-              );
-            }
-            return (
-              <div className="pr-turn" key={t.key}>
-                <div className="pr-msg user">
-                  <span className="pr-avatar user" aria-hidden="true"></span>
-                  <div className="pr-msg-main">
-                    <span className="pr-time">{fmtTimeFull(detail.record?.startedAt)}</span>
-                    <div className="pr-bubble user">
-                      <span className="pr-wave" aria-hidden="true">
-                        <i></i>
-                        <i></i>
-                        <i></i>
-                        <i></i>
-                      </span>
-                      {t.text}
-                    </div>
-                  </div>
-                </div>
-                <div className="pr-fb-card">
-                  <div className="pr-fb-head">
-                    <b>本次回答反馈</b>
-                    <span>{t.turnTotal != null ? `${t.turnTotal}分` : "—"}</span>
-                  </div>
-                  {(t.reasons?.length > 0 || detail.suggestions?.length > 0) && (
-                    <>
-                      <div className="pr-fb-divider"></div>
-                      {t.reasons?.length > 0 && (
-                        <div className="pr-fb-row">
-                          <em>问题定位：</em>
-                          {t.reasons.join("；")}
-                        </div>
-                      )}
-                      {detail.suggestions?.length > 0 && (
-                        <div className="pr-fb-row">
-                          <em>改进建议：</em>
-                          {detail.suggestions[0]}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-          <button className="pr-close-report" type="button" onClick={onClose}>
-            关闭报告
-          </button>
+          <div className="pr-empty">暂无对话记录</div>
+        </div>
+      ) : (
+        /* ===== 对话记录 tab：直接复用 AI 对练页对话记录 ===== */
+        <div className="pr-transcript">
+          <PracticeChat messages={transcriptMessages} reportMode />
         </div>
       )}
     </div>

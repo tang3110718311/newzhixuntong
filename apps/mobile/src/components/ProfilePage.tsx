@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { taskApi, recordApi, type AuthUser } from "@/lib/api";
 import type { PageKey } from "./MobileApp";
+import MobilePageAction from "./MobilePageAction";
 
 const IMAGE_UPLOAD_MAX_BYTES = 2 * 1024 * 1024;
 const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -341,14 +342,7 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
             <div className="modal">
               <div className="modal-title-row">
                 <h3>问题反馈</h3>
-                <button
-                  type="button"
-                  className="modal-close"
-                  onClick={() => setFeedbackOpen(false)}
-                  aria-label="关闭"
-                >
-                  ×
-                </button>
+                <MobilePageAction kind="close" variant="overlay" onClick={() => setFeedbackOpen(false)} />
               </div>
               <input
                 value={feedbackTitle}
@@ -418,14 +412,7 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
                   <h3>账号信息</h3>
                   <p>完善个人资料，便于企业内身份识别</p>
                 </div>
-                <button
-                  type="button"
-                  className="account-close"
-                  onClick={() => setAccountOpen(false)}
-                  aria-label="关闭"
-                >
-                  ×
-                </button>
+                <MobilePageAction kind="close" variant="overlay" onClick={() => setAccountOpen(false)} />
               </div>
               <div className="account-fields">
                 <div className="account-field">
