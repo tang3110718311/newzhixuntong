@@ -3,10 +3,10 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: 'cb4a14aa-e493-4fbb-a5ed-c2b0b8e8e71e'
-  PropagateID: 'cb4a14aa-e493-4fbb-a5ed-c2b0b8e8e71e'
-  ReservedCode1: '30add026-c698-43c2-b639-e694efea021b'
-  ReservedCode2: '30add026-c698-43c2-b639-e694efea021b'
+  ProduceID: '6320e83a-638c-42d0-a38d-6d94423604d3'
+  PropagateID: '6320e83a-638c-42d0-a38d-6d94423604d3'
+  ReservedCode1: 'a57a20ee-975f-4f99-9d1d-2999fac0f8b8'
+  ReservedCode2: 'a57a20ee-975f-4f99-9d1d-2999fac0f8b8'
 ---
 
 # 智训通原型对齐技能

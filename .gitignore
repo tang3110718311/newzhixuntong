@@ -28,3 +28,16 @@ deploy/*.local
 deploy/*.secret
 .worktrees/
 .DS_Store
+
+# AI 内部协作文档（不纳入版本控制）
+.github/copilot-instructions.md
+.trae/
+AGENT.md
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+工作区规则.md
+docs/AI协作/
+docs/handoffs/
+docs/skills/zxt-grill-me-protocol.md
+docs/superpowers/
