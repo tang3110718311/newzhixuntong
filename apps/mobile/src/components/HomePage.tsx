@@ -128,7 +128,7 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
             今日有 {pending} 项培训任务待完成
           </p>
           <div className="hero-bot-wrap">
-            <img className="hero-bot-img" src="/cute-3d-training-robot.png" alt="AI 智能培训助手" />
+            <img className="hero-bot-img" src="cute-3d-training-robot.png" alt="AI 智能培训助手" />
           </div>
         </div>
         <div className="learning-progress">
