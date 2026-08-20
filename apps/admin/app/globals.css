@@ -3770,6 +3770,16 @@ body {
 .scoring-row textarea:focus{border-color:#6e9eed;box-shadow:0 0 0 3px #6e9eed18}
 .scoring-row{align-items:start}
 .scene-form-bottom-actions{padding:20px 0 4px}
+.preview-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+.amber-icon{color:#d68a19;background:#fff3dc}
+.preview-stat strong{white-space:nowrap}
+.preview-score-item{padding:12px;border:1px solid #e5edf7;border-radius:10px;background:#f8faff}
+.preview-score-item+.preview-score-item{margin-top:10px}
+.preview-score-line span{min-width:0;color:#314967;font-weight:700;line-height:1.5;word-break:break-word}
+.preview-score-line b{flex:none;white-space:nowrap}
+.preview-score-criteria{margin:9px 0 0;padding-top:9px;border-top:1px dashed #dce6f2;color:#6f829b;font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+@media(max-width:1250px){.preview-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.preview-stats{grid-template-columns:1fr}}
 
 /* ===== 任务管理模块 tm-mod（还原原型 task-manage / task-create / task-data） ===== */
 .tm-mod{--tm-blue:#2f74eb;--tm-ink:#172f52;--tm-sub:#8191a5}
