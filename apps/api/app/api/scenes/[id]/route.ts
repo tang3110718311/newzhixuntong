@@ -35,6 +35,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       initiator: body.initiator,
       scoringRules: body.scoringRules,
       attachmentFileIds: body.attachmentFileIds,
+      passScore: body.passScore,
+      status: body.status,
     });
     if (!detail) return fail("SCENE_NOT_FOUND", "场景不存在或已删除。", 404);
     return ok(detail);

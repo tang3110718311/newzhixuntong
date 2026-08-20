@@ -600,16 +600,31 @@ const initialRecordForm = {
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getStoredAuthToken();
   const isFormData = init?.body instanceof FormData;
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    cache: "no-store",
-    headers: {
-      // multipart 上传时浏览器自动生成 boundary，不能手动设置 Content-Type
-      ...(isFormData ? {} : { "Content-Type": "application/json" }),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers || {}),
-    },
-  });
+  const method = (init?.method || "GET").toUpperCase();
+  const retryable = method === "GET";
+  let response: Response | null = null;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < (retryable ? 2 : 1); attempt += 1) {
+    response = null;
+    try {
+      response = await fetch(`${API_BASE}${path}`, {
+        ...init,
+        cache: "no-store",
+        headers: {
+          // multipart 上传时浏览器自动生成 boundary，不能手动设置 Content-Type
+          ...(isFormData ? {} : { "Content-Type": "application/json" }),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(init?.headers || {}),
+        },
+      });
+      if (response.status < 500 || attempt === 1 || !retryable) break;
+    } catch (error) {
+      lastError = error;
+      if (attempt === 1 || !retryable) throw error;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+  if (!response) throw lastError instanceof Error ? lastError : new Error("请求失败");
   const payload = (await response.json()) as ApiResponse<T>;
   if (!payload.success) {
     throw new Error(payload.message || payload.code);
@@ -1218,16 +1233,21 @@ export function AdminDashboard() {
       return;
     }
     for (const file of files) {
-      const entry = { name: file.name, status: "uploading" as const };
+      const localKey = `${file.name}-${file.size}-${file.lastModified}`;
+      const entry = { name: file.name, fileId: localKey, status: "uploading" as const };
       setSceneAttachments((prev) => [...prev, entry]);
       try {
         const formData = new FormData();
         formData.append("folderId", folderId);
         formData.append("file", file);
-        await apiFetch<{ parseStatus: string }>("/knowledge/files", { method: "POST", body: formData });
-        setSceneAttachments((prev) => prev.map((item) => item.name === file.name ? { ...item, status: "done" as const } : item));
+        const uploaded = await apiFetch<{ id: string; name: string; parseStatus: string }>("/knowledge/files", { method: "POST", body: formData });
+        setSceneAttachments((prev) => prev.map((item) => item.fileId === localKey
+          ? { ...item, fileId: uploaded.id, name: uploaded.name || file.name, status: "done" as const }
+          : item));
       } catch (err) {
-        setSceneAttachments((prev) => prev.map((item) => item.name === file.name ? { ...item, status: "failed" as const, error: err instanceof Error ? err.message : "上传失败" } : item));
+        setSceneAttachments((prev) => prev.map((item) => item.fileId === localKey
+          ? { ...item, status: "failed" as const, error: err instanceof Error ? err.message : "上传失败" }
+          : item));
       }
     }
     setSceneAttachmentsUploading(false);
@@ -1280,6 +1300,13 @@ export function AdminDashboard() {
   }
 
   async function handleAiGenerateAndNext() {
+    if (sceneAttachmentsUploading || sceneAttachments.some((item) => item.status === "uploading")) {
+      setError("附件仍在上传解析中，请等待上传完成后再提交。");
+      return;
+    }
+    const attachmentFileIds = sceneAttachments
+      .filter((item) => item.fileId && item.status === "done")
+      .map((item) => item.fileId as string);
     setSubmitting(true);
     setError("");
     try {
@@ -1287,7 +1314,7 @@ export function AdminDashboard() {
         method: "POST",
         body: JSON.stringify({
           ...aiGenerateForm,
-          attachmentFileIds: sceneAttachments.filter((a) => a.fileId && a.status === "done").map((a) => a.fileId) || [],
+          attachmentFileIds,
         }),
       });
       const draft = result.draft;
@@ -1331,6 +1358,12 @@ export function AdminDashboard() {
       // 对齐原型：生成成功后关闭弹窗，进入独立表单页继续完善配置
       setShowSceneWizard(false);
       if (result.scene?.id) {
+        if (attachmentFileIds.length) {
+          await apiFetch(`/scenes/${result.scene.id}`, {
+            method: "PUT",
+            body: JSON.stringify({ attachmentFileIds }),
+          });
+        }
         navigateTo(`/scenes/${result.scene.id}/edit`);
       } else {
         const industryId = aiGenerateForm.industryPackageId || industries[0]?.id || "";
@@ -1363,6 +1396,7 @@ export function AdminDashboard() {
               deductionRule: r.deductionRule || "",
               evidenceRequired: r.evidenceRequired || "",
             })),
+            attachmentFileIds,
           }),
         });
         navigateTo(`/scenes/${created.id}/edit`);
@@ -2291,8 +2325,9 @@ export function AdminDashboard() {
                           <th className="batch-col"><input type="checkbox" checked={allCurrentPageChecked} onChange={(e) => toggleAllCurrentPage(e.target.checked)} /></th>
                           <th>序号</th>
                           <th>场景编号</th>
-                          <th>场景名称</th>
-                          <th>状态</th>
+                           <th>场景名称</th>
+                           <th>合格分数</th>
+                           <th>状态</th>
                           <th>关联任务数</th>
                           <th>创建部门</th>
                           <th>创建人</th>
@@ -2308,20 +2343,21 @@ export function AdminDashboard() {
                             <tr key={scene.id}>
                               <td className="batch-col"><input type="checkbox" checked={selectedSceneIds.includes(scene.id)} onChange={() => toggleSceneSelection(scene.id)} /></td>
                               <td>{(safeScenePage - 1) * SCENE_PAGE_SIZE + idx + 1}</td>
-                              <td>{scene.code}</td>
-                              <td className="name">{scene.name}<br /><small className="muted">{subMode}</small></td>
-                              <td><span className={`status ${statusOn ? "on" : "off"}`}>{statusOn ? "启用" : "停用"}</span></td>
+                               <td>{scene.code}</td>
+                               <td className="name">{scene.name}<br /><small className="muted">{subMode}</small></td>
+                               <td>{scene.passScore ?? 60} 分</td>
+                               <td><span className={`status ${statusOn ? "on" : "off"}`}>{statusOn ? "启用" : "停用"}</span></td>
                               <td>{scene.taskCount ?? 0}</td>
                               <td>{scene.creatorOrgName || "—"}</td>
                               <td>{scene.creatorName || "—"}</td>
                               <td>{scene.createdAt ? formatDate(scene.createdAt) : "—"}</td>
                               <td>
                                 <div className="table-ops">
-                                  <a onClick={() => navigateTo(`/scenes/${scene.id}`)}>预览</a>
-                                  <a onClick={() => navigateTo(`/scenes/${scene.id}/edit`)}>编辑</a>
-                                  {statusOn ? <a onClick={() => disableScene(scene.id)}>禁用</a> : <a onClick={() => publishScene(scene.id)}>启用</a>}
-                                  <a onClick={() => copyScene(scene.id)}>复制</a>
-                                  <a onClick={() => navigateTo(`/tasks/new?sceneId=${encodeURIComponent(scene.id)}`)}>创建任务</a>
+                                   <a onClick={() => navigateTo(`/scenes/${scene.id}`)}>预览</a>
+                                   {!statusOn && <a onClick={() => navigateTo(`/scenes/${scene.id}/edit`)}>编辑</a>}
+                                   {statusOn ? <a onClick={() => disableScene(scene.id)}>禁用</a> : <a onClick={() => publishScene(scene.id)}>启用</a>}
+                                   <a onClick={() => copyScene(scene.id)}>复制</a>
+                                   {statusOn && <a onClick={() => navigateTo(`/tasks/new?sceneId=${encodeURIComponent(scene.id)}`)}>创建任务</a>}
                                   <a className="del" onClick={() => setSceneToDelete(scene)}>删除</a>
                                 </div>
                               </td>
@@ -2329,7 +2365,7 @@ export function AdminDashboard() {
                           );
                         })}
                         {scenePageItems.length === 0 && (
-                          <tr className="empty-row"><td colSpan={10}>暂无符合条件的场景</td></tr>
+                          <tr className="empty-row"><td colSpan={11}>暂无符合条件的场景</td></tr>
                         )}
                       </tbody>
                     </table>
@@ -2495,7 +2531,7 @@ export function AdminDashboard() {
                     )}
                     <div className="prompt-actions">
                       <button className="btn outline" type="button" onClick={() => setShowSceneWizard(false)}>取消</button>
-                      <button className="btn" type="button" onClick={handleAiGenerateAndNext} disabled={submitting || !aiGenerateForm.sceneDescription.trim() || aiGenerateForm.sceneDescription.trim().length < 10}>{submitting ? "AI 生成中..." : "提交"}</button>
+                      <button className="btn" type="button" onClick={handleAiGenerateAndNext} disabled={submitting || sceneAttachmentsUploading || sceneAttachments.some((item) => item.status === "uploading") || !aiGenerateForm.sceneDescription.trim() || aiGenerateForm.sceneDescription.trim().length < 10}>{submitting ? "AI 生成中..." : sceneAttachmentsUploading ? "附件上传中..." : "提交"}</button>
                     </div>
                   </div>
                 </div>
@@ -4600,11 +4636,6 @@ function LoginCaptchaModal({
     </div>
   );
 }
-
-
-
-
-
 
 
 

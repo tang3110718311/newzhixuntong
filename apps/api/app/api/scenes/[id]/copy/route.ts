@@ -32,6 +32,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       createdBy: user?.id ?? null,
       sceneType: detail.scene.sceneType,
       description: detail.scene.description || "",
+      passScore: detail.scene.passScore,
       aiRole: aiRole ? {
         identity: aiRole.identity || "",
         background: aiRole.background || "",
@@ -55,6 +56,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         deductionRule: rule.deductionRule,
         evidenceRequired: rule.evidenceRequired,
       })),
+      attachmentFileIds: detail.attachments.map((attachment) => attachment.id),
     });
 
     if (!created) return fail("SCENE_COPY_FAILED", "场景复制失败，请稍后重试。", 500);

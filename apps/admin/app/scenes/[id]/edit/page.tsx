@@ -118,6 +118,11 @@ export default function SceneEditPage() {
   const [rightRail, setRightRail] = useState<RightRailData | undefined>(undefined);
 
   // 表单字段（与后端 role/rule 字段对应）
+  const [sceneTitle, setSceneTitle] = useState("");
+  const [sceneTitleEditing, setSceneTitleEditing] = useState(false);
+  const [sceneMode, setSceneMode] = useState("");
+  const [sceneDescInput, setSceneDescInput] = useState("");
+  const [passScore, setPassScore] = useState(60);
   const [aiIdentity, setAiIdentity] = useState("");        // AI扮演角色 → aiRole.identity
   const [aiPosition, setAiPosition] = useState("");        // 身份地位 → aiRole.goal
   const [aiBackground, setAiBackground] = useState("");    // 背景简介 → aiRole.background
@@ -131,6 +136,13 @@ export default function SceneEditPage() {
   const [dialogInterrupt, setDialogInterrupt] = useState(""); // 中断条件
   const [dialogExample, setDialogExample] = useState("");  // 对话实例 → rule.description
   const [scoringRuleForms, setScoringRuleForms] = useState<SceneDetail["scoringRules"]>([]);
+
+  // 顶层附件（场景信息模块内的附件上传）
+  const topAttachmentInputRef = useRef<HTMLInputElement>(null);
+  const [topAttachments, setTopAttachments] = useState<EditAttachment[]>([]);
+  const [topAttachmentsUploading, setTopAttachmentsUploading] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenerationAttachmentIds, setRegenerationAttachmentIds] = useState<string[]>([]);
 
   // 附件
   const editAttachmentInputRef = useRef<HTMLInputElement>(null);
@@ -160,6 +172,10 @@ export default function SceneEditPage() {
   function initFormFromDetail(d: SceneDetail) {
     const ai = d.roles.find((r) => r.roleType === "ai");
     const learner = d.roles.find((r) => r.roleType !== "ai");
+    setSceneTitle(d.scene.name || "");
+    setSceneMode(d.scene.createMode || d.scene.mode || "");
+    setSceneDescInput(d.scene.description || "");
+    setPassScore(d.scene.passScore || 60);
     setAiIdentity(ai?.identity || "");
     setAiPosition(ai?.goal || "");
     setAiBackground(ai?.background || "");
@@ -179,6 +195,13 @@ export default function SceneEditPage() {
       status: "done",
       error: item.parseError || undefined,
     })));
+    setTopAttachments((d.attachments || []).map((item) => ({
+      fileId: item.id,
+      name: item.name,
+      status: "done",
+      error: item.parseError || undefined,
+    })));
+    setRegenerationAttachmentIds([]);
   }
 
   async function handleEditAttachmentsSelected(event: React.ChangeEvent<HTMLInputElement>) {
@@ -246,7 +269,118 @@ export default function SceneEditPage() {
     setGoalAiStatus(`已基于 ${goalAttachments.length} 个附件生成对话目标，可直接修改`);
   }
 
-  async function handleSave() {
+  // 顶层附件上传处理
+  async function handleTopAttachmentsSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!files.length) return;
+    setTopAttachmentsUploading(true);
+    let folderId = "";
+    try {
+      const data = await apiFetch<{ items: Array<{ id: string; name: string }> }>("/knowledge?pageSize=1");
+      folderId = data.items?.[0]?.id || "";
+    } catch {
+      folderId = "";
+    }
+    if (!folderId) {
+      setError("知识库暂无文件夹，请先在企业知识库中创建文件夹。");
+      setTopAttachmentsUploading(false);
+      return;
+    }
+    for (const file of files) {
+      const localKey = `${file.name}-${file.size}-${file.lastModified}`;
+      setTopAttachments((prev) => [...prev, { fileId: localKey, name: file.name, status: "uploading" }]);
+      try {
+        const formData = new FormData();
+        formData.append("folderId", folderId);
+        formData.append("file", file);
+        const uploaded = await apiFetch<{ id: string; name: string; parseStatus: string; parseError?: string }>("/knowledge/files", { method: "POST", body: formData });
+        setTopAttachments((prev) => prev.map((item) => (item.fileId === localKey ? { ...item, fileId: uploaded.id, name: uploaded.name || file.name, status: "done", error: uploaded.parseError || undefined } : item)));
+        setRegenerationAttachmentIds((prev) => prev.includes(uploaded.id) ? prev : [...prev, uploaded.id]);
+      } catch (err) {
+        setTopAttachments((prev) => prev.map((item) => (item.fileId === localKey ? { ...item, status: "failed", error: err instanceof Error ? err.message : "上传失败" } : item)));
+      }
+    }
+    setTopAttachmentsUploading(false);
+  }
+
+  function removeTopAttachment(fileId?: string) {
+    setTopAttachments((prev) => prev.filter((item) => item.fileId !== fileId));
+    if (fileId) setRegenerationAttachmentIds((prev) => prev.filter((id) => id !== fileId));
+  }
+
+  const hasNewRegenerationAttachment = topAttachments.some((item) =>
+    item.status === "done" && !!item.fileId && regenerationAttachmentIds.includes(item.fileId),
+  );
+  const canRegenerateScene = hasNewRegenerationAttachment
+    && !regenerating
+    && !topAttachmentsUploading
+    && !!sceneDescInput.trim()
+    && !topAttachments.some((item) => item.status === "uploading");
+
+  // 重新生成场景（基于当前场景说明和附件，调用 AI 重新生成配置）
+  async function handleRegenerateScene() {
+    if (!detail || !sceneDescInput.trim()) {
+      setError("场景说明不能为空，请先填写场景描述");
+      return;
+    }
+    if (topAttachments.some((item) => item.status === "uploading")) {
+      setError("附件仍在上传中，请完成后再重新生成。");
+      return;
+    }
+    setRegenerating(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await apiFetch<{
+        scene: { id: string } | null;
+        draft: {
+          name?: string;
+          description?: string;
+          aiRole?: { identity: string; background: string; personality: string; emotion: string; goal: string };
+          learnerRole?: { identity: string; goal: string };
+          endCondition?: string;
+          interruptCondition?: string;
+          scoringRules?: Array<{ name: string; score: number; criteria: string; deductionRule: string; evidenceRequired: string }>;
+        };
+      }>("/ai/scenes/generate", {
+        method: "POST",
+        body: JSON.stringify({
+          sceneDescription: sceneDescInput,
+          createMode: sceneMode || detail.scene.createMode || "ai_practice",
+          mode: detail.scene.mode || "voice",
+          targetRole: learnerIdentity || "客服坐席",
+          attachmentFileIds: topAttachments.filter((a) => a.fileId && a.status === "done").map((a) => a.fileId as string),
+        }),
+      });
+      const draft = result.draft;
+      // 回填表单
+      if (draft.aiRole) {
+        setAiIdentity(draft.aiRole.identity || "");
+        setAiBackground(draft.aiRole.background || "");
+        setAiPersonality(draft.aiRole.personality || "");
+        setAiEmotion(draft.aiRole.emotion || "calm");
+        setAiPosition(draft.aiRole.goal || "");
+      }
+      if (draft.learnerRole) {
+        setLearnerIdentity(draft.learnerRole.identity || "");
+        setDialogGoal(draft.learnerRole.goal || "");
+      }
+      if (draft.endCondition !== undefined) setDialogEndCondition(draft.endCondition);
+      if (draft.interruptCondition !== undefined) setDialogInterrupt(draft.interruptCondition);
+      if (draft.scoringRules?.length) {
+        setScoringRuleForms(draft.scoringRules.map((r) => ({ ...r })));
+      }
+      setRegenerationAttachmentIds([]);
+      setMessage("场景已重新生成，请确认内容后保存。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "重新生成失败，请检查 AI 模型配置。");
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
+  async function handleSave(status: "disabled" | "published") {
     if (!detail) return;
     if (!aiIdentity.trim() || !learnerIdentity.trim() || !aiEmotion || !dialogGoal.trim()) {
       setError("请完整填写 AI扮演角色、学员角色扮演、AI情绪设置和对话目标");
@@ -271,8 +405,10 @@ export default function SceneEditPage() {
       const updated = await apiFetch<SceneDetail>(`/scenes/${detail.scene.id}`, {
         method: "PUT",
         body: JSON.stringify({
-          name: detail.scene.name,
+          name: sceneTitle || detail.scene.name,
           description: sceneDesc,
+          passScore: passScore,
+          createMode: sceneMode || detail.scene.createMode,
           aiRole: {
             identity: aiIdentity,
             background: aiBackground,
@@ -297,6 +433,7 @@ export default function SceneEditPage() {
             evidenceRequired: r.evidenceRequired,
           })),
           attachmentFileIds: editAttachments.filter((item) => item.status === "done" && item.fileId).map((item) => item.fileId as string),
+          status,
         }),
       });
       setDetail(updated);
@@ -307,7 +444,13 @@ export default function SceneEditPage() {
         status: item.parseStatus === "failed" ? "failed" : "done",
         error: item.parseError || undefined,
       })));
-      setMessage("保存成功。");
+      setTopAttachments((updated.attachments || []).map((item) => ({
+        fileId: item.id,
+        name: item.name,
+        status: item.parseStatus === "failed" ? "failed" : "done",
+        error: item.parseError || undefined,
+      })));
+      setMessage(status === "published" ? "提交成功，场景已启用。" : "保存成功，场景为禁用状态。");
       navigateTo(`/scenes/${detail.scene.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
@@ -354,16 +497,101 @@ export default function SceneEditPage() {
             <div className="scene-form-head">
               <div>
                 <h1>完善场景配置</h1>
-                <span className={`form-mode-badge${isFixed ? " fixed" : ""}`}>{sceneCreationModeLabel(createMode)}</span>
                 <p className="muted">{formModeDesc}</p>
               </div>
               <div className="scene-form-actions">
                  <button className="btn outline" type="button" onClick={() => navigateBackOr(`/scenes/${detail.scene.id}`)} disabled={submitting}>
                   取消
                 </button>
-                <button className="btn" type="button" disabled={submitting} onClick={handleSave}>
-                  {submitting ? "保存中…" : "保存"}
+                <button className="btn outline" type="button" disabled={submitting} onClick={() => handleSave("disabled")}>
+                  {submitting ? "处理中…" : "保存"}
                 </button>
+                <button className="btn" type="button" disabled={submitting} onClick={() => handleSave("published")}>
+                  {submitting ? "处理中…" : "提交"}
+                </button>
+              </div>
+            </div>
+
+            {/* 00 场景信息 */}
+            <div className="form-section config-section">
+              <div className="form-section-heading">
+                <span className="section-number">00</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <h2 style={{ margin: 0 }}>
+                    {sceneTitleEditing ? (
+                      <input
+                        style={{ fontSize: 18, fontWeight: 600, color: "#213958", border: "1px solid #6e9eed", borderRadius: 7, padding: "4px 10px", width: "100%", maxWidth: 400 }}
+                        value={sceneTitle}
+                        onChange={(e) => setSceneTitle(e.target.value)}
+                        placeholder="请输入场景名称"
+                      />
+                    ) : (
+                      <span>{sceneTitle || "场景信息"}</span>
+                    )}
+                  </h2>
+                  <span className={`form-mode-badge${isFixed ? " fixed" : ""}`}>{sceneCreationModeLabel(createMode)}</span>
+                </div>
+                <p>{sceneDescInput || "暂无场景说明"}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSceneTitleEditing(!sceneTitleEditing)}
+                title={sceneTitleEditing ? "锁定" : "编辑"}
+                  style={{
+                    border: "1px solid #dce6f3",
+                    borderRadius: 7,
+                    background: sceneTitleEditing ? "#eaf2ff" : "#fff",
+                    color: "#3477e8",
+                    cursor: "pointer",
+                    padding: "6px 10px",
+                    fontSize: 13,
+                    whiteSpace: "nowrap",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    marginLeft: "auto",
+                    flex: "none",
+                  }}
+                >
+                  {sceneTitleEditing ? "🔒 锁定" : "✏ 编辑"}
+                </button>
+              </div>
+              <div className="form-grid config-grid">
+                {/* 上传附件 */}
+                <div className="form-item full">
+                  <label>上传附件</label>
+                  <div className="goal-ai-upload">
+                    <div className="goal-ai-upload-main">
+                      <input ref={topAttachmentInputRef} type="file" multiple accept=".pdf,.docx,.xlsx,.pptx,.txt,.md" style={{ display: "none" }} onChange={handleTopAttachmentsSelected} />
+                      <label className="goal-upload-trigger" onClick={() => topAttachmentInputRef.current?.click()}>
+                        {topAttachmentsUploading ? "上传解析中…" : "📎 上传附件"}
+                      </label>
+                      <button
+                        type="button"
+                        className="btn outline goal-ai-button"
+                        onClick={handleRegenerateScene}
+                        disabled={!canRegenerateScene}
+                      >
+                        {regenerating ? "重新生成中…" : "✦ 重新生成场景"}
+                      </button>
+                      <span>上传新的附件后，可重新生成场景配置</span>
+                    </div>
+                    <div className="goal-attachment-list">
+                      {topAttachments.map((item) => (
+                        <span key={item.fileId || item.name} className="goal-attachment-chip" title={item.name}>
+                          📎 {item.name}
+                          {item.status === "uploading" && "（解析中…）"}
+                          {item.status === "failed" && "（失败）"}
+                          <button type="button" onClick={() => removeTopAttachment(item.fileId)} aria-label={`删除附件 ${item.name}`}>×</button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="goal-ai-upload-actions">
+                      <small>{hasNewRegenerationAttachment ? "新附件已上传，可重新生成场景" : "当前附件未发生替换，重新生成场景暂不可用"}</small>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -414,30 +642,8 @@ export default function SceneEditPage() {
                   <textarea className="field" maxLength={200} value={learnerIdentity} onChange={(e) => setLearnerIdentity(e.target.value)} placeholder="请输入学员扮演的角色、身份和任务" style={{ minHeight: 100, resize: "vertical" }} />
                   <div className="field-count"><span>{learnerIdentity.length}</span>/200</div>
                 </div>
-                <div className="form-item full">
-                  <label>上传附件</label>
-                  <div className="upload-box">
-                    <div className="upload-main">
-                      <input ref={editAttachmentInputRef} type="file" multiple accept=".pdf,.docx,.xlsx,.pptx,.txt,.md" style={{ display: "none" }} onChange={handleEditAttachmentsSelected} />
-                      <label className="upload-trigger" onClick={() => editAttachmentInputRef.current?.click()}>
-                        {editAttachmentsUploading ? "上传解析中…" : "选择附件"}
-                      </label>
-                      <span className="upload-tip">支持同时选择多个附件，单个文件不超过 20MB</span>
-                    </div>
-                    <div className="attachment-list">
-                      {editAttachments.map((item) => (
-                        <span key={item.fileId || item.name} className="attachment-chip">
-                          📎 {item.name}
-                          {item.status === "uploading" && "（解析中…）"}
-                          {item.status === "failed" && "（失败）"}
-                          <button type="button" style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer", marginLeft: 4 }} onClick={() => removeEditAttachment(item.fileId)} aria-label={`删除附件 ${item.name}`}>×</button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
+          </div>
 
             {/* 02 对话设置 */}
             <div className="form-section dialogue-section">
@@ -522,7 +728,7 @@ export default function SceneEditPage() {
                 {scoringRuleForms.map((rule, index) => (
                   <div key={`${rule.id || "new"}-${index}`} className="scoring-row">
                     <input value={rule.name} maxLength={30} placeholder="评分维度" onChange={(e) => updateScoringRuleForm(index, { name: e.target.value })} />
-                    <input value={rule.criteria} maxLength={100} placeholder="评分说明" onChange={(e) => updateScoringRuleForm(index, { criteria: e.target.value })} />
+                    <textarea rows={Math.max(2, Math.ceil(rule.criteria.length / 36))} value={rule.criteria} maxLength={500} placeholder="评分说明" onChange={(e) => updateScoringRuleForm(index, { criteria: e.target.value })} />
                     <div className="scoring-score">
                       <input type="number" min={1} max={100} value={rule.score || ""} placeholder="分值" onChange={(e) => updateScoringRuleForm(index, { score: Number(e.target.value) })} />
                       <span>分</span>
@@ -532,7 +738,24 @@ export default function SceneEditPage() {
                 ))}
               </div>
               <button type="button" className="scoring-add" id="formScoringAdd" onClick={addScoringRuleForm}>＋ 添加评分项</button>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0" }}>
+                <label style={{ color: "#60738e", fontSize: 14, fontWeight: 600, whiteSpace: "nowrap" }}>合格分数</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={passScore}
+                  onChange={(e) => setPassScore(Number(e.target.value))}
+                  style={{ width: 80, height: 36, border: "1px solid #dce6f3", borderRadius: 7, padding: "0 11px", fontSize: 14, background: "#fff" }}
+                />
+                <span style={{ color: "#8797aa", fontSize: 13 }}>分（总分 100 分，合格分数默认 60 分，可修改）</span>
+              </div>
               <div className="scoring-total">总分：<b id="formScoringTotal">{totalScore}</b> 分</div>
+            </div>
+            <div className="form-actions scene-form-bottom-actions">
+              <button className="btn outline" type="button" onClick={() => navigateBackOr(`/scenes/${detail.scene.id}`)} disabled={submitting}>取消</button>
+              <button className="btn outline" type="button" disabled={submitting} onClick={() => handleSave("disabled")}>{submitting ? "处理中…" : "保存"}</button>
+              <button className="btn" type="button" disabled={submitting} onClick={() => handleSave("published")}>{submitting ? "处理中…" : "提交"}</button>
             </div>
           </div>
         )}

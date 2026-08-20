@@ -291,6 +291,8 @@ export const createSceneSchema = z.object({
     evidenceRequired: z.string().max(500).optional().default(""),
   })).optional().default([]),
   attachmentFileIds: z.array(z.string().min(1)).optional().default([]),
+  passScore: z.coerce.number().int().min(0).max(100).optional().default(60),
+  status: z.enum(["disabled", "published"]).optional().default("published"),
 });
 
 
@@ -321,6 +323,8 @@ export const updateSceneSchema = z.object({
     evidenceRequired: z.string().max(500).optional().default(""),
   })).optional(),
   attachmentFileIds: z.array(z.string().min(1)).optional(),
+  passScore: z.coerce.number().int().min(0).max(100).optional(),
+  status: z.enum(["disabled", "published"]).optional(),
 });
 
 export const createMaterialSchema = z.object({
@@ -535,6 +539,4 @@ export const updateKnowledgeFolderSchema = z.object({
   name: z.string().min(2).max(120).optional(),
   description: z.string().max(1000).optional(),
 });
-
-
 
