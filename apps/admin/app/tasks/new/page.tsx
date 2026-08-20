@@ -117,9 +117,16 @@ export default function TaskCreatePage() {
       apiFetch<PageResult<LearnerItem>>("/users?pageSize=200"),
     ])
       .then(([sceneRes, orgRes, userRes]) => {
-        setScenes(sceneRes.items || []);
+        const sceneItems = sceneRes.items || [];
+        setScenes(sceneItems);
         setOrgs(orgRes.items || []);
         setLearners((userRes.items || []).filter((u) => u.roleCode === "learner"));
+        const initialSceneId = new URLSearchParams(window.location.search).get("sceneId") || "";
+        if (initialSceneId) {
+          const initialScene = sceneItems.find((scene) => scene.id === initialSceneId);
+          if (initialScene) setSelectedScenes([initialScene]);
+          else setError("未找到从场景管理带入的场景，请重新选择。");
+        }
       })
       .catch((err) => setError(err instanceof Error ? err.message : "加载数据失败"))
       .finally(() => setLoaded(true));
