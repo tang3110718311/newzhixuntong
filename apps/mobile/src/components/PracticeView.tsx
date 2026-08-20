@@ -108,6 +108,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   // 分句播放会话 token：stopAiSpeak / 新播放 / 组件卸载时递增，播放循环检测变化即退出
   const speakSeqRef = useRef(0);
   const ttsCacheRef = useRef(new Map<string, Promise<{ audioBase64: string; format: string }>>());
+  const quitRequestedRef = useRef(false);
 
   const sceneName = scene?.scene?.name || "场景对练";
   const aiRole = scene?.roles?.find((r: any) => r.roleType === "ai");
@@ -131,12 +132,22 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         action: "start",
       })
       .then((res) => {
+        if (quitRequestedRef.current) {
+          if (res.sessionId) {
+            void aiApi.chat({ sceneId, action: "quit", sessionId: res.sessionId }).catch(() => undefined);
+          }
+          return;
+        }
         if (res.sessionId) setSessionId(res.sessionId);
         setInspirationHint(res.inspirationHint ?? null);
-        pushAiMsgAndSpeak(res.aiReply || "你好，我是" + aiName + "，我们开始吧。", res.emotion || "default");
+        void pushAiMsgAndSpeak(res.aiReply || "你好，我是" + aiName + "，我们开始吧。", res.emotion || "default");
       })
-      .catch(() => pushMsg({ who: "ai", text: "（AI 对练服务暂时不可用，请稍后重试）" }))
-      .finally(() => setSending(false));
+      .catch(() => {
+        if (!quitRequestedRef.current) pushMsg({ who: "ai", text: "（AI 对练服务暂时不可用，请稍后重试）" });
+      })
+      .finally(() => {
+        if (!quitRequestedRef.current) setSending(false);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sceneId]);
 
@@ -206,6 +217,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         sessionId,
         learnerText: text.trim(),
       });
+      if (quitRequestedRef.current) return;
       const activeSessionId = res.sessionId || sessionId;
       if (res.sessionId && res.sessionId !== sessionId) setSessionId(res.sessionId);
       const turnScores = res.perTurnScores ?? [];
@@ -221,6 +233,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       } : message));
       // 评分卡必须先完成首帧渲染，再继续展示或播报 AI 的下一句。
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      if (quitRequestedRef.current) return;
       const speakPromise = res.aiReply ? pushAiMsgAndSpeak(res.aiReply, res.emotion || "default") : null;
       setInspirationHint(res.inspirationHint ?? null);
       if (res.isFinished) {
@@ -247,6 +260,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
             ]);
           } catch { /* 等待失败不影响进入报告页 */ }
         }
+        if (quitRequestedRef.current) return;
         onReport(activeSessionId);
       }
     } catch (e: any) {
@@ -267,11 +281,13 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   };
 
   const endPractice = async () => {
-    if (sending || !sceneId || !sessionId) return;
+    if (quitRequestedRef.current || sending || !sceneId || !sessionId) return;
     setSending(true);
     try {
       const res = await aiApi.chat({ sceneId, action: "end", sessionId });
+      if (quitRequestedRef.current) return;
       if (res.aiReply) await pushAiMsgAndSpeak(res.aiReply, res.emotion || "default");
+      if (quitRequestedRef.current) return;
       showToast("对练结束，正在生成报告…");
       onReport(res.sessionId || sessionId);
     } catch (e: any) {
@@ -836,6 +852,29 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     }, 300);
   };
 
+  const quitPractice = async () => {
+    const confirmed = window.confirm("确定退出当前对练吗？");
+    if (!confirmed) return;
+    quitRequestedRef.current = true;
+    chatSubmittingRef.current = true;
+    stopAiSpeak();
+    setRecording(false);
+    stopLiveRecognition();
+    voiceTextSentRef.current = true;
+    stopRecorderAndStream();
+    setLiveText("");
+    liveTextRef.current = "";
+    setSending(false);
+    if (sceneId && sessionId) {
+      try {
+        await aiApi.chat({ sceneId, action: "quit", sessionId });
+      } catch {
+        /* 退出不生成报告；会话清理失败不阻塞返回任务详情 */
+      }
+    }
+    onBack();
+  };
+
   const hint = inspirationHint ?? {
     title: "回答方向",
     body: "暂无新的上下文提示，请先结合 AI 最新追问自行组织回答。",
@@ -845,7 +884,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     <div className="pv-shell mobile-page-background">
       {/* ===== 顶部导航（淡天蓝渐变） ===== */}
       <header className="pv-nav">
-        <MobilePageAction kind="back" variant="immersive" onClick={onBack} aria-label="返回场景工作台" />
+        <MobilePageAction kind="back" variant="immersive" onClick={() => void quitPractice()} aria-label="退出对练" />
         <div className="pv-nav-title">
           <h1>AI对练</h1>
           <span className="pv-live-badge">

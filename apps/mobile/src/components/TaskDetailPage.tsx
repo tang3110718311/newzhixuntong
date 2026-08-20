@@ -142,7 +142,7 @@ const cls = isStopped ? "overdue" : task.status === "completed" ? "done" : taskD
       <PracticeView
         scene={sceneDetail}
         task={task}
-        onBack={() => setView("workspace")}
+        onBack={() => setView("detail")}
         showToast={showToast}
         onReport={(sessionId) => {
           setReportSessionId(sessionId);
