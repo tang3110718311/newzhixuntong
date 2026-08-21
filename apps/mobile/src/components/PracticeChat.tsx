@@ -2,7 +2,18 @@
 
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { getFullTextFallback } from "@/lib/speech-sync";
-import { type AiTurnScore } from "@/lib/api";
+
+export type PracticeFeedbackDimension = {
+  name: string;
+  score: number;
+  maxScore: number;
+  level: "excellent" | "pass" | "developing";
+  reason?: string;
+  issues?: string[];
+  advice?: string[];
+};
+
+export type PracticeScoringRule = { name: string; score: number };
 
 export interface PracticeChatMsg {
   id: string;
@@ -12,10 +23,51 @@ export interface PracticeChatMsg {
   isVoice?: boolean;
   voiceAudioUrl?: string;
   score?: number | null;
-  dimensions?: AiTurnScore[];
+  dimensions?: PracticeFeedbackDimension[];
   issues?: string[];
   advice?: string[];
   feedbackMessage?: string;
+}
+
+/** 将实时评分与报告落库评分统一构造成同一种反馈卡消息。 */
+export function buildPracticeFeedbackMessage({
+  id,
+  dimensions = [],
+  scoringRules = [],
+  pending = false,
+  pendingMessage = "本轮评分正在补齐，完成后将自动展示详细反馈。",
+}: {
+  id: string;
+  dimensions?: PracticeFeedbackDimension[];
+  scoringRules?: PracticeScoringRule[];
+  pending?: boolean;
+  pendingMessage?: string;
+}): PracticeChatMsg {
+  const normalizedDimensions = scoringRules.length
+    ? scoringRules.map((rule) => dimensions.find((item) => item.name === rule.name) ?? {
+      name: rule.name,
+      score: 0,
+      maxScore: rule.score,
+      level: "developing" as const,
+      reason: "本轮未命中该评分维度",
+      issues: [],
+      advice: [],
+    })
+    : dimensions;
+  const issues = normalizedDimensions.flatMap((item) => item.issues ?? []).filter(Boolean);
+  const advice = normalizedDimensions.flatMap((item) => item.advice ?? []).filter(Boolean);
+  const earnedScore = normalizedDimensions.reduce((total, item) => total + (Number(item.score) || 0), 0);
+  const possibleScore = normalizedDimensions.reduce((total, item) => total + (Number(item.maxScore) || 0), 0);
+  return {
+    id,
+    who: "feedback",
+    text: "",
+    score: possibleScore > 0 ? Math.round((earnedScore / possibleScore) * 100) : null,
+    dimensions: normalizedDimensions,
+    issues,
+    advice,
+    feedbackMessage: pending ? pendingMessage : normalizedDimensions.length ? undefined : "本轮暂无可用评分，已继续进行对练。",
+  };
 }
 
 interface PracticeChatProps {
@@ -53,8 +105,8 @@ function AiAvatar({ reportMode = false }: { reportMode?: boolean }) {
   );
 }
 
-function PracticeFeedbackCard({ message }: { message: PracticeChatMsg }) {
-  const [collapsed, setCollapsed] = useState(true);
+function PracticeFeedbackCard({ message, reportMode = false }: { message: PracticeChatMsg; reportMode?: boolean }) {
+  const [collapsed, setCollapsed] = useState(!reportMode);
   const hasDetail =
     (message.dimensions && message.dimensions.length > 0) ||
     message.feedbackMessage ||
@@ -101,7 +153,7 @@ function PracticeFeedbackCard({ message }: { message: PracticeChatMsg }) {
               ))}
             </div>
           )}
-          {message.feedbackMessage && <p className="pv-feedback-empty">{message.feedbackMessage}</p>}
+           {message.feedbackMessage && <p>{message.feedbackMessage}</p>}
           {message.issues && message.issues.length > 0 && (
             <div className="pv-feedback-sec">
               <span>问题定位</span>
@@ -184,7 +236,7 @@ export default function PracticeChat({
         if (message.who === "feedback") {
           return (
             <div className="pv-msg feedback" key={message.id}>
-              <PracticeFeedbackCard message={message} />
+              <PracticeFeedbackCard message={message} reportMode={reportMode} />
             </div>
           );
         }

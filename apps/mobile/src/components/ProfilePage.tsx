@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { taskApi, recordApi, type AuthUser } from "@/lib/api";
 import type { PageKey } from "./MobileApp";
+import type { MobileModalKey, MobileRouteState } from "@/lib/mobileRoutes";
 import MobilePageAction from "./MobilePageAction";
 
 const IMAGE_UPLOAD_MAX_BYTES = 2 * 1024 * 1024;
@@ -41,10 +43,14 @@ interface ProfilePageProps {
   onNavigate: (p: PageKey) => void;
   onLogout: () => void;
   showToast: (msg: string) => void;
+  routeState: MobileRouteState;
+  onOpenModal: (modal: MobileModalKey) => void;
+  onCloseModal: () => void;
 }
 
-export default function ProfilePage({ user, onNavigate, onLogout, showToast }: ProfilePageProps) {
-  const [view, setView] = useState<"main" | "avatar">("main");
+export default function ProfilePage({ user, onNavigate, onLogout, showToast, routeState, onOpenModal, onCloseModal }: ProfilePageProps) {
+  const router = useRouter();
+  const view = routeState.profileView;
   const [taskTotal, setTaskTotal] = useState(0);
   const [taskDone, setTaskDone] = useState(0);
   const [learnHours, setLearnHours] = useState(0);
@@ -53,10 +59,10 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
   const fileRef = useRef<HTMLInputElement>(null);
 
   // 账号信息弹窗状态
-  const [accountOpen, setAccountOpen] = useState(false);
+  const accountOpen = routeState.modal === "account";
 
   // 问题反馈弹窗状态
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const feedbackOpen = routeState.modal === "feedback";
   const [feedbackTitle, setFeedbackTitle] = useState("");
   const [feedbackContent, setFeedbackContent] = useState("");
   const [feedbackImages, setFeedbackImages] = useState<{ name: string; data: string }[]>([]);
@@ -185,20 +191,20 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
       showToast("请填写反馈标题和内容");
       return;
     }
-    setFeedbackOpen(false);
+    onCloseModal();
     showToast(
       feedbackImages.length ? `反馈已提交，附带 ${feedbackImages.length} 张图片` : "感谢反馈，我们会尽快处理"
     );
     setFeedbackTitle("");
     setFeedbackContent("");
     setFeedbackImages([]);
-  }, [feedbackTitle, feedbackContent, feedbackImages.length, showToast]);
+  }, [feedbackTitle, feedbackContent, feedbackImages.length, showToast, onCloseModal]);
 
   if (view === "avatar") {
     return (
       <>
         <div className="avatar-page-head">
-          <button className="avatar-back" onClick={() => setView("main")} aria-label="返回个人中心">
+          <button className="avatar-back" onClick={() => router.push("/profile")} aria-label="返回个人中心">
             ‹
           </button>
           <div>
@@ -253,7 +259,7 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
       <div className="profile-card">
         <button
           className="avatar avatar-button"
-          onClick={() => setView("avatar")}
+          onClick={() => router.push("/profile/avatar")}
           aria-label="更换头像"
         >
           {avatar ? <img src={avatar} alt="头像" /> : <span className="default-avatar" />}
@@ -264,7 +270,7 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
             {roleText}　·　员工编号 {user?.id?.slice(0, 8) || "ZXT-0000"}
           </p>
         </div>
-        <button className="change-avatar-btn" onClick={() => setView("avatar")}>
+        <button className="change-avatar-btn" onClick={() => router.push("/profile/avatar")}>
           更换头像
         </button>
       </div>
@@ -305,7 +311,7 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
         </div>
       </div>
       <div className="menu-card">
-        <div className="menu-row" onClick={() => setAccountOpen(true)}>
+        <div className="menu-row" onClick={() => onOpenModal("account")}>
           <span className="mi">◎</span>
           <span>账号信息</span>
           <span className="arrow">›</span>
@@ -321,7 +327,7 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
             }}
           />
         </div>
-        <div className="menu-row" onClick={() => setFeedbackOpen(true)}>
+        <div className="menu-row" onClick={() => onOpenModal("feedback")}>
           <span className="mi">✎</span>
           <span>问题反馈</span>
           <span className="arrow">›</span>
@@ -342,7 +348,7 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
             <div className="modal">
               <div className="modal-title-row">
                 <h3>问题反馈</h3>
-                <MobilePageAction kind="close" variant="overlay" onClick={() => setFeedbackOpen(false)} />
+                <MobilePageAction kind="close" variant="overlay" onClick={onCloseModal} />
               </div>
               <input
                 value={feedbackTitle}
@@ -387,7 +393,7 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
                 ))}
               </div>
               <div className="modal-actions">
-                <button className="secondary" onClick={() => setFeedbackOpen(false)}>
+                <button className="secondary" onClick={onCloseModal}>
                   取消
                 </button>
                 <button className="primary" onClick={submitFeedback}>
@@ -403,7 +409,7 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
           <div
             className={`account-mask ${accountOpen ? "show" : ""}`}
             onClick={(e) => {
-              if (e.target === e.currentTarget) setAccountOpen(false);
+              if (e.target === e.currentTarget) onCloseModal();
             }}
           >
             <div className="account-modal">
@@ -412,7 +418,7 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
                   <h3>账号信息</h3>
                   <p>完善个人资料，便于企业内身份识别</p>
                 </div>
-                <MobilePageAction kind="close" variant="overlay" onClick={() => setAccountOpen(false)} />
+                <MobilePageAction kind="close" variant="overlay" onClick={onCloseModal} />
               </div>
               <div className="account-fields">
                 <div className="account-field">
@@ -437,13 +443,13 @@ export default function ProfilePage({ user, onNavigate, onLogout, showToast }: P
                 </div>
               </div>
               <div className="account-modal-actions">
-                <button className="secondary" onClick={() => setAccountOpen(false)}>
+                <button className="secondary" onClick={onCloseModal}>
                   取消
                 </button>
                 <button
                   className="primary"
                   onClick={() => {
-                    setAccountOpen(false);
+                    onCloseModal();
                     showToast("资料已是最新");
                   }}
                 >

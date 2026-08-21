@@ -2,11 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { authApi, type CaptchaChallenge } from "@/lib/api";
+import type { MobileModalKey } from "@/lib/mobileRoutes";
 import MobilePageAction from "./MobilePageAction";
 
 interface LoginScreenProps {
   onLoginSuccess: (mobile: string, password: string, captchaToken: string) => Promise<any>;
   showToast: (msg: string) => void;
+  modal: MobileModalKey | null;
+  onOpenModal: (modal: MobileModalKey) => void;
+  onCloseModal: () => void;
 }
 
 function safeCaptchaImageUrl(value?: string): string | null {
@@ -35,13 +39,13 @@ function PasswordIcon() {
   );
 }
 
-export default function LoginScreen({ onLoginSuccess, showToast }: LoginScreenProps) {
+export default function LoginScreen({ onLoginSuccess, showToast, modal, onOpenModal, onCloseModal }: LoginScreenProps) {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showCaptcha, setShowCaptcha] = useState(false);
+  const showCaptcha = modal === "captcha";
 
   const valid = phone.length === 11 && password.length >= 6;
 
@@ -51,11 +55,11 @@ export default function LoginScreen({ onLoginSuccess, showToast }: LoginScreenPr
       return;
     }
     setError("");
-    setShowCaptcha(true);
+    onOpenModal("captcha");
   };
 
   const handleCaptchaPass = async (captchaToken: string) => {
-    setShowCaptcha(false);
+    onCloseModal();
     setLoading(true);
     try {
       await onLoginSuccess(phone, password, captchaToken);
@@ -156,7 +160,7 @@ export default function LoginScreen({ onLoginSuccess, showToast }: LoginScreenPr
       </section>
       {showCaptcha && (
         <CaptchaModal
-          onClose={() => setShowCaptcha(false)}
+          onClose={onCloseModal}
           onPass={handleCaptchaPass}
         />
       )}

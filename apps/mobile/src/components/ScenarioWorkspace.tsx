@@ -4,8 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { recordApi } from "@/lib/api";
 import { isMaterialDone, getExamCount, getExamRecords, type ExamRecord } from "@/lib/sceneProgress";
 import { taskFormText, taskDisplayStatus } from "@/lib/types";
-import PracticeReport from "./PracticeReport";
-import ExamReport from "./ExamReport";
 import MobilePageAction from "./MobilePageAction";
 import UnifiedTabs from "./UnifiedTabs";
 
@@ -19,7 +17,18 @@ interface ScenarioWorkspaceProps {
   onEnterMaterial: () => void;
   onEnterPractice: () => void;
   onEnterExam: () => void;
+  onOpenPracticeReport: (recordId: string) => void;
+  onOpenExamReport: (recordId: string) => void;
   showToast: (msg: string) => void;
+}
+
+/** 按设备当前时区格式化完成时间，使用 24 小时制。 */
+function fmtLocalFinishedTime(iso?: string | null): string {
+  if (!iso) return "-";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "-";
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 export default function ScenarioWorkspace({
@@ -32,6 +41,8 @@ export default function ScenarioWorkspace({
   onEnterMaterial,
   onEnterPractice,
   onEnterExam,
+  onOpenPracticeReport,
+  onOpenExamReport,
   showToast,
 }: ScenarioWorkspaceProps) {
   const s = scene?.scene;
@@ -55,8 +66,6 @@ export default function ScenarioWorkspace({
   const [recordTab, setRecordTab] = useState<"practice" | "exam">("practice");
   const [records, setRecords] = useState<any[]>([]);
   const [recordLoading, setRecordLoading] = useState(false);
-  // 报告查看态：practice 用记录 ID 直查；exam 用本地考试记录
-  const [reportView, setReportView] = useState<{ type: "practice"; id: string } | { type: "exam"; record: ExamRecord } | null>(null);
 
   useEffect(() => {
     if (!sceneId) return;
@@ -90,28 +99,6 @@ export default function ScenarioWorkspace({
     }
     onEnterExam();
   };
-
-  if (reportView?.type === "practice") {
-    return (
-      <PracticeReport
-        recordId={reportView.id}
-        scene={scene}
-        task={task}
-        onClose={() => setReportView(null)}
-        showToast={showToast}
-      />
-    );
-  }
-  if (reportView?.type === "exam") {
-    return (
-      <ExamReport
-        record={reportView.record}
-        sceneName={s?.name || sceneMeta?.sceneName || "场景考试"}
-        taskName={task?.name}
-        onClose={() => setReportView(null)}
-      />
-    );
-  }
 
   return (
     <>
@@ -244,11 +231,11 @@ export default function ScenarioWorkspace({
               records.map((r: any, i: number) => (
                 <div className="record-history-row" key={r.id}>
                   <div className="history-date">
-                    <b>{(r.finishedAt || r.startedAt || "").slice(0, 16).replace("T", " ")}</b>
+                    <b>{fmtLocalFinishedTime(r.finishedAt)}</b>
                     <span>AI 对练 · 第 {records.length - i} 次</span>
                   </div>
                   <strong className="history-score">{r.score ?? "-"} 分</strong>
-                  <button type="button" onClick={() => setReportView({ type: "practice", id: r.id })}>
+                  <button type="button" onClick={() => onOpenPracticeReport(r.id)}>
                     查看报告
                   </button>
                 </div>
@@ -269,7 +256,7 @@ export default function ScenarioWorkspace({
                     </span>
                   </div>
                   <strong className="history-score">{er.score ?? "-"} 分</strong>
-                  <button type="button" onClick={() => setReportView({ type: "exam", record: er })}>
+                  <button type="button" onClick={() => onOpenExamReport(er.id)}>
                     查看报告
                   </button>
                 </div>

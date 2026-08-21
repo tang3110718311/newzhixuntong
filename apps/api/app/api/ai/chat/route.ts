@@ -15,7 +15,7 @@ import { createTraceId, fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
 import { assertRateLimit, getClientIp } from "@/lib/rate-limit";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
-import { normalizeUrl, parseSessionHistory, scoreAndSaveRecordSafe, turnScoresBySession, type TurnScoreEntry } from "@/lib/ai-scoring";
+import { normalizeUrl, normalizeTurnScores, parseSessionHistory, scoreAndSaveRecordSafe, scoreCurrentTurn, mergeTurnScoreEntry, type TurnScoreEntry } from "@/lib/ai-scoring";
 import { Converter } from "opencc-js";
 
 // 繁体转简体（硬保证，防止模型偶发输出繁体）
@@ -661,24 +661,28 @@ export async function POST(request: Request) {
         }
         const closingText = "本次对练结束，感谢您的沟通。";
         const finalHistory = [...history, { role: "ai" as const, content: closingText, emotion: "polite", createdAt: new Date().toISOString() }];
-        updateAiTrainingSession(tenantId, session.id, {
+        const stored = updateAiTrainingSession(tenantId, session.id, {
           history: toStoredHistory(finalHistory),
           status: "completed",
           finishedAt: new Date().toISOString(),
         });
-        void scoreAndSaveRecordSafe(
-          tenantId,
-          userId,
-          { sceneId: body.sceneId, sessionId: session.id, messages: finalHistory, startedAt: sessionStartedAt },
-          sceneDetail,
-          config,
-          traceId,
-        );
+        const persistedHistory = stored ? parseSessionHistory(stored.historyJson) : finalHistory;
+        const existing = getTrainingRecordBySessionId(tenantId, session.id, userId ? { userId } : {});
+        if (!existing) {
+          void scoreAndSaveRecordSafe(
+            tenantId,
+            userId,
+            { sceneId: body.sceneId, sessionId: session.id, messages: persistedHistory, startedAt: sessionStartedAt },
+            sceneDetail,
+            config,
+            traceId,
+          );
+        }
         return ok({
           aiReply: closingText,
           isFinished: true,
-          trainingRecord: null,
-          recordPending: true,
+          trainingRecord: existing,
+          recordPending: !existing,
           coachTip: null,
           outcome: "learner_ended" as ConversationOutcome,
           inspirationHint: null,
@@ -877,21 +881,16 @@ export async function POST(request: Request) {
       }
     }
 
-    // 对练结束时仍需把本轮 rawScores 写入报告评分缓存；仅前端实时反馈不再展示结束轮评分卡。
-    const perTurnScores = isFinished ? [] : rawScores;
-    const scoresForReport = rawScores;
+    const perTurnScores = normalizeTurnScores(rawScores, sceneDetail.scoringRules);
+    const scoresForReport = perTurnScores;
 
     if (scoresForReport.length && sessionId) {
       const roundNo = learnerMessageCount;
-      const arr = turnScoresBySession.get(sessionId) ?? [];
       const entry: TurnScoreEntry = {
         roundNo,
         scores: scoresForReport.map((s) => ({ name: s.name, score: s.score, maxScore: s.maxScore, level: s.level, reason: s.reason ?? "", issues: s.issues ?? [], advice: s.advice ?? [] })),
       };
-      const idx = arr.findIndex((t) => t.roundNo === roundNo);
-      if (idx >= 0) arr[idx] = entry;
-      else arr.push(entry);
-      turnScoresBySession.set(sessionId, arr);
+      mergeTurnScoreEntry(tenantId, sessionId, entry);
     }
 
     const finalHistory = body.preview
@@ -1062,7 +1061,7 @@ async function judgeLastOffTopic(
  * 单轮轻量评分：对学员最新一轮回答按评分维度逐项打分（供反馈卡实时显示 + 报告页对话记录）。
  * 仅返回本轮实际被触发的维度；未涉及维度不参与本轮得分和最终累计满分。
  */
-async function scoreCurrentTurn(
+async function legacyScoreCurrentTurn(
   learnerText: string,
   prevAiText: string,
   sceneDetail: NonNullable<ReturnType<typeof getSceneDetail>>,

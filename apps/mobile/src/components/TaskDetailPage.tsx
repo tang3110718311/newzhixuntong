@@ -1,28 +1,34 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { taskApi, sceneApi, recordApi, aiApi } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { taskApi, sceneApi } from "@/lib/api";
 import { taskDisplayStatus, taskTypeText, taskFormText } from "@/lib/types";
-import { isMaterialDone, markMaterialDone, getExamCount } from "@/lib/sceneProgress";
+import { isMaterialDone, markMaterialDone, getExamCount, getExamRecords } from "@/lib/sceneProgress";
+import { pathForTask, pathForTaskScene, type MobileRouteState, type TaskRouteView } from "@/lib/mobileRoutes";
 import PracticeReport from "./PracticeReport";
+import ExamReport from "./ExamReport";
 import MobilePageAction from "./MobilePageAction";
 
 interface TaskDetailPageProps {
   taskId: string | null;
+  routeState: MobileRouteState;
   onBack: () => void;
   showToast: (msg: string) => void;
 }
 
-type View = "detail" | "workspace" | "practice" | "exam" | "material" | "report";
+type View = TaskRouteView;
 
-export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetailPageProps) {
+export default function TaskDetailPage({ taskId, routeState, onBack, showToast }: TaskDetailPageProps) {
+  const router = useRouter();
   const [detail, setDetail] = useState<any>(null);
-  const [view, setView] = useState<View>("detail");
+  const view = routeState.taskView;
   const [sceneIndex, setSceneIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [sceneDetail, setSceneDetail] = useState<any>(null);
   // 对练报告会话（练习结束后进入报告流程）
-  const [reportSessionId, setReportSessionId] = useState<string | null>(null);
+  const reportSessionId = routeState.practiceReportSessionId;
+  const reportRecordId = routeState.practiceReportRecordId;
   // 本地考试次数只用于展示；可信完成状态仍以服务端场景训练计数为准。
   const [examCounts, setExamCounts] = useState<Record<string, number>>({});
 
@@ -38,7 +44,6 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
   useEffect(() => {
     if (!taskId) return;
     setLoading(true);
-    setView("detail");
     setSceneDetail(null);
     taskApi
       .detail(taskId)
@@ -48,39 +53,47 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 
-  /** 加载指定场景详情并跳转到目标视图 */
+  useEffect(() => {
+    if (!detail || !routeState.sceneId) return;
+    const nextIndex = (detail.scenes || []).findIndex((s: any) => s.sceneId === routeState.sceneId);
+    if (nextIndex < 0) {
+      showToast("场景不存在或已删除");
+      router.replace(taskId ? pathForTask(taskId) : "/tasks");
+      return;
+    }
+    setSceneIndex(nextIndex);
+    let alive = true;
+    sceneApi
+      .detail(routeState.sceneId)
+      .then((sd) => {
+        if (alive) setSceneDetail(sd);
+      })
+      .catch(() => {
+        if (alive) {
+          setSceneDetail(null);
+          showToast("场景加载失败");
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, [detail, routeState.sceneId, router, showToast, taskId]);
+
+  /** 跳转到指定场景视图 */
   const enterSceneView = useCallback(
-    async (index: number, target: View) => {
-      if (!detail || !detail.scenes || !detail.scenes[index]) return;
+    (index: number, target: View) => {
+      if (!taskId || !detail || !detail.scenes || !detail.scenes[index]) return;
       const ts = detail.scenes[index];
-      setSceneIndex(index);
-      try {
-        const sd = await sceneApi.detail(ts.sceneId);
-        setSceneDetail(sd);
-        setView(target);
-      } catch {
-        setSceneDetail(null);
-        showToast("场景加载失败");
-      }
+      router.push(pathForTaskScene(taskId, ts.sceneId, target));
     },
-    [detail, showToast]
+    [detail, router, taskId]
   );
 
   const openScenario = useCallback(
-    async (index: number) => {
-      if (!detail || !detail.scenes || !detail.scenes[index]) return;
-      setSceneIndex(index);
-      setView("workspace");
-      const ts = detail.scenes[index];
-      try {
-        const sd = await sceneApi.detail(ts.sceneId);
-        setSceneDetail(sd);
-      } catch {
-        setSceneDetail(null);
-        showToast("场景加载失败");
-      }
+    (index: number) => {
+      enterSceneView(index, "workspace");
     },
-    [detail, showToast]
+    [enterSceneView]
   );
 
   if (loading) {
@@ -122,6 +135,36 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
   const isOverdue = runtimeStatus === "已逾期";
   const cls = runtimeStatus === "已停用" ? "stopped" : runtimeStatus === "已完成" ? "done" : runtimeStatus === "已逾期" ? "overdue" : "doing";
 
+  const sceneMeta = scenes[sceneIndex];
+  const sceneRoute = (target: View, reportId?: string | null) => {
+    if (!taskId || !sceneMeta?.sceneId) return "/tasks";
+    return pathForTaskScene(taskId, sceneMeta.sceneId, target, reportId);
+  };
+
+  if (view !== "detail" && routeState.sceneId && (!sceneDetail || sceneMeta?.sceneId !== routeState.sceneId)) {
+    return (
+      <>
+        <div className="task-detail-head">
+          <MobilePageAction kind="back" onClick={() => router.push(taskId ? pathForTask(taskId) : "/tasks")} aria-label="返回任务详情" />
+          <div className="task-detail-title">
+            <h1>场景加载中</h1>
+            <p>正在打开对应学习页面</p>
+          </div>
+        </div>
+        <div className="task-empty">加载中…</div>
+      </>
+    );
+  }
+
+  const practiceConfirmAction = routeState.modal === "practiceQuitConfirm" ? "quit" : routeState.modal === "practiceEndConfirm" ? "end" : null;
+  const openPracticeConfirm = (action: "quit" | "end") => {
+    const modal = action === "quit" ? "practiceQuitConfirm" : "practiceEndConfirm";
+    router.push(`${sceneRoute("practice")}?modal=${modal}`);
+  };
+  const closePracticeConfirm = () => {
+    router.push(sceneRoute("practice"));
+  };
+
   if (view === "workspace") {
     return (
       <ScenarioWorkspace
@@ -130,10 +173,12 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
         sceneMeta={scenes[sceneIndex]}
         index={sceneIndex}
         total={scenes.length}
-        onBackToDetail={() => setView("detail")}
-        onEnterMaterial={() => setView("material")}
-        onEnterPractice={() => setView("practice")}
-        onEnterExam={() => setView("exam")}
+        onBackToDetail={() => router.push(taskId ? pathForTask(taskId) : "/tasks")}
+        onEnterMaterial={() => router.push(sceneRoute("material"))}
+        onEnterPractice={() => router.push(sceneRoute("practice"))}
+        onEnterExam={() => router.push(sceneRoute("exam"))}
+        onOpenPracticeReport={(recordId) => router.push(sceneRoute("report", recordId))}
+        onOpenExamReport={(recordId) => router.push(sceneRoute("examReport", recordId))}
         showToast={showToast}
       />
     );
@@ -144,11 +189,13 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
       <PracticeView
         scene={sceneDetail}
         task={task}
-        onBack={() => setView("detail")}
+        onBack={() => router.push(sceneRoute("workspace"))}
         showToast={showToast}
+        confirmAction={practiceConfirmAction}
+        onOpenConfirm={openPracticeConfirm}
+        onCloseConfirm={closePracticeConfirm}
         onReport={(sessionId) => {
-          setReportSessionId(sessionId);
-          setView("report");
+          router.push(`${sceneRoute("report")}?sessionId=${encodeURIComponent(sessionId)}`);
         }}
       />
     );
@@ -157,10 +204,11 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
   if (view === "report") {
     return (
       <PracticeReport
-        sessionId={reportSessionId || ""}
+        sessionId={reportSessionId || undefined}
+        recordId={reportRecordId || undefined}
         scene={sceneDetail}
         task={task}
-        onClose={() => setView("workspace")}
+        onClose={() => router.push(sceneRoute("workspace"))}
         showToast={showToast}
       />
     );
@@ -171,9 +219,37 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
       <ScenarioExam
         scene={sceneDetail}
         task={task}
-        onBack={() => setView("workspace")}
+        onBack={() => router.push(sceneRoute("workspace"))}
         onFinished={handleExamFinished}
         showToast={showToast}
+      />
+    );
+  }
+
+  if (view === "examReport") {
+    const record = routeState.sceneId && routeState.sceneExamRecordId
+      ? getExamRecords(routeState.sceneId).find((item) => item.id === routeState.sceneExamRecordId)
+      : null;
+    if (!record) {
+      return (
+        <>
+          <div className="task-detail-head">
+            <MobilePageAction kind="back" onClick={() => router.push(sceneRoute("workspace"))} aria-label="返回场景工作台" />
+            <div className="task-detail-title">
+              <h1>场景考试报告</h1>
+              <p>查看本次考试结果</p>
+            </div>
+          </div>
+          <div className="task-empty">考试报告不存在或已删除</div>
+        </>
+      );
+    }
+    return (
+      <ExamReport
+        record={record}
+        sceneName={sceneDetail?.scene?.name || sceneMeta?.sceneName || "场景考试"}
+        taskName={task?.name}
+        onClose={() => router.push(sceneRoute("workspace"))}
       />
     );
   }
@@ -183,11 +259,11 @@ export default function TaskDetailPage({ taskId, onBack, showToast }: TaskDetail
       <MaterialView
         scene={sceneDetail}
         sceneMeta={scenes[sceneIndex]}
-        onBack={() => setView("detail")}
+        onBack={() => router.push(sceneRoute("workspace"))}
         onDone={() => {
-          const ts = scenes[sceneIndex];
-          if (ts) markMaterialDone(ts.sceneId);
-          setView("detail");
+          const ts = sceneMeta;
+           if (ts) markMaterialDone(ts.sceneId);
+           router.push(sceneRoute("workspace"));
         }}
         showToast={showToast}
       />

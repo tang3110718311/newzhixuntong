@@ -268,6 +268,7 @@ const MIGRATION_SQL: string[] = [
     scene_id text not null,
     status text not null default 'in_progress',
     history_json text not null default '[]',
+    turn_scores_json text not null default '[]',
     off_topic_count integer not null default 0,
     round_count integer not null default 0,
     started_at text,
@@ -295,6 +296,7 @@ function applyMigrations() {
   ensureColumn("training_records", "session_id", "text");
   ensureColumn("training_records", "suggestions", "text not null default '[]'");
   ensureColumn("training_records", "summary_json", "text");
+  ensureColumn("ai_training_sessions", "turn_scores_json", "text not null default '[]'");
   // 胜任力评分（与 init.mjs 保持一致，避免已有库缺失列导致评分落库失败）
   ensureColumn("score_details", "level", "text not null default ''");
   ensureColumn("score_details", "round_no", "integer not null default 0");

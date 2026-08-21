@@ -1,6 +1,7 @@
-import { getTrainingRecordDetail } from "@zxt/database";
-import { fail, handleRouteError, ok } from "@/lib/response";
+import { getDefaultAiProvider, getSceneDetail, getTrainingRecordDetail } from "@zxt/database";
+import { fail, handleRouteError, ok, createTraceId } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
+import { rebuildRecordOverallScoresFromTurnScores, triggerRecordTurnBackfillSafe } from "@/lib/ai-scoring";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,7 +16,15 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
     const detail = getTrainingRecordDetail(tenantId, id, isAdmin ? undefined : { userId: currentUserId });
     if (!detail) return fail("TRAINING_RECORD_NOT_FOUND", "训练记录不存在或已删除。", 404);
-    return ok(detail);
+    const sceneDetail = getSceneDetail(tenantId, detail.record.sceneId);
+    const config = getDefaultAiProvider(tenantId);
+    if (sceneDetail) {
+      rebuildRecordOverallScoresFromTurnScores(tenantId, id, sceneDetail);
+      if (config?.status === "enabled" && config.baseUrl && config.apiKeyEncrypted && config.modelName) {
+        void triggerRecordTurnBackfillSafe(tenantId, id, sceneDetail, config, createTraceId());
+      }
+    }
+    return ok(sceneDetail ? getTrainingRecordDetail(tenantId, id, isAdmin ? undefined : { userId: currentUserId }) ?? detail : detail);
   } catch (error) {
     return handleRouteError(error);
   }

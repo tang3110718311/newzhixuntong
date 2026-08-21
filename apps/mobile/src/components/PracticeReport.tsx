@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { recordApi } from "@/lib/api";
-import PracticeChat, { type PracticeChatMsg } from "./PracticeChat";
+import PracticeChat, { buildPracticeFeedbackMessage, type PracticeChatMsg, type PracticeFeedbackDimension } from "./PracticeChat";
 import MobilePageAction from "./MobilePageAction";
 import UnifiedTabs from "./UnifiedTabs";
 
@@ -15,6 +15,29 @@ interface PracticeReportProps {
   task: any;
   onClose: () => void;
   showToast: (msg: string) => void;
+}
+
+type PracticeReportPreview = {
+  version: 1;
+  sessionId: string;
+  finishedAt: string;
+  durationSeconds: number;
+  learnerRounds: number;
+  scoredRounds: number;
+  evaluatedDimensions: number;
+  messages: PracticeChatMsg[];
+};
+
+function readReportPreview(sessionId?: string): PracticeReportPreview | null {
+  if (!sessionId || typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(`zxt-practice-report-preview:${sessionId}`);
+    if (!raw) return null;
+    const preview = JSON.parse(raw) as PracticeReportPreview;
+    return preview?.version === 1 && preview.sessionId === sessionId && Array.isArray(preview.messages) ? preview : null;
+  } catch {
+    return null;
+  }
 }
 
 /** 格式化 ISO 时间为 YYYY-MM-DD HH:mm（参考图格式） */
@@ -115,21 +138,35 @@ function PassTag({ score, passScore }: { score: number; passScore: number }) {
 
 export default function PracticeReport({ sessionId, recordId, scene, task, onClose, showToast }: PracticeReportProps) {
   const [detail, setDetail] = useState<any>(null);
+  const [preview, setPreview] = useState<PracticeReportPreview | null>(null);
   const [failed, setFailed] = useState(false);
   const [tab, setTab] = useState<"report" | "transcript">("report");
 
-  // 历史记录入口：直接按记录 ID 拉取详情渲染（不轮询）
+  // 历史记录入口：首次请求会触发服务端对缺失逐轮评分的异步补算，短轮询后自动补齐评分卡。
   useEffect(() => {
     if (recordId) {
       let cancelled = false;
-      recordApi
-        .detail(recordId)
-        .then((data: any) => {
-          if (!cancelled) setDetail(data);
-        })
-        .catch(() => {
-          if (!cancelled) setFailed(true);
-        });
+      let tries = 0;
+      const load = () => {
+        recordApi
+          .detail(recordId)
+          .then((data: any) => {
+            if (cancelled) return;
+            setDetail(data);
+            const learnerRounds = (data?.turns ?? []).filter((turn: { speaker?: string }) => turn.speaker === "learner").length;
+            const scoredRounds = new Set((data?.turnScores ?? []).map((turn: { roundNo?: number }) => turn.roundNo)).size;
+            const scoringRuleCount = Number(data?.record?.scoringRuleCount ?? scene?.scoringRules?.length ?? 0);
+            const overallScoreMissing = scoringRuleCount > 0 && (data?.scores?.length ?? 0) < scoringRuleCount;
+            if ((scoredRounds < learnerRounds || overallScoreMissing) && tries < 30) {
+              tries += 1;
+              setTimeout(load, 2000);
+            }
+          })
+          .catch(() => {
+            if (!cancelled) setFailed(true);
+          });
+      };
+      load();
       return () => {
         cancelled = true;
       };
@@ -137,7 +174,12 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
     return undefined;
   }, [recordId]);
 
-  // 轮询 by-session：评分后台异步生成，未完成前停留"报告生成中"中转页
+  // 刚完成时优先读取浏览器快照，保证不等待后台综合评分即可进入报告。
+  useEffect(() => {
+    if (!recordId) setPreview(readReportPreview(sessionId));
+  }, [sessionId, recordId]);
+
+  // 轮询 by-session：首屏展示本地统计与对话，最终综合评分完成后无刷新补齐。
   useEffect(() => {
     if (recordId || !sessionId) return;
     let cancelled = false;
@@ -149,6 +191,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
           if (cancelled) return;
           if (data?.record && data.record.status === "completed") {
             setDetail(data);
+            try { sessionStorage.removeItem(`zxt-practice-report-preview:${sessionId}`); } catch { /* ignore */ }
           } else if (tries < 60) {
             tries += 1;
             setTimeout(poll, 2000);
@@ -178,7 +221,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
   const passed = score >= passScore;
   const overallScores: Array<{ ruleName: string | null; score: number; maxScore?: number | null; level?: string | null; deductionReason?: string; evidenceText?: string }> =
     detail?.scores ?? [];
-  // 综合得分以场景已有评分规则总分为基准，未触发维度按 0 计。
+  // 综合得分由后端按所有轮次的实际得分与参与评价维度满分聚合。
   const avgScore = score;
 
   // 对话记录 tab：把历史 turns/turnScores 转成 AI 对练页同款消息列表，渲染时直接复用 PracticeChat。
@@ -200,13 +243,11 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
       learnerIdx += 1;
       messages.push({ id: `turn-${i}-learner`, who: "user", text, time, isVoice: Number(t.durationMs) > 0 });
 
-      // 仅展示本轮实际触发并参与评价的维度，整场评分不伪装为单轮评分。
-      let dimensions: Array<{ name: string; score: number; maxScore: number; level: "excellent" | "pass" | "developing"; reason: string; issues: string[]; advice: string[] }> = [];
-      const ts = turnScores.find((x) => x.roundNo === learnerIdx);
-      dimensions =
-        ts?.scores?.map((s) => {
-          const scoreValue = Number(s.score) || 0;
-          const maxScore = Number(s.maxScore) || 100;
+       const ts = turnScores.find((x) => x.roundNo === learnerIdx);
+       const dimensions: PracticeFeedbackDimension[] =
+         ts?.scores?.map((s) => {
+           const scoreValue = Number(s.score) || 0;
+           const maxScore = Number(s.maxScore) || 100;
           return {
             name: s.ruleName || "评分维度",
             score: scoreValue,
@@ -215,24 +256,13 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
             reason: s.deductionReason || "",
             issues: Array.isArray(s.issues) ? s.issues : [],
             advice: Array.isArray(s.advice) ? s.advice : [],
-          };
-        }) ?? [];
-
-      const turnTotal = dimensions.length ? dimensions.reduce((a, s) => a + (Number(s.score) || 0), 0) : null;
-      const issues = dimensions.flatMap((s) => s.issues).filter(Boolean);
-      const advice = dimensions.flatMap((s) => s.advice).filter(Boolean);
-
-      if (turnTotal != null || dimensions.length > 0 || issues.length > 0 || advice.length > 0) {
-        messages.push({
-          id: `turn-${i}-feedback`,
-          who: "feedback",
-          text: advice.join("；"),
-          score: turnTotal,
-          dimensions,
-          issues,
-          advice,
-        });
-      }
+           };
+         }) ?? [];
+       messages.push(buildPracticeFeedbackMessage({
+         id: `turn-${i}-feedback`,
+         dimensions,
+         pending: !ts,
+       }));
     });
 
     return messages;
@@ -251,24 +281,72 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
     );
   }
 
-  // 中转页：仅 sessionId 模式（刚练完、后台异步评分轮询中）显示"生成报告中"
+  // 即时报告：展示前端已完成的对话与逐轮评分；综合评分完成后自动替换为完整报告。
+  if (!recordId && sessionId && !detail && preview) {
+    const durationMinutes = Math.floor(preview.durationSeconds / 60);
+    const durationSeconds = preview.durationSeconds % 60;
+    return (
+      <div className="pr-shell">
+        <header className="pr-head">
+          <MobilePageAction kind="back" onClick={onClose} />
+          <div className="pr-head-text"><h1>AI对练报告</h1><p>{task?.name ? `${task.name}·` : ""}{scene?.scene?.name || "场景对练"}</p></div>
+          <MobilePageAction kind="close" variant="overlay" onClick={onClose} aria-label="关闭报告" />
+        </header>
+        <UnifiedTabs ariaLabel="AI对练报告内容" className="unified-tabs--report" items={[{ value: "report", label: "AI对练报告" }, { value: "transcript", label: "对话记录" }]} onChange={setTab} value={tab} />
+        {tab === "report" ? (
+          <div className="pr-report-body">
+            <div className="pr-card">
+              <div className="pr-card-title"><i></i>本次对练统计</div>
+              <div className="pr-total-stats">练习时长 {durationMinutes}分{durationSeconds}秒　完成轮数 {preview.learnerRounds}　已评分 {preview.scoredRounds} 轮　评价维度 {preview.evaluatedDimensions}</div>
+            </div>
+            <div className="pr-card">
+              <div className="pr-card-title"><i></i>综合评分生成中</div>
+              <p className="pr-summary">已展示本次对练的对话记录和逐轮评分；AI 正在汇总整场能力表现，通常将在 10 秒内自动补齐完整报告。</p>
+            </div>
+          </div>
+        ) : (
+          <div className="pr-transcript">{preview.messages.length ? <PracticeChat messages={preview.messages} reportMode /> : <div className="pr-empty">暂无对话记录</div>}</div>
+        )}
+      </div>
+    );
+  }
+
+  // 报告中转页：与 PC 端同样先等待后台评分，期间提供返回场景详情操作。
+  if (!recordId && sessionId && !detail && !preview && !failed) {
+    return (
+      <div className="pr-shell">
+        <header className="pr-head">
+          <MobilePageAction kind="back" onClick={onClose} />
+          <div className="pr-head-text">
+            <h1>AI对练报告</h1>
+            <p>{task?.name ? `${task.name}·` : ""}{scene?.scene?.name || "场景对练"}</p>
+          </div>
+          <MobilePageAction kind="close" variant="overlay" onClick={onClose} aria-label="关闭报告" />
+        </header>
+        <div className="report-generating-page" role="status" aria-live="polite">
+          <div className="report-generating-panel">
+            <div className="report-generating-spinner"><i></i><i></i><i></i></div>
+            <h3>生成报告中</h3>
+            <p>正在整理本次 AI 对练内容，请稍候…</p>
+            <div className="report-generating-steps"><span className="active">整理对话记录</span><span>分析能力表现</span><span>生成对练报告</span></div>
+            <button className="pr-close-report report-generating-back" type="button" onClick={onClose}>返回场景详情</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 即时报告快照缺失时仍保留轻量兜底中转状态。
   if (!recordId && sessionId && !detail && !failed) {
     return (
       <div className="pr-shell">
-        <div className="report-generating-modal show" role="status" aria-live="polite">
+        <div className="report-generating-page" role="status" aria-live="polite">
           <div className="report-generating-panel">
-            <div className="report-generating-spinner">
-              <i></i>
-              <i></i>
-              <i></i>
-            </div>
+            <div className="report-generating-spinner"><i></i><i></i><i></i></div>
             <h3>生成报告中</h3>
             <p>正在整理本次 AI 对练内容，请稍候…</p>
-            <div className="report-generating-steps">
-              <span className="active">整理对话记录</span>
-              <span>分析能力表现</span>
-              <span>生成对练报告</span>
-            </div>
+            <div className="report-generating-steps"><span className="active">整理对话记录</span><span>分析能力表现</span><span>生成对练报告</span></div>
+            <button className="pr-close-report report-generating-back" type="button" onClick={onClose}>返回场景详情</button>
           </div>
         </div>
       </div>
@@ -339,7 +417,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
             <div className="pr-eval-head">
               <div className="pr-eval-text">
                 <h3>本次AI对练评估</h3>
-                <p>综合得分 = 各评分规则维度实际得分之和 ÷ 场景评分规则满分 × 100</p>
+                <p>综合得分 = 所有轮次实际得分之和 ÷ 所有轮次参与评价维度满分之和 × 100</p>
               </div>
               <PassTag score={score} passScore={passScore} />
             </div>
@@ -354,7 +432,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
               </div>
               <div className="pr-total-text">
                 <b>{passed ? "表现达到合格要求，继续保持优势能力" : "表现未达合格线，建议针对短板加强练习"}</b>
-                <p>系统按场景已配置的评分规则汇总综合分；本次未触发的维度按 0 分计入，确保报告分数与既有评分规则一致。</p>
+                <p>系统按逐轮评分汇总综合分；每轮均补齐场景评分维度，未命中维度按 0 分计入。</p>
                 <div className="pr-total-stats">
                   综合得分 {avgScore}　评价维度 {overallScores.length}　合格线 {passScore}
                 </div>
@@ -420,7 +498,8 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
                       <div className="pr-dim-bar">
                         <i className={isGood ? "good" : "warn"} style={{ width: `${pct}%` }}></i>
                       </div>
-                      <p className="pr-dim-desc">{s.deductionReason || "该维度依据对话中的行为锚点进行评估。"}</p>
+                      <p className="pr-dim-desc">{s.deductionReason || "该维度未返回评价说明。"}</p>
+                      {s.evidenceText && <p className="pr-dim-desc">证据：{s.evidenceText}</p>}
                       {s.level && (
                         <ul className="pr-dim-list">
                           <li>

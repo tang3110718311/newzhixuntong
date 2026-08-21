@@ -299,8 +299,10 @@ create table if not exists ai_training_sessions (
   user_id text,
   scene_id text not null,
   status text not null default 'in_progress',
-  history_json text not null default '[]',
-  off_topic_count integer not null default 0,
+   history_json text not null default '[]',
+   turn_scores_json text not null default '[]',
+   off_topic_count integer not null default 0,
+
   round_count integer not null default 0,
   started_at text,
   finished_at text,
@@ -332,8 +334,11 @@ create table if not exists score_details (
   round_no integer not null default 0,
   score integer not null,
   deduction_reason text not null default '',
-  evidence_text text not null default '',
-  created_at text not null default current_timestamp,
+   level text not null default '',
+   issues_json text not null default '[]',
+   advice_json text not null default '[]',
+   created_at text not null default current_timestamp,
+
   updated_at text not null default current_timestamp,
   deleted_at text
 );

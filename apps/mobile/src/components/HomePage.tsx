@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { taskApi, examApi, attemptApi, tenantApi, type AuthUser, type TaskRow, type ExamRow, type TenantRow } from "@/lib/api";
 import { statusClass, taskStatusText, taskTypeText, taskDisplayStatus } from "@/lib/types";
 import type { PageKey } from "./MobileApp";
+import type { MobileModalKey } from "@/lib/mobileRoutes";
 
 interface HomePageProps {
   user: AuthUser | null;
@@ -11,16 +12,19 @@ interface HomePageProps {
   onOpenTask: (taskId: string) => void;
   showToast: (msg: string) => void;
   onSwitchTenant: (tenantCode: string) => Promise<boolean>;
+  modal: MobileModalKey | null;
+  onOpenModal: (modal: MobileModalKey) => void;
+  onCloseModal: () => void;
 }
 
-export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSwitchTenant }: HomePageProps) {
+export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSwitchTenant, modal, onOpenModal, onCloseModal }: HomePageProps) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [exams, setExams] = useState<ExamRow[]>([]);
   const [attempts, setAttempts] = useState<Record<string, any>>({});
   const [recentTab, setRecentTab] = useState<"tasks" | "exams">("tasks");
   const [loading, setLoading] = useState(true);
   // 切换企业弹窗
-  const [showTenantModal, setShowTenantModal] = useState(false);
+  const showTenantModal = modal === "tenant";
   const [tenants, setTenants] = useState<TenantRow[]>([]);
   const [selectedCode, setSelectedCode] = useState("");
   const [tenantOpen, setTenantOpen] = useState(false);
@@ -49,7 +53,7 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
 
   // 打开切换企业弹窗时拉取可切换列表
   const openTenantModal = async () => {
-    setShowTenantModal(true);
+    onOpenModal("tenant");
     setTenantOpen(false);
     if (tenants.length > 0) return;
     try {
@@ -63,13 +67,13 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
 
   const confirmSwitchTenant = async () => {
     if (!selectedCode || selectedCode === user?.tenantCode) {
-      setShowTenantModal(false);
+      onCloseModal();
       return;
     }
     setSwitching(true);
     try {
       const okFlag = await onSwitchTenant(selectedCode);
-      if (okFlag) setShowTenantModal(false);
+      if (okFlag) onCloseModal();
     } finally {
       setSwitching(false);
     }
@@ -263,7 +267,7 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
 
       {/* 切换企业弹窗 */}
       {showTenantModal && (
-        <div className="tenant-mask" onClick={() => !switching && setShowTenantModal(false)}>
+        <div className="tenant-mask" onClick={() => !switching && onCloseModal()}>
           <div className="tenant-modal" onClick={(e) => e.stopPropagation()}>
             <h3 className="tenant-modal-title">切换企业</h3>
             <div className="tenant-select-wrap">
@@ -299,7 +303,7 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
               )}
             </div>
             <div className="tenant-modal-actions">
-              <button className="tenant-btn cancel" onClick={() => setShowTenantModal(false)} disabled={switching}>
+              <button className="tenant-btn cancel" onClick={onCloseModal} disabled={switching}>
                 取消
               </button>
               <button className="tenant-btn confirm" onClick={confirmSwitchTenant} disabled={switching}>

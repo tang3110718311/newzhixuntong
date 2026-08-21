@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { aiApi, recordApi, type AiInspirationHint } from "@/lib/api";
-import { getDisplayedLength, splitSpeechSegments } from "@/lib/speech-sync";
-import PracticeChat, { type PracticeChatMsg } from "./PracticeChat";
 import { createAsyncSubmitGuard } from "@/lib/submit-guard";
+import PracticeChat, { buildPracticeFeedbackMessage, type PracticeChatMsg } from "./PracticeChat";
+import { getDisplayedLength, splitSpeechSegments } from "@/lib/speech-sync";
+
+const FUNASR_WS_URL = process.env.NEXT_PUBLIC_FUNASR_WS_URL || "wss://zxt.xingyiwulian.cn:8765";
 
 interface PracticeViewProps {
   scene: any;
@@ -12,6 +14,9 @@ interface PracticeViewProps {
   onBack: () => void;
   showToast: (msg: string) => void;
   onReport: (sessionId: string) => void;
+  confirmAction: "quit" | "end" | null;
+  onOpenConfirm: (action: "quit" | "end") => void;
+  onCloseConfirm: () => void;
 }
 
 type ChatMsg = PracticeChatMsg;
@@ -141,6 +146,17 @@ function ensureTranscriptPauseBreak(value: string): string {
   return VOICE_SENTENCE_END_RE.test(text) ? text : `${text}。`;
 }
 
+function resampleVoiceToInt16(input: Float32Array, fromRate: number, toRate = 16000): ArrayBuffer {
+  if (!input.length) return new ArrayBuffer(0);
+  const ratio = fromRate / toRate;
+  const output = new Int16Array(Math.max(1, Math.round(input.length / ratio)));
+  for (let i = 0; i < output.length; i += 1) {
+    const sample = Math.max(-1, Math.min(1, input[Math.min(input.length - 1, Math.floor(i * ratio))]));
+    output[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+  }
+  return output.buffer;
+}
+
 function mergeTranscriptWithPauseBreaks(previous: string, incoming: string): string {
   const nextRaw = normalizeVoiceTranscriptText(incoming);
   const prev = normalizeVoiceTranscriptText(previous);
@@ -155,12 +171,15 @@ function mergeTranscriptWithPauseBreaks(previous: string, incoming: string): str
   return nextRaw;
 }
 
-export default function PracticeView({ scene, task, onBack, showToast, onReport }: PracticeViewProps) {
+export default function PracticeView({ scene, task, onBack, showToast, onReport, confirmAction, onOpenConfirm, onCloseConfirm }: PracticeViewProps) {
   const sceneId = scene?.scene?.id;
   // 文本形式：仅文本框+发送；语音形式：仅语音输入区（参考图还原）
   const isTextMode = task?.answerForm ? task.answerForm === "text" : scene?.scene?.mode === "text";
 
   const [messages, setMessages] = useState<ChatMsg[]>([]);
+  // 路由切换到报告页前也要能同步取得最新消息，避免 React 状态批处理漏掉结束轮内容。
+  const messagesRef = useRef<ChatMsg[]>([]);
+  const practiceStartedAtRef = useRef(Date.now());
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -184,7 +203,6 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const [score, setScore] = useState<number | null>(null);
   // 进入本对练页面的次数仅用于本机展示，不作为服务端可信完成状态。
   const [practiceTimes, setPracticeTimes] = useState(0);
-  const [confirmAction, setConfirmAction] = useState<"quit" | "end" | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -225,6 +243,12 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const speechFinalSegmentsRef = useRef<string[]>([]);
   const speechInterimRef = useRef("");
   const pauseBreakCommittedRef = useRef(false);
+  const liveStreamRef = useRef<{
+    ws: WebSocket;
+    ctx: AudioContext;
+    scriptNode: ScriptProcessorNode;
+    source: MediaStreamAudioSourceNode;
+  } | null>(null);
 
   const sceneName = scene?.scene?.name || "场景对练";
   const aiRole = scene?.roles?.find((r: any) => r.roleType === "ai");
@@ -271,8 +295,31 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   const pushMsg = useCallback((m: Omit<ChatMsg, "id">) => {
     msgSeq.current += 1;
     const id = `m${Date.now()}-${msgSeq.current}-${Math.random().toString(36).slice(2, 6)}`;
-    setMessages((prev) => [...prev, { ...m, id }]);
+    const next = { ...m, id };
+    messagesRef.current = [...messagesRef.current, next];
+    setMessages(messagesRef.current);
     return id;
+  }, []);
+
+  const saveReportPreview = useCallback((activeSessionId: string) => {
+    try {
+      const currentMessages = messagesRef.current;
+      const learnerMessages = currentMessages.filter((item) => item.who === "user");
+      const feedbackMessages = currentMessages.filter((item) => item.who === "feedback");
+      const evaluatedDimensions = feedbackMessages.reduce((total, item) => total + (item.dimensions?.length || 0), 0);
+      sessionStorage.setItem(`zxt-practice-report-preview:${activeSessionId}`, JSON.stringify({
+        version: 1,
+        sessionId: activeSessionId,
+        finishedAt: new Date().toISOString(),
+        durationSeconds: Math.max(0, Math.round((Date.now() - practiceStartedAtRef.current) / 1000)),
+        learnerRounds: learnerMessages.length,
+        scoredRounds: feedbackMessages.length,
+        evaluatedDimensions,
+        messages: currentMessages,
+      }));
+    } catch {
+      // 浏览器存储不可用时仍可通过既有接口轮询最终报告。
+    }
   }, []);
 
   // 开场白（StrictMode 下避免重复发送）
@@ -398,54 +445,43 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       if (quitRequestedRef.current) return;
       const activeSessionId = res.sessionId || sessionId;
       if (res.sessionId && res.sessionId !== sessionId) setSessionId(res.sessionId);
-      const turnScores = res.perTurnScores ?? [];
-      setMessages((prev) => prev.map((message) => message.id === feedbackId ? {
-        ...message,
-        score: turnScores.length
-          ? turnScores.reduce((total, item) => total + (Number(item.score) || 0), 0)
-          : null,
-        dimensions: turnScores,
-        issues: turnScores.flatMap((item) => item.issues ?? []).filter(Boolean),
-        advice: turnScores.flatMap((item) => item.advice ?? []).filter(Boolean),
-        feedbackMessage: turnScores.length ? undefined : "本轮暂无可用评分，已继续进行对练。",
-      } : message));
+       const feedback = buildPracticeFeedbackMessage({
+         id: feedbackId,
+         dimensions: res.perTurnScores ?? [],
+         scoringRules: scene?.scoringRules ?? scene?.scene?.scoringRules ?? [],
+        });
+        messagesRef.current = messagesRef.current.map((message) => message.id === feedbackId ? feedback : message);
+        setMessages(messagesRef.current);
+        setScore(feedback.score ?? null);
       // 评分卡必须先完成首帧渲染，再继续展示或播报 AI 的下一句。
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       if (quitRequestedRef.current) return;
-      const speakPromise = res.aiReply ? pushAiMsgAndSpeak(res.aiReply, res.emotion || "default") : null;
       setInspirationHint(res.inspirationHint ?? null);
       if (res.isFinished) {
-        // 优先使用同步返回的训练记录得分；异步评分时稍后轮询一次
-        if (res.trainingRecord?.score != null) {
-          setScore(res.trainingRecord.score);
-        } else if (res.recordPending) {
-          setTimeout(() => {
-            recordApi
-              .bySession(activeSessionId)
-              .then((rec: any) => {
-                if (rec?.score != null) setScore(rec.score);
-              })
-              .catch(() => { /* 轮询失败不影响主流程 */ });
-          }, 2500);
-        }
-        showToast("对练结束，正在生成报告…");
-        // 等 AI 收尾话 TTS 播完再进入报告页；最长等待 30s，避免 TTS 异常导致永久阻塞
-        if (speakPromise) {
-          try {
-            await Promise.race([
-              speakPromise,
-              new Promise((resolve) => setTimeout(resolve, 30000)),
-            ]);
-          } catch { /* 等待失败不影响进入报告页 */ }
+        // 收到最终回复后即取消“正在思考”占位，只保留真实的结束语气泡。
+        setSending(false);
+        // 等结束语所有分句自然播完，才进入报告中转页；被打断时留在当前页。
+        if (res.aiReply) {
+          const speechCompleted = await pushAiMsgAndSpeak(res.aiReply, res.emotion || "default");
+          if (!speechCompleted) {
+            showToast("结束语未能完整播放，请重新结束对练后生成报告");
+            return;
+          }
         }
         if (quitRequestedRef.current) return;
+        showToast("对练结束，正在生成报告…");
+        saveReportPreview(activeSessionId);
+        if (quitRequestedRef.current) return;
         onReport(activeSessionId);
+      } else if (res.aiReply) {
+        void pushAiMsgAndSpeak(res.aiReply, res.emotion || "default");
       }
     } catch (e: any) {
-      setMessages((prev) => prev.map((message) => message.id === feedbackId ? {
+      messagesRef.current = messagesRef.current.map((message) => message.id === feedbackId ? {
         ...message,
         feedbackMessage: "本轮评分服务暂时不可用，请继续完成对练。",
-      } : message));
+      } : message);
+      setMessages(messagesRef.current);
       pushMsg({ who: "ai", text: "（回复失败：" + (e.message || "网络错误") + "）" });
     } finally {
       chatSubmittingRef.current = false;
@@ -464,10 +500,21 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     try {
       const res = await aiApi.chat({ sceneId, action: "end", sessionId });
       if (quitRequestedRef.current) return;
-      if (res.aiReply) await pushAiMsgAndSpeak(res.aiReply, res.emotion || "default");
+      const activeSessionId = res.sessionId || sessionId;
+      // 最终回复已到达，不再显示额外的“正在思考”AI 占位气泡。
+      setSending(false);
+      // 手动结束时必须等待结束语所有分句自然播放完毕，才允许跳转报告。
+      if (res.aiReply) {
+        const speechCompleted = await pushAiMsgAndSpeak(res.aiReply, res.emotion || "default");
+        if (!speechCompleted) {
+          showToast("结束语未能完整播放，请重新结束对练后生成报告");
+          return;
+        }
+      }
       if (quitRequestedRef.current) return;
       showToast("对练结束，正在生成报告…");
-      onReport(res.sessionId || sessionId);
+      saveReportPreview(activeSessionId);
+      onReport(activeSessionId);
     } catch (e: any) {
       showToast(e.message || "结束对练失败，请稍后重试");
     } finally {
@@ -617,13 +664,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
   );
 
   const speakText = useCallback(
-    async (text: string, msgId?: string, emotion = "default"): Promise<void> => {
-      // 播完信号：自然播完 / 出错 / 被 stopAiSpeak 或新音频抢占时 resolve，供对练结束等关键节点等待
-      const playEndResolvers: Array<() => void> = [];
-      const playEndPromise = new Promise<void>((resolve: () => void) => {
-        playEndResolvers.push(resolve);
-      });
-      const resolvePlayEnd = () => playEndResolvers.forEach((r) => r());
+    async (text: string, msgId?: string, emotion = "default"): Promise<boolean> => {
       // 本次播放会话 token：stop/新播放会递增，循环检测到变化即放弃后续句子
       const seq = ++speakSeqRef.current;
       try {
@@ -632,21 +673,18 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         if (!segments.length) {
           revealMsgFull(msgId);
           setTtsPreparing(null);
-          resolvePlayEnd();
-          return;
+          return true;
         }
         // 组件已卸载（页面已关闭）：TTS 结果作废，不再创建音频播放，防止关闭页面后语音继续播放
         if (unmountedRef.current) {
           setTtsPreparing(null);
-          resolvePlayEnd();
-          return;
+          return false;
         }
         // TTS 合成期间学员已开始录音，放弃语音播放并显示完整回复。
         if (recordingRef.current) {
           revealMsgFull(msgId);
           setTtsPreparing(null);
-          resolvePlayEnd();
-          return;
+          return false;
         }
         // 播报状态：AI 说话期间禁止学员录音
         aiAudioMsgIdRef.current = msgId || null;
@@ -719,33 +757,32 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
               setAiSpeaking(false);
                         setSpeakMsgId(null);
             }
-            resolvePlayEnd();
-            return;
+            return false;
           }
           // 被中断：确保当前句音频已停止（状态清理由 stopAiSpeak / 新播放负责）
           if (seq === speakSeqRef.current && audioRef.current) {
             try { audioRef.current.pause(); } catch { /* ignore */ }
           }
         }
-        resolvePlayEnd();
+        return allPlayed;
       } catch {
-        /* TTS 播放失败不阻断主流程，同时清除播报状态 */
+        /* TTS 播放失败：标记消息状态并明确返回未自然播完，调用方不可提前跳转报告。 */
         revealMsgFull(msgId);
         if (msgId) setTtsFailed((prev) => ({ ...prev, [msgId]: true }));
-        resolvePlayEnd();
         stopAiSpeak();
+        return false;
       }
     },
     [stopAiSpeak, revealMsgFull, playSegmentAudio]
   );
 
   const pushAiMsgAndSpeak = useCallback(
-    (text: string, emotion = "default"): Promise<void> => {
+    (text: string, emotion = "default"): Promise<boolean> => {
       // 防御性剥离模型可能残留的系统决策标记（后端已剥离，此处兜底）
       const cleaned = text.replace(/[\[【]\s*DECISION\s*[:：]\s*[a-z_]+\s*[\]】]/gi, "").trim();
       const msgId = pushMsg({ who: "ai", text: cleaned, time: now() });
       // 文本形式无需合成或播放语音，直接展示完整回复。
-      if (isTextMode) return Promise.resolve();
+      if (isTextMode) return Promise.resolve(true);
       // 首句音频开始前不显示正文，正文由音频 timeupdate 推进。
       setAiDisp((p) => {
         const next = { ...p, [msgId]: 0 };
@@ -767,6 +804,15 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
 
   /** 停止 Web Speech 实时识别与静音检测 */
   const stopLiveRecognition = () => {
+    if (liveStreamRef.current) {
+      const live = liveStreamRef.current;
+      liveStreamRef.current = null;
+      live.scriptNode.onaudioprocess = null;
+      try { live.source.disconnect(); live.scriptNode.disconnect(); } catch { /* ignore */ }
+      try { live.ws.send(JSON.stringify({ command: "stop" })); } catch { /* ignore */ }
+      try { live.ws.close(); } catch { /* ignore */ }
+      try { void live.ctx.close(); } catch { /* ignore */ }
+    }
     if (recogRef.current) {
       try {
         recogRef.current.onresult = null;
@@ -782,6 +828,62 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
     if (liveSttTimerRef.current) {
       clearInterval(liveSttTimerRef.current);
       liveSttTimerRef.current = null;
+    }
+  };
+
+  /** 与 PC 端统一使用 FunASR 流式识别；连接失败时继续走现有回退链路。 */
+  const startLiveStream = async (stream: MediaStream): Promise<boolean> => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx || typeof window.WebSocket === "undefined") return false;
+      const ctx = new AudioCtx();
+      const source = ctx.createMediaStreamSource(stream);
+      const scriptNode = ctx.createScriptProcessor(4096, 1, 1);
+      const ws = new WebSocket(FUNASR_WS_URL);
+      let opened = false;
+
+      scriptNode.onaudioprocess = (event: AudioProcessingEvent) => {
+        if (!opened || ws.readyState !== WebSocket.OPEN) return;
+        const pcm = resampleVoiceToInt16(event.inputBuffer.getChannelData(0), ctx.sampleRate, 16000);
+        if (pcm.byteLength > 0) ws.send(pcm);
+      };
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data as string) as { asr_result?: string };
+          if (typeof msg.asr_result === "string" && msg.asr_result.trim()) {
+            speechActiveRef.current = true;
+            setLiveTranscript(restoreVoiceTranscriptPunctuation(msg.asr_result));
+          }
+        } catch { /* 非 JSON 消息忽略 */ }
+      };
+      ws.onerror = () => { /* 超时后回退 */ };
+
+      const mute = ctx.createGain();
+      mute.gain.value = 0;
+      source.connect(scriptNode);
+      scriptNode.connect(mute);
+      mute.connect(ctx.destination);
+
+      const connected = await new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => {
+          if (!opened) {
+            try { ws.close(); } catch { /* ignore */ }
+            try { scriptNode.onaudioprocess = null; source.disconnect(); scriptNode.disconnect(); } catch { /* ignore */ }
+            try { void ctx.close(); } catch { /* ignore */ }
+            resolve(false);
+          }
+        }, 3000);
+        ws.onopen = () => {
+          opened = true;
+          clearTimeout(timer);
+          resolve(true);
+        };
+      });
+      if (!connected) return false;
+      liveStreamRef.current = { ws, ctx, scriptNode, source };
+      return true;
+    } catch {
+      return false;
     }
   };
 
@@ -837,6 +939,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
       }, 1000);
       const stream = await getMicStream();
       streamRef.current = stream;
+      const liveStreamStarted = await startLiveStream(stream);
       // MediaRecorder（无实时识别能力时的 STT 回退录音）
       const rec = new MediaRecorder(stream);
       chunksRef.current = [];
@@ -946,9 +1049,9 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
         } catch { /* ignore */ }
       }, 250);
 
-      // 实时听写（Web Speech API，Safari/Chrome 移动端可用时启用）
+      // FunASR 不可用时才启用浏览器实时听写，避免 interim 结果抢占主链路。
       const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SR) {
+      if (SR && !liveStreamStarted) {
         try {
           const recog = new SR();
           recog.lang = "zh-CN";
@@ -1058,18 +1161,18 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
 
   const requestQuitPractice = () => {
     if (quitRequestedRef.current || sending || !sessionId) return;
-    setConfirmAction("quit");
+    onOpenConfirm("quit");
   };
 
   const requestEndPractice = () => {
     if (quitRequestedRef.current || sending || !sceneId || !sessionId) return;
-    setConfirmAction("end");
+    onOpenConfirm("end");
   };
 
   const confirmPracticeAction = async () => {
     const action = confirmAction;
     if (!action) return;
-    setConfirmAction(null);
+    onCloseConfirm();
     if (action === "quit") {
       await quitPractice();
       return;
@@ -1226,15 +1329,19 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
           {isTextMode ? (
             <div className="pv-text-panel">
               <div className="pv-text-bar">
-                <input
+                <textarea
                   className="pv-text-input"
                   placeholder="输入你的回答…"
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={(e) => setInput(e.target.value.slice(0, 1000))}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSend();
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
                   }}
-                  maxLength={500}
+                  maxLength={1000}
+                  rows={1}
                 />
                 <button className="pv-text-send" type="button" onClick={handleSend} disabled={sending || !input.trim()} aria-label="发送回答">
                   <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
@@ -1243,6 +1350,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
                   </svg>
                 </button>
               </div>
+              <div className="pv-text-count">最多输入 1000 字（{input.length}/1000）</div>
             </div>
           ) : recording ? (
             <div className="pv-listening-panel voice-reference-panel">
@@ -1314,7 +1422,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport 
             <h3 id="pv-confirm-title">{confirmAction === "quit" ? "确定退出当前对练吗？" : "确定结束当前对练吗？"}</h3>
             <p>{confirmAction === "quit" ? "退出后将直接返回任务详情，不生成报告，也不会保留对练记录。" : "确认后将生成本次 AI 对练报告。"}</p>
             <div className="pv-confirm-actions">
-              <button className="pv-confirm-cancel" type="button" onClick={() => setConfirmAction(null)}>取消</button>
+              <button className="pv-confirm-cancel" type="button" onClick={onCloseConfirm}>取消</button>
               <button className="pv-confirm-primary" type="button" onClick={() => void confirmPracticeAction()}>
                 {confirmAction === "quit" ? "确认退出" : "确认结束"}
               </button>

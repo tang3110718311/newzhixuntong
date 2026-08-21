@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { examApi, attemptApi, type ExamAttemptDetail, type ExamAttemptRow, type ExamDetail, type ExamQuestionRow, type ExamRow } from "@/lib/api";
+import { pathForExam, type MobileRouteState } from "@/lib/mobileRoutes";
 import { statusClass } from "@/lib/types";
 import MobilePageAction from "./MobilePageAction";
 import UnifiedTabs from "./UnifiedTabs";
 
 interface ExamsPageProps {
   showToast: (msg: string) => void;
+  routeState: MobileRouteState;
 }
 
 const STATUS_TABS = ["全部", "待参加", "未通过", "已通过"];
@@ -23,7 +26,9 @@ function examTypeLabel(exam: ExamRow) {
   return TASK_TYPE_LABELS[exam.status] || "在线考试";
 }
 
-export default function ExamsPage({ showToast }: ExamsPageProps) {
+export default function ExamsPage({ showToast, routeState }: ExamsPageProps) {
+  const router = useRouter();
+  const routeLoadKeyRef = useRef("");
   const [exams, setExams] = useState<ExamRow[]>([]);
   const [attempts, setAttempts] = useState<Record<string, ExamAttemptRow>>({});
   const [keyword, setKeyword] = useState("");
@@ -85,46 +90,97 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exams, attempts]);
 
-  const beginTaking = async (e: ExamRow, existingAttemptId?: string) => {
-    if ((e.questionCount || 0) <= 0) {
-      showToast("该考试还没有题目，请联系管理员配置题库");
-      return;
-    }
-    setStartingId(e.id);
+  const beginTaking = async (examId: string, existingAttemptId?: string) => {
+    setStartingId(examId);
     try {
-      const detail = await examApi.detail(e.id);
+      const detail = await examApi.detail(examId);
       if (!detail.questions?.length) {
         showToast("该考试还没有题目，请联系管理员配置题库");
+        router.replace("/exams");
         return;
       }
-      const attempt = existingAttemptId ? { id: existingAttemptId } : await attemptApi.start(e.id);
+      const attempt = existingAttemptId ? { id: existingAttemptId } : await attemptApi.start(examId);
       setResultView(null);
       setTaking({ exam: detail, attemptId: attempt.id, answers: {}, submitting: false });
     } catch (err: any) {
       showToast(err.message || "开始考试失败");
+      router.replace("/exams");
     } finally {
       setStartingId(null);
     }
   };
 
-  const startExam = async (e: ExamRow) => {
+  const startExam = (e: ExamRow) => {
     const att = attempts[e.id];
     if (att?.status === "passed") {
-      setStartingId(e.id);
-      try {
-        const detail = await attemptApi.detail(att.id);
-        setReportTab("report");
-        setResultView({ exam: e, attempt: detail });
-      } catch (err: any) {
-        showToast(err.message || "考试报告加载失败");
-      } finally {
-        setStartingId(null);
-      }
+      router.push(pathForExam(e.id, "report", att.id));
       return;
     }
-    const existingAttemptId = att?.status === "in_progress" ? att.id : undefined;
-    await beginTaking(e, existingAttemptId);
+    router.push(pathForExam(e.id, "take"));
   };
+
+  useEffect(() => {
+    if (routeState.page !== "exams") return;
+    if (routeState.examView === "list") {
+      routeLoadKeyRef.current = "list";
+      setTaking(null);
+      setResultView(null);
+      return;
+    }
+    if (!routeState.examId || loading) return;
+
+    const key = `${routeState.examView}:${routeState.examId}:${routeState.attemptId || ""}`;
+    if (routeLoadKeyRef.current === key) return;
+    routeLoadKeyRef.current = key;
+
+    let alive = true;
+    const openRoute = async () => {
+      const examId = routeState.examId!;
+      if (routeState.examView === "take") {
+        const att = attempts[examId];
+        if (att?.status === "passed") {
+          router.replace(pathForExam(examId, "report", att.id));
+          return;
+        }
+        await beginTaking(examId, att?.status === "in_progress" ? att.id : undefined);
+        return;
+      }
+
+      if (routeState.examView === "report") {
+        const attemptId = routeState.attemptId || attempts[examId]?.id;
+        if (!attemptId) {
+          showToast("考试报告不存在或已删除");
+          router.replace("/exams");
+          return;
+        }
+        setStartingId(examId);
+        try {
+          const currentExam = exams.find((item) => item.id === examId);
+          const [attempt, examForView] = await Promise.all([
+            attemptApi.detail(attemptId),
+            currentExam ? Promise.resolve(currentExam) : examApi.detail(examId),
+          ]);
+          if (!alive) return;
+          setTaking(null);
+          setReportTab("report");
+          setResultView({ exam: examForView, attempt });
+        } catch (err: any) {
+          if (alive) {
+            showToast(err.message || "考试报告加载失败");
+            router.replace("/exams");
+          }
+        } finally {
+          if (alive) setStartingId(null);
+        }
+      }
+    };
+
+    void openRoute();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeState.page, routeState.examView, routeState.examId, routeState.attemptId, loading, attempts, exams]);
 
   function toggleAnswer(question: ExamQuestionRow, optionKey: string) {
     setTaking((prev) => {
@@ -156,6 +212,7 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
       setTaking(null);
       const report = await attemptApi.detail(attempt.id);
       setReportTab("report");
+      router.replace(pathForExam(taking.exam.id, "report", attempt.id));
       setResultView({ exam: taking.exam, attempt: report });
       await loadData();
       showToast("考试已提交，成绩已记录");
@@ -170,7 +227,7 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
     return (
       <div className="exam-taking-shell">
         <div className="task-detail-head">
-          <MobilePageAction kind="back" onClick={() => setTaking(null)} aria-label="返回考试列表" />
+          <MobilePageAction kind="back" onClick={() => router.push("/exams")} aria-label="返回考试列表" />
           <div className="task-detail-title">
             <h1>{taking.exam.name}</h1>
             <p>
@@ -219,7 +276,7 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
           })}
         </div>
         <div className="exam-taking-footer">
-          <button className="secondary" type="button" onClick={() => setTaking(null)} disabled={taking.submitting}>
+          <button className="secondary" type="button" onClick={() => router.push("/exams")} disabled={taking.submitting}>
             退出
           </button>
           <button className="primary" type="button" onClick={submitTaking} disabled={taking.submitting}>
@@ -240,7 +297,7 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
     return (
       <div className="exam-report-view">
         <div className="task-detail-head exam-report-topbar">
-          <MobilePageAction kind="back" onClick={() => setResultView(null)} aria-label="返回考试列表" />
+          <MobilePageAction kind="back" onClick={() => router.push("/exams")} aria-label="返回考试列表" />
           <div className="task-detail-title exam-report-title">
             <h1>考试报告</h1>
             <p>{resultView.exam.name}</p>
@@ -285,7 +342,7 @@ export default function ExamsPage({ showToast }: ExamsPageProps) {
         ) : (
           <div className="exam-record-chat">{questions.map((question, index) => <div className="exam-chat-group" key={question.id}><div className="exam-chat-row ai"><i>题</i><p>第 {index + 1} 题：{question.stem}</p></div><div className="exam-chat-row user"><i>我</i><p>{question.userAnswer || "未作答"}</p></div><div className={`exam-chat-feedback ${question.isCorrect ? "correct" : "wrong"}`}>{question.isCorrect ? "回答正确" : `回答错误，正确答案：${question.answer}`} · {question.score}/{question.maxScore} 分</div></div>)}</div>
         )}
-        <button className="exam-report-close-action" type="button" onClick={() => setResultView(null)}>关闭报告</button>
+        <button className="exam-report-close-action" type="button" onClick={() => router.push("/exams")}>关闭报告</button>
       </div>
     );
   }

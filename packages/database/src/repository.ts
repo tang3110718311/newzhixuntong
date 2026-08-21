@@ -322,6 +322,19 @@ export type CreateTrainingRecordInput = {
   scores: Array<{ scoringRuleId?: string | null; score: number; deductionReason?: string; evidenceText?: string; level?: string | null; roundNo?: number; issues?: string[]; advice?: string[] }>;
 };
 
+export type PersistedTurnScore = {
+  roundNo: number;
+  scores: Array<{
+    name: string;
+    score: number;
+    maxScore: number;
+    level: string;
+    reason?: string;
+    issues?: string[];
+    advice?: string[];
+  }>;
+};
+
 export type AiTrainingSessionMessage = {
   role: "ai" | "learner";
   content: string;
@@ -336,6 +349,7 @@ export type AiTrainingSessionRow = {
   sceneId: string;
   status: "in_progress" | "completed" | "abandoned";
   historyJson: string;
+  turnScoresJson: string;
   offTopicCount: number;
   roundCount: number;
   startedAt: string | null;
@@ -1623,7 +1637,7 @@ export function deleteStoppedTask(tenantId: string, taskId: string): boolean {
 
 export function createAiTrainingSession(
   tenantId: string,
-  input: { sceneId: string; userId?: string | null; history?: AiTrainingSessionMessage[] },
+  input: { sceneId: string; userId?: string | null; history?: AiTrainingSessionMessage[]; turnScores?: PersistedTurnScore[] },
 ): AiTrainingSessionRow | undefined {
   const scene = get<{ id: string }>("select id from scenes where tenant_id = ? and id = ? and deleted_at is null limit 1", [tenantId, input.sceneId]);
   if (!scene) return undefined;
@@ -1635,17 +1649,18 @@ export function createAiTrainingSession(
   const id = `sess_${randomBytes(16).toString("base64url")}`;
   const startedAt = new Date().toISOString();
   run(
-    `insert into ai_training_sessions (id, tenant_id, user_id, scene_id, status, history_json, off_topic_count, round_count, started_at, created_at, updated_at)
-     values (?, ?, ?, ?, 'in_progress', ?, 0, 0, ?, datetime('now'), datetime('now'))`,
-    [id, tenantId, input.userId ?? null, input.sceneId, JSON.stringify(input.history ?? []), startedAt],
+    `insert into ai_training_sessions (id, tenant_id, user_id, scene_id, status, history_json, turn_scores_json, off_topic_count, round_count, started_at, created_at, updated_at)
+     values (?, ?, ?, ?, 'in_progress', ?, ?, 0, 0, ?, datetime('now'), datetime('now'))`,
+    [id, tenantId, input.userId ?? null, input.sceneId, JSON.stringify(input.history ?? []), JSON.stringify(input.turnScores ?? []), startedAt],
   );
   return getAiTrainingSession(tenantId, id);
 }
 
 export function getAiTrainingSession(tenantId: string, sessionId: string): AiTrainingSessionRow | undefined {
   return get<AiTrainingSessionRow>(
-    `select id, tenant_id as tenantId, user_id as userId, scene_id as sceneId, status, history_json as historyJson,
-            off_topic_count as offTopicCount, round_count as roundCount, started_at as startedAt, finished_at as finishedAt,
+    `select id, tenant_id as tenantId, user_id as userId, scene_id as sceneId, status, history_json as historyJson, turn_scores_json as turnScoresJson,
+             off_topic_count as offTopicCount, round_count as roundCount, started_at as startedAt, finished_at as finishedAt,
+
             created_at as createdAt, updated_at as updatedAt
      from ai_training_sessions where tenant_id = ? and id = ? and deleted_at is null limit 1`,
     [tenantId, sessionId],
@@ -1656,8 +1671,9 @@ export function getAiTrainingSessionForUser(tenantId: string, sessionId: string,
   const userFilter = userId ? "user_id = ?" : "user_id is null";
   const params = userId ? [tenantId, sessionId, userId] : [tenantId, sessionId];
   return get<AiTrainingSessionRow>(
-    `select id, tenant_id as tenantId, user_id as userId, scene_id as sceneId, status, history_json as historyJson,
-            off_topic_count as offTopicCount, round_count as roundCount, started_at as startedAt, finished_at as finishedAt,
+    `select id, tenant_id as tenantId, user_id as userId, scene_id as sceneId, status, history_json as historyJson, turn_scores_json as turnScoresJson,
+             off_topic_count as offTopicCount, round_count as roundCount, started_at as startedAt, finished_at as finishedAt,
+
             created_at as createdAt, updated_at as updatedAt
      from ai_training_sessions where tenant_id = ? and id = ? and ${userFilter} and deleted_at is null limit 1`,
     params,
@@ -1669,6 +1685,7 @@ export function updateAiTrainingSession(
   sessionId: string,
   input: {
     history?: AiTrainingSessionMessage[];
+    turnScores?: PersistedTurnScore[];
     status?: "in_progress" | "completed" | "abandoned";
     offTopicCount?: number;
     roundCount?: number;
@@ -1685,10 +1702,11 @@ export function updateAiTrainingSession(
       : current.finishedAt;
   run(
     `update ai_training_sessions
-     set history_json = ?, status = ?, off_topic_count = ?, round_count = ?, finished_at = ?, updated_at = datetime('now')
+     set history_json = ?, turn_scores_json = ?, status = ?, off_topic_count = ?, round_count = ?, finished_at = ?, updated_at = datetime('now')
      where tenant_id = ? and id = ? and deleted_at is null`,
     [
       input.history ? JSON.stringify(input.history) : current.historyJson,
+      input.turnScores ? JSON.stringify(input.turnScores) : current.turnScoresJson,
       nextStatus,
       input.offTopicCount ?? current.offTopicCount,
       input.roundCount ?? current.roundCount,
@@ -1806,6 +1824,70 @@ export function createTrainingRecord(tenantId: string, input: CreateTrainingReco
   }
   return getTrainingRecordDetail(tenantId, id);
 }
+
+export function getTrainingRecordTurnScoreCoverage(tenantId: string, recordId: string) {
+  return all<{ roundNo: number; scoringRuleId: string | null }>(
+    `select round_no as roundNo, scoring_rule_id as scoringRuleId
+     from score_details
+     where tenant_id = ? and record_id = ? and round_no > 0 and deleted_at is null`,
+    [tenantId, recordId],
+  );
+}
+
+export function insertTrainingRecordTurnScoresIfMissing(
+  tenantId: string,
+  recordId: string,
+  roundNo: number,
+  scores: Array<{ scoringRuleId: string; score: number; deductionReason?: string; evidenceText?: string; level?: string; issues?: string[]; advice?: string[] }>,
+) {
+  for (const score of scores) {
+    run(
+      `insert into score_details (id, tenant_id, record_id, scoring_rule_id, round_no, score, deduction_reason, evidence_text, level, issues_json, advice_json, created_at, updated_at)
+       select ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
+       where not exists (
+         select 1 from score_details
+         where tenant_id = ? and record_id = ? and scoring_rule_id = ? and round_no = ? and deleted_at is null
+       )`,
+      [
+        createId("sd"), tenantId, recordId, score.scoringRuleId, roundNo, score.score,
+        score.deductionReason ?? "", score.evidenceText ?? "", score.level ?? "",
+        JSON.stringify(score.issues ?? []), JSON.stringify(score.advice ?? []),
+        tenantId, recordId, score.scoringRuleId, roundNo,
+      ],
+    );
+  }
+}
+
+/** 用逐轮评分重建整场维度汇总；仅替换 round_no=0 汇总，不覆盖已保存的逐轮评分。 */
+export function replaceTrainingRecordOverallScores(
+  tenantId: string,
+  recordId: string,
+  score: number,
+  scores: Array<{ scoringRuleId: string; score: number; deductionReason?: string; evidenceText?: string; level?: string; issues?: string[]; advice?: string[] }>,
+) {
+  run(
+    `update training_records set score = ?, updated_at = datetime('now')
+     where tenant_id = ? and id = ? and deleted_at is null`,
+    [score, tenantId, recordId],
+  );
+  run(
+    `delete from score_details
+     where tenant_id = ? and record_id = ? and (round_no = 0 or round_no is null) and deleted_at is null`,
+    [tenantId, recordId],
+  );
+  scores.forEach((item) => {
+    run(
+      `insert into score_details (id, tenant_id, record_id, scoring_rule_id, round_no, score, deduction_reason, evidence_text, level, issues_json, advice_json, created_at, updated_at)
+       values (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [
+        createId("sd"), tenantId, recordId, item.scoringRuleId, item.score,
+        item.deductionReason ?? "", item.evidenceText ?? "", item.level ?? "",
+        JSON.stringify(item.issues ?? []), JSON.stringify(item.advice ?? []),
+      ],
+    );
+  });
+}
+
 export function getTrainingRecordDetail(
   tenantId: string,
   recordId: string,
