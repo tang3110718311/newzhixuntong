@@ -1,17 +1,9 @@
-import { randomBytes } from "node:crypto";
-
 import { createMaterial, createScene, getSceneDetail } from "@zxt/database";
 import { fail, handleRouteError, ok } from "@/lib/response";
 import { requireTrainingManager } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-function buildCopyCode(sourceCode: string) {
-  const safePrefix = sourceCode.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase() || "SCENE";
-  const suffix = randomBytes(2).toString("hex").toUpperCase();
-  return `CPY-${safePrefix}-${suffix}`;
-}
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -26,11 +18,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const created = createScene(tenantId, {
       industryPackageId: detail.scene.industryPackageId ?? null,
       name: `${detail.scene.name}（复制）`,
-      code: buildCopyCode(detail.scene.code),
+      // 复制场景也由数据库统一按最新规则生成：CJ + 租户编码 + 日期 + 三位流水号
+      code: "",
       mode: detail.scene.mode,
       createMode: detail.scene.createMode,
       createdBy: user?.id ?? null,
       sceneType: detail.scene.sceneType,
+      status: "disabled",
       description: detail.scene.description || "",
       passScore: detail.scene.passScore,
       aiRole: aiRole ? {

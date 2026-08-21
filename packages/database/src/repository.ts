@@ -176,6 +176,7 @@ export type TaskRow = {
   startAt?: string | null;
   endAt: string | null;
   publishAt?: string | null;
+  createdAt?: string | null;
   completedAt?: string | null;
   createdBy?: string | null;
   creatorName?: string | null;
@@ -1430,7 +1431,7 @@ export function createMaterial(
 
 export function listTasks(
   tenantId: string,
-  options: { page: number; pageSize: number; keyword?: string; status?: string; assigneeUserId?: string; assigneeOrgId?: string | null },
+  options: { page: number; pageSize: number; keyword?: string; status?: string; sceneId?: string; assigneeUserId?: string; assigneeOrgId?: string | null },
 ) {
   const filters = ["t.tenant_id = ?", "t.deleted_at is null"];
   const params: unknown[] = [tenantId];
@@ -1441,6 +1442,16 @@ export function listTasks(
   if (options.keyword) {
     filters.push("(t.name like ? or t.code like ?)");
     params.push(`%${options.keyword}%`, `%${options.keyword}%`);
+  }
+  if (options.sceneId) {
+    filters.push(`exists (
+      select 1 from task_scenes ts_filter
+      where ts_filter.tenant_id = t.tenant_id
+        and ts_filter.task_id = t.id
+        and ts_filter.scene_id = ?
+        and ts_filter.deleted_at is null
+    )`);
+    params.push(options.sceneId);
   }
   if (options.assigneeUserId) {
     const participantFilters = ["tp_scope.user_id = ?"];
@@ -1465,7 +1476,7 @@ export function listTasks(
   const total = get<{ count: number }>(`select count(*) as count from tasks t where ${where}`, params)?.count ?? 0;
   const items = all<Omit<TaskRow, "progressPercent" | "sceneIds"> & { sceneIds?: string | null }>(
     `select t.id, t.name, t.code, t.type, coalesce(t.description, '') as description, t.answer_form as answerForm, t.status,
-            t.start_at as startAt, t.end_at as endAt, t.publish_at as publishAt, t.created_by as createdBy,
+             t.start_at as startAt, t.end_at as endAt, t.publish_at as publishAt, t.created_at as createdAt, t.created_by as createdBy,
             (select max(tr.finished_at) from training_records tr where tr.tenant_id = t.tenant_id and tr.task_id = t.id and tr.status = 'completed' and tr.deleted_at is null${progressUserClause}) as completedAt,
             u.name as creatorName, o.name as creatorOrgName,
             (select count(*) from task_participants tp where tp.tenant_id = t.tenant_id and tp.task_id = t.id and tp.deleted_at is null) as participantCount,

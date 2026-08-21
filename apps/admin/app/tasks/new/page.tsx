@@ -61,13 +61,6 @@ function getAuth(): AuthSession | null {
   try { return JSON.parse(raw); } catch { return null; }
 }
 
-const TASK_TYPES: Array<{ value: string; label: string }> = [
-  { value: "free_practice", label: "自由对练" },
-  { value: "fixed_practice", label: "固定对练" },
-  { value: "free_exam", label: "自由考试" },
-  { value: "fixed_exam", label: "固定考试" },
-];
-
 const PUBLISH_SCOPES = ["按参与学员发布", "按部门发布", "全员发布"];
 
 function sceneVoiceLabel(mode?: string) {
@@ -89,9 +82,7 @@ export default function TaskCreatePage() {
 
   // 基础信息
   const [taskName, setTaskName] = useState("");
-  const [owner, setOwner] = useState(auth?.user?.name || "");
-  const [taskType, setTaskType] = useState("free_practice");
-  const [deptId, setDeptId] = useState("");
+  const taskType = "free_practice";
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
   const [publishScope, setPublishScope] = useState("按参与学员发布");
@@ -171,16 +162,18 @@ export default function TaskCreatePage() {
     setParticipantIds(new Set());
   }
 
-  function applyScope() {
-    if (publishScope === "全员发布") {
+  function applyScope(nextScope: string) {
+    if (nextScope === "全员发布") {
       setParticipantIds(new Set(learners.map((u) => u.id)));
       return;
     }
-    if (publishScope === "按部门发布") {
-      setParticipantIds(new Set(learners.filter((u) => u.orgId === deptId).map((u) => u.id)));
-      return;
+    if (nextScope === "按部门发布") {
+      if (!pDeptId) {
+        setError("请先在参与学员中选择部门");
+        return;
+      }
+      setParticipantIds(new Set(learners.filter((u) => u.orgId === pDeptId).map((u) => u.id)));
     }
-    setParticipantIds(new Set());
   }
 
   async function handleImportFile(event: React.ChangeEvent<HTMLInputElement>) {
@@ -206,8 +199,7 @@ export default function TaskCreatePage() {
 
   async function submitTask(publishAfter: boolean) {
     if (!taskName.trim()) { setError("请输入任务名称"); return; }
-    if (!deptId) { setError("请选择所属部门"); return; }
-    if (!periodStart || !periodEnd) { setError("请选择任务周期"); return; }
+    if (!periodStart || !periodEnd) { setError("请选择开始时间和结束时间"); return; }
     if (new Date(periodEnd) <= new Date(periodStart)) { setError("结束时间需晚于开始时间"); return; }
     if (!selectedScenes.length) { setError("请至少添加一个业务场景"); return; }
     if (!participantIds.size) { setError("请至少选择一名参与学员"); return; }
@@ -223,7 +215,7 @@ export default function TaskCreatePage() {
         description: taskDesc,
         sceneIds: selectedScenes.map((s) => s.id),
         participantUserIds: Array.from(participantIds),
-        participantOrgIds: deptId ? [deptId] : [],
+        participantOrgIds: [],
         startAt: new Date(periodStart).toISOString(),
         endAt: new Date(periodEnd).toISOString(),
         answerForm,
@@ -288,41 +280,8 @@ export default function TaskCreatePage() {
                 <label>任务名称<i>*</i></label>
                 <input className="field" maxLength={60} value={taskName} onChange={(e) => setTaskName(e.target.value)} placeholder="请输入任务名称" />
               </div>
-              <div className="task-base-item">
-                <label>负责人<i>*</i></label>
-                <select className="field" value={owner} onChange={(e) => setOwner(e.target.value)}>
-                  <option value="">请选择负责人</option>
-                  <option value={auth?.user?.name || "智训通管理员"}>{auth?.user?.name || "智训通管理员"}</option>
-                  {learners.slice(0, 5).map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
-                </select>
-              </div>
-              <div className="task-base-item">
-                <label>任务类型</label>
-                <select className="field" value={taskType} onChange={(e) => setTaskType(e.target.value)}>
-                  {TASK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-              </div>
-              <div className="task-base-item">
-                <label>所属部门<i>*</i></label>
-                <select className="field" value={deptId} onChange={(e) => setDeptId(e.target.value)}>
-                  <option value="">请选择所属部门</option>
-                  {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-                </select>
-              </div>
-              <div className="task-base-item">
-                <label>任务周期<i>*</i></label>
-                <input className="field" type="datetime-local" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} placeholder="开始时间" />
-              </div>
-              <div className="task-base-item">
-                <label>&nbsp;</label>
-                <input className="field" type="datetime-local" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} placeholder="结束时间" />
-              </div>
-              <div className="task-base-item">
-                <label>发布范围</label>
-                <select className="field" value={publishScope} onChange={(e) => { setPublishScope(e.target.value); setTimeout(applyScope, 0); }}>
-                  {PUBLISH_SCOPES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
+
+
               <div className="task-base-item full">
                 <label>任务说明</label>
                 <textarea className="field" maxLength={300} value={taskDesc} onChange={(e) => setTaskDesc(e.target.value)} placeholder="请输入任务目标与学习要求"></textarea>
@@ -390,8 +349,11 @@ export default function TaskCreatePage() {
                     <input ref={importInputRef} type="file" accept=".xlsx,.xls,.csv,.txt" style={{ display: "none" }} onChange={handleImportFile} />
                   </div>
                 </div>
-                <p className="section-desc">批量选择本次任务的参与学员，支持按部门筛选</p>
+                <p className="section-desc">选择本次任务的参与学员，并设置发布范围</p>
                 <div className="participant-toolbar">
+                  <select className="field" value={publishScope} onChange={(e) => { const nextScope = e.target.value; setPublishScope(nextScope); setError(""); applyScope(nextScope); }}>
+                    {PUBLISH_SCOPES.map((scope) => <option key={scope} value={scope}>{scope}</option>)}
+                  </select>
                   <input className="field" value={pKeyword} onChange={(e) => setPKeyword(e.target.value)} placeholder="⌕ 搜索姓名 / 工号" />
                   <select className="field" value={pDeptId} onChange={(e) => setPDeptId(e.target.value)}>
                     <option value="">全部部门⌄</option>
@@ -426,7 +388,7 @@ export default function TaskCreatePage() {
                     {!filteredLearners.length && <div style={{ padding: 25, textAlign: "center", color: "#98a6b8" }}>没有匹配的学员</div>}
                   </div>
                 </div>
-                <div className="participant-foot">可滚动查看并继续勾选，未选择学员时不可创建任务</div>
+                <div className="participant-foot">可滚动查看并继续勾选；按部门发布时，请先选择部门</div>
               </div>
             </div>
           </div>

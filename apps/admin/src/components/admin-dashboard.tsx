@@ -191,8 +191,10 @@ type Task = {
   startAt?: string | null;
   endAt?: string | null;
   publishAt?: string | null;
+  createdAt?: string | null;
   createdBy?: string | null;
   creatorName?: string | null;
+  creatorOrgName?: string | null;
   participantCount?: number;
   sceneCount?: number;
   completedSceneCount?: number;
@@ -651,6 +653,18 @@ function statusBadge(status: string) {
   return <span className={`badge ${tone}`}>{labelMap[status] || status}</span>;
 }
 
+function taskStatusLabel(status: string) {
+  const labelMap: Record<string, string> = {
+    draft: "草稿",
+    published: "已发布",
+    in_progress: "进行中",
+    completed: "已完成",
+    stopped: "已停用",
+    overdue: "已逾期",
+  };
+  return labelMap[status] || status;
+}
+
 function modeLabel(mode: string) {
   return mode === "voice" ? "语音模式" : "文本模式";
 }
@@ -789,6 +803,7 @@ export function AdminDashboard() {
   const [scenePage, setScenePage] = useState(1);
   const [selectedSceneIds, setSelectedSceneIds] = useState<string[]>([]);
   const [sceneToDelete, setSceneToDelete] = useState<Scene | null>(null);
+  const [sceneTaskModal, setSceneTaskModal] = useState<{ scene: Scene; tasks: Task[] } | null>(null);
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
   const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
   const [wizardRoleForm, setWizardRoleForm] = useState({
@@ -1755,6 +1770,17 @@ export function AdminDashboard() {
     }
   }
 
+  async function openSceneTaskModal(scene: Scene) {
+    if (!scene.taskCount || scene.taskCount < 1) return;
+    setError("");
+    try {
+      const result = await apiFetch<PageResult<Task>>(`/tasks?page=1&pageSize=100&sceneId=${encodeURIComponent(scene.id)}`);
+      setSceneTaskModal({ scene, tasks: result.items || [] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载关联任务失败");
+    }
+  }
+
   function startPracticeFromTaskScene(task: Task, taskScene: TaskScene | null | undefined) {
     if (!taskScene?.sceneId) {
       showTaskToast("当前任务未绑定可对练场景，请先在任务中配置场景。");
@@ -2302,7 +2328,20 @@ export function AdminDashboard() {
                                <td className="name">{scene.name}<br /><small className="muted">{subMode}</small></td>
                                <td>{scene.passScore ?? 60} 分</td>
                                <td><span className={`status ${statusOn ? "on" : "off"}`}>{statusOn ? "启用" : "停用"}</span></td>
-                              <td>{scene.taskCount ?? 0}</td>
+                               <td>
+                                 {(scene.taskCount ?? 0) > 0 ? (
+                                   <button
+                                     type="button"
+                                     className="scene-task-count-link"
+                                     onClick={() => openSceneTaskModal(scene)}
+                                     aria-label={`查看${scene.name}关联任务`}
+                                   >
+                                     {scene.taskCount}
+                                   </button>
+                                 ) : (
+                                   <span>0</span>
+                                 )}
+                               </td>
                               <td>{scene.creatorOrgName || "—"}</td>
                               <td>{scene.creatorName || "—"}</td>
                               <td>{scene.createdAt ? formatDate(scene.createdAt) : "—"}</td>
@@ -2413,6 +2452,58 @@ export function AdminDashboard() {
               onCancel={() => setShowBatchDeleteConfirm(false)}
               onConfirm={confirmBatchDeleteScenes}
             />
+
+            {sceneTaskModal && (
+              <div className="modal-mask show" onClick={() => setSceneTaskModal(null)}>
+                <div className="modal scene-task-modal" onClick={(e) => e.stopPropagation()}>
+                  <div className="task-manage-scene-modal-head">
+                    <div>
+                      <h3>关联任务</h3>
+                      <p className="task-manage-scene-modal-desc">场景：{sceneTaskModal.scene.name}</p>
+                    </div>
+                    <button aria-label="关闭" className="task-manage-scene-close" type="button" onClick={() => setSceneTaskModal(null)}>×</button>
+                  </div>
+                  <div className="scene-task-table-wrap">
+                    {sceneTaskModal.tasks.length === 0 ? (
+                      <div className="task-manage-scene-modal-empty">暂无关联任务</div>
+                    ) : (
+                      <table className="scene-task-table">
+                        <thead>
+                          <tr>
+                            <th>任务名称</th>
+                            <th>任务编号</th>
+                            <th>创建人</th>
+                            <th>创建部门</th>
+                            <th>创建时间</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sceneTaskModal.tasks.map((task) => (
+                            <tr key={task.id}>
+                              <td className="scene-task-name-cell">
+                                <button
+                                  type="button"
+                                  className="scene-task-name-link"
+                                  onClick={() => { setSceneTaskModal(null); navigateTo(`/tasks/${task.id}`); }}
+                                  title="查看任务详情"
+                                >
+                                  {task.name || "—"}
+                                </button>
+                              </td>
+                              <td>{task.code || "—"}</td>
+                              <td>{task.creatorName || "—"}</td>
+                              <td>{task.creatorOrgName || "—"}</td>
+                              <td>{task.createdAt ? formatDate(task.createdAt) : "—"}</td>
+                            </tr>
+                          ))}
+
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {showSceneWizard && (
               <div className="scene-prompt-mask show ai-flow" onClick={() => setShowSceneWizard(false)}>

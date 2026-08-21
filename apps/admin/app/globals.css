@@ -2757,11 +2757,11 @@ body {
   }
 }
 
-/* 固定后台全局导航：页面滚动时左侧菜单与顶部状态栏保持可见 */
+/* 固定后台左侧菜单；顶部状态栏随页面自然滚动 */
 .shell {
   display: block;
   min-height: 100vh;
-  padding: calc(30px + var(--topbar-h) + var(--space-md)) var(--shell-pad-right) var(--shell-pad-bottom) calc(var(--shell-pad-left) + var(--sidebar-w) + var(--space-md));
+  padding: 30px var(--shell-pad-right) var(--shell-pad-bottom) calc(var(--shell-pad-left) + var(--sidebar-w) + var(--space-md));
 }
 
 .sidebar {
@@ -2776,15 +2776,151 @@ body {
 }
 
 .prototype-topbar {
-  position: fixed;
-  top: 30px;
-  left: calc(var(--shell-pad-left) + var(--sidebar-w) + var(--space-md));
-  right: var(--shell-pad-right);
-  z-index: 100;
-  margin-bottom: 0;
-  background: rgba(245, 247, 251, 0.82);
-  backdrop-filter: blur(14px);
-  border-radius: 0;
+  position: static;
+  margin-bottom: var(--space-md);
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.scene-task-count-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #2f74eb;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.scene-task-count-link:hover {
+  color: #1d5dcc;
+}
+
+.modal.scene-task-modal {
+  width: min(1180px, calc(100vw - 64px));
+  max-width: calc(100vw - 64px);
+  padding: 28px 30px;
+}
+
+.scene-task-modal .task-manage-scene-modal-head {
+  position: relative;
+  align-items: flex-start;
+  padding-right: 36px;
+}
+
+.scene-task-modal .task-manage-scene-close {
+  position: absolute;
+  top: -2px;
+  right: 0;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+}
+
+.scene-task-modal .task-manage-scene-close:hover {
+  background: #f1f5fa;
+  color: #526983;
+}
+
+.scene-task-modal .task-manage-scene-modal-desc {
+  margin: 6px 0 0;
+}
+
+.scene-task-table-wrap {
+  max-height: min(56vh, 520px);
+  overflow: auto;
+  border: 1px solid #e5ebf3;
+  border-radius: 8px;
+}
+
+.scene-task-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  border-collapse: collapse;
+  background: #fff;
+  font-size: 13px;
+}
+
+.scene-task-table th,
+.scene-task-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #edf1f6;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.scene-task-table th:nth-child(1),
+.scene-task-table td:nth-child(1) { width: 28%; }
+.scene-task-table th:nth-child(2),
+.scene-task-table td:nth-child(2) { width: 18%; }
+.scene-task-table th:nth-child(3),
+.scene-task-table td:nth-child(3) { width: 14%; }
+.scene-task-table th:nth-child(4),
+.scene-task-table td:nth-child(4) { width: 20%; }
+.scene-task-table th:nth-child(5),
+.scene-task-table td:nth-child(5) { width: 20%; }
+
+.scene-task-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f7f9fc;
+  color: #63758d;
+  font-weight: 600;
+}
+
+.scene-task-table tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+.scene-task-table tbody tr:hover,
+.scene-task-table tbody tr:focus {
+  outline: none;
+  background: #f2f7ff;
+}
+
+.scene-task-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.scene-task-name-cell {
+  color: #245fb8;
+  font-weight: 600;
+}
+
+.scene-task-name-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.scene-task-name-link:hover {
+  color: #1d5dcc;
+}
+
+@media (max-width: 1100px) {
+  .modal.scene-task-modal {
+    width: calc(100vw - 40px);
+    max-width: calc(100vw - 40px);
+  }
+
+  .scene-task-table th,
+  .scene-task-table td {
+    padding: 10px 9px;
+    font-size: 12px;
+  }
 }
 
 /* Page section layout */
@@ -3849,6 +3985,11 @@ body {
 .tm-mod .task-actions a:hover{color:#215cc8}
 .tm-mod .task-actions a.del{color:#df6871}
 .tm-mod .task-manage-scene-modal{width:460px;max-width:calc(100vw - 40px);padding:24px}
+.tm-mod .scene-task-modal{
+  width:min(1180px, calc(100vw - 64px));
+  max-width:calc(100vw - 64px);
+  padding:28px 30px;
+}
 .tm-mod .task-manage-scene-modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .tm-mod .task-manage-scene-modal-head h3{margin:0}
 .tm-mod .task-manage-scene-close{border:0;background:transparent;color:#8191a5;font-size:24px;line-height:1;cursor:pointer}
