@@ -365,7 +365,12 @@ export default function SceneNewPage() {
             deductionRule: r.deductionRule,
             evidenceRequired: r.evidenceRequired,
           })),
-          attachmentFileIds: editAttachments.filter((item) => item.status === "done" && item.fileId).map((item) => item.fileId as string),
+           // 场景资料位于 00 场景信息模块，兼容对话目标模块中已上传的资料并去重
+           attachmentFileIds: Array.from(new Set(
+             [...topAttachments, ...editAttachments]
+               .filter((item) => item.status === "done" && item.fileId)
+               .map((item) => item.fileId as string),
+           )),
           status,
         }),
       });

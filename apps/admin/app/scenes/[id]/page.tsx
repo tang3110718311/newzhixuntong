@@ -416,8 +416,8 @@ export default function SceneDetailPage() {
               </section>
               <section className="preview-side-card card">
                 <div className="row">
-                  <h3>训练资料</h3>
-                  <span className="muted">已上传</span>
+                  <h3>场景文件</h3>
+                  <span className="muted">创建场景时上传</span>
                 </div>
                 <div className="preview-attachment-list">
                   {(detail.attachments || []).length === 0 ? (

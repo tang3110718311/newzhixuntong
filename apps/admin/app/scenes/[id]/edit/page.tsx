@@ -432,7 +432,12 @@ export default function SceneEditPage() {
             deductionRule: r.deductionRule,
             evidenceRequired: r.evidenceRequired,
           })),
-          attachmentFileIds: editAttachments.filter((item) => item.status === "done" && item.fileId).map((item) => item.fileId as string),
+           // 保存 00 场景信息中的场景资料，同时兼容对话目标模块中的旧附件并去重
+           attachmentFileIds: Array.from(new Set(
+             [...topAttachments, ...editAttachments]
+               .filter((item) => item.status === "done" && item.fileId)
+               .map((item) => item.fileId as string),
+           )),
           status,
         }),
       });
