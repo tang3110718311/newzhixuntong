@@ -597,11 +597,11 @@ const initialRecordForm = {
   evidenceText: "核实历史工单、明确处理时限和反馈方式",
 };
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getStoredAuthToken();
-  const isFormData = init?.body instanceof FormData;
-  const method = (init?.method || "GET").toUpperCase();
-  const retryable = method === "GET";
+  async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+    const token = getStoredAuthToken();
+    const isFormData = init?.body instanceof FormData;
+    const method = (init?.method || "GET").toUpperCase();
+    const retryable = method === "GET";
   let response: Response | null = null;
   let lastError: unknown;
   for (let attempt = 0; attempt < (retryable ? 2 : 1); attempt += 1) {
@@ -625,7 +625,9 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     await new Promise((resolve) => window.setTimeout(resolve, 250));
   }
   if (!response) throw lastError instanceof Error ? lastError : new Error("请求失败");
-  const payload = (await response.json()) as ApiResponse<T>;
+  const text = await response.text();
+  if (!text) return undefined as T;
+  const payload = JSON.parse(text) as ApiResponse<T>;
   if (!payload.success) {
     throw new Error(payload.message || payload.code);
   }
@@ -1608,7 +1610,7 @@ export function AdminDashboard() {
   // → scene detail now lives at /scenes/[id] independent page
   async function disableScene(sceneId: string) {
     await submitAction("场景已停用。", async () => {
-      await apiFetch(`/scenes/${sceneId}`, { method: "PATCH", body: JSON.stringify({}) });
+      await apiFetch(`/scenes/${sceneId}/disable`, { method: "POST", body: JSON.stringify({}) });
     });
   }
 
@@ -4536,7 +4538,9 @@ function LoginCaptchaModal({
         ...(init?.headers || {}),
       },
     });
-    const payload = (await response.json()) as ApiResponse<T>;
+    const text = await response.text();
+    if (!text) return undefined as T;
+    const payload = JSON.parse(text) as ApiResponse<T>;
     if (!payload.success) throw new Error(payload.message || payload.code);
     return payload.data;
   }
@@ -4638,6 +4642,5 @@ function LoginCaptchaModal({
     </div>
   );
 }
-
 
 
