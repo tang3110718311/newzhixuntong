@@ -2757,6 +2757,36 @@ body {
   }
 }
 
+/* 固定后台全局导航：页面滚动时左侧菜单与顶部状态栏保持可见 */
+.shell {
+  display: block;
+  min-height: 100vh;
+  padding: calc(30px + var(--topbar-h) + var(--space-md)) var(--shell-pad-right) var(--shell-pad-bottom) calc(var(--shell-pad-left) + var(--sidebar-w) + var(--space-md));
+}
+
+.sidebar {
+  position: fixed;
+  top: 30px;
+  left: var(--shell-pad-left);
+  z-index: 110;
+  width: var(--sidebar-w);
+  height: calc(100vh - 60px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.prototype-topbar {
+  position: fixed;
+  top: 30px;
+  left: calc(var(--shell-pad-left) + var(--sidebar-w) + var(--space-md));
+  right: var(--shell-pad-right);
+  z-index: 100;
+  margin-bottom: 0;
+  background: rgba(245, 247, 251, 0.82);
+  backdrop-filter: blur(14px);
+  border-radius: 0;
+}
+
 /* Page section layout */
 #navigation-loading-overlay {
   position: fixed;
