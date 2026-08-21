@@ -558,9 +558,9 @@ export default function SceneEditPage() {
                 </button>
               </div>
               <div className="form-grid config-grid">
-                {/* 上传附件 */}
+                {/* 场景资料 */}
                 <div className="form-item full">
-                  <label>上传附件</label>
+                  <label>场景资料</label>
                   <div className="goal-ai-upload">
                     <div className="goal-ai-upload-main">
                       <input ref={topAttachmentInputRef} type="file" multiple accept=".pdf,.docx,.xlsx,.pptx,.txt,.md" style={{ display: "none" }} onChange={handleTopAttachmentsSelected} />

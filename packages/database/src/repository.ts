@@ -185,6 +185,7 @@ export type TaskRow = {
   completedSceneCount: number;
   sceneIds?: string[];
   completedExamSceneCount?: number;
+  progressPercent?: number;
   primarySceneType?: string | null;
   primaryMode?: string | null;
 };
@@ -1074,7 +1075,8 @@ function generateSceneCode(tenantId: string) {
 
 export function createScene(tenantId: string, input: { industryPackageId?: string | null; name: string; code: string; mode: string; createMode?: string; createdBy?: string | null; sceneType: string; description: string; aiRole?: { identity: string; background: string; personality: string; emotion: string; languageStyle?: string; goal: string }; learnerRole?: { identity: string; goal: string }; endCondition?: string; interruptCondition?: string; dialogueExample?: string; initiator?: string; scoringRules?: Array<{ name: string; score: number; criteria: string; deductionRule: string; evidenceRequired: string }>; attachmentFileIds?: string[]; passScore?: number; status?: "disabled" | "published" }) {
   const id = createId("scene");
-  const code = generateSceneCode(tenantId);
+  // 优先使用前端传入的场景编号，未传入时才自动生成，保证与创建时展示的编号一致
+  const code = input.code || generateSceneCode(tenantId);
   run(
     `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, create_mode, scene_type, description, pass_score, status, source_type, is_template, version, created_by, created_at, updated_at)
      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', 0, '1.0.0', ?, datetime('now'), datetime('now'))`,
@@ -1121,7 +1123,8 @@ export function createScene(tenantId: string, input: { industryPackageId?: strin
 
 export function createGeneratedScene(tenantId: string, input: GeneratedSceneInput) {
   const id = createId("scene");
-  const code = generateSceneCode(tenantId);
+  // 优先使用前端传入的场景编号，未传入后再自动生成
+  const code = input.code || generateSceneCode(tenantId);
   run(
     `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, create_mode, scene_type, description, pass_score, status, source_type, is_template, version, created_by, created_at, updated_at)
      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, 0, '1.0.0', ?, datetime('now'), datetime('now'))`,

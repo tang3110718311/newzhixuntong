@@ -1274,6 +1274,8 @@ export function AdminDashboard() {
   async function loadSceneKbFiles(folderId: string) {
     setSceneKbFolderId(folderId);
     setSceneKbFiles([]);
+    // 未选择文件夹时不发起请求，避免触发后端"缺少 folderId 参数"错误
+    if (!folderId) return;
     try {
       const data = await apiFetch<Array<{ id: string; name: string; parseStatus: string }>>(`/knowledge/files?folderId=${encodeURIComponent(folderId)}`);
       setSceneKbFiles(data || []);
@@ -2475,7 +2477,7 @@ export function AdminDashboard() {
                       />
                       <div className="prompt-upload">
                         <div className="prompt-upload-head">
-                          <div className="prompt-upload-title">上传附件<span>支持本地文件或企业知识库资料</span></div>
+                          <div className="prompt-upload-title">场景资料<span>支持本地文件或企业知识库资料</span></div>
                           <div className="prompt-upload-actions">
                             <label className="prompt-upload-label" onClick={() => sceneAttachmentInputRef.current?.click()}>＋ 本地文件
                               <input ref={sceneAttachmentInputRef} type="file" multiple accept=".pdf,.docx,.xlsx,.pptx,.txt,.md" onChange={handleSceneAttachmentsSelected} />
