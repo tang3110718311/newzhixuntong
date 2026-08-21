@@ -101,6 +101,18 @@ export function taskRuntimeStatus(
   return task.status;
 }
 
+/** 任务是否已停用。停用状态优先于时间和学习进度。 */
+export function isTaskStopped(task: Pick<TaskStatusInput, "status"> | null | undefined): boolean {
+  return task?.status === "stopped" || task?.status === "已停用";
+}
+
+/** 任务是否已逾期。逾期任务仍允许进入并操作全部学习场景。 */
+export function isTaskOverdue(
+  task: TaskStatusInput | null | undefined,
+): boolean {
+  return Boolean(task) && taskRuntimeStatus(task as TaskStatusInput) === "overdue";
+}
+
 // 任务展示状态文本（运行时状态 → 中文），与移动端我的任务判定一致
 export function taskDisplayStatus(
   statusOrTask: TaskStatusInput | string,

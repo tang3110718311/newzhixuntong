@@ -1,4 +1,4 @@
-export type MobilePageKey = "home" | "tasks" | "taskDetail" | "exams" | "ability" | "profile";
+export type MobilePageKey = "home" | "tasks" | "taskDetail" | "ability" | "profile";
 export type TaskRouteView = "detail" | "workspace" | "material" | "practice" | "exam" | "report" | "examReport";
 export type ProfileRouteView = "main" | "avatar";
 export type MobileModalKey = "tenant" | "account" | "feedback" | "captcha" | "practiceQuitConfirm" | "practiceEndConfirm";
@@ -11,9 +11,6 @@ export interface MobileRouteState {
   practiceReportRecordId: string | null;
   practiceReportSessionId: string | null;
   sceneExamRecordId: string | null;
-  examId: string | null;
-  examView: "list" | "take" | "report";
-  attemptId: string | null;
   profileView: ProfileRouteView;
   modal: MobileModalKey | null;
 }
@@ -26,9 +23,6 @@ const DEFAULT_ROUTE: MobileRouteState = {
   practiceReportRecordId: null,
   practiceReportSessionId: null,
   sceneExamRecordId: null,
-  examId: null,
-  examView: "list",
-  attemptId: null,
   profileView: "main",
   modal: null,
 };
@@ -64,13 +58,6 @@ export function parseMobileRoute(pathname: string, searchParams?: { get(name: st
     return { ...base, sceneId, taskView: "workspace" };
   }
 
-  if (root === "exams") {
-    if (!id) return { ...DEFAULT_ROUTE, page: "exams", modal };
-    if (segment === "take") return { ...DEFAULT_ROUTE, page: "exams", examId: id, examView: "take", modal };
-    if (segment === "report") return { ...DEFAULT_ROUTE, page: "exams", examId: id, examView: "report", attemptId: sceneId || null, modal };
-    return { ...DEFAULT_ROUTE, page: "exams", modal };
-  }
-
   if (root === "ability") return { ...DEFAULT_ROUTE, page: "ability", modal };
   if (root === "profile") return { ...DEFAULT_ROUTE, page: "profile", profileView: id === "avatar" ? "avatar" : "main", modal };
   return { ...DEFAULT_ROUTE, modal };
@@ -79,7 +66,6 @@ export function parseMobileRoute(pathname: string, searchParams?: { get(name: st
 export function pathForPage(page: MobilePageKey) {
   if (page === "home") return "/";
   if (page === "tasks") return "/tasks";
-  if (page === "exams") return "/exams";
   if (page === "ability") return "/ability";
   if (page === "profile") return "/profile";
   return "/tasks";
@@ -95,12 +81,6 @@ export function pathForTaskScene(taskId: string, sceneId: string, view: TaskRout
   if (view === "report") return `${base}/practice-report${reportId ? `/${encodeURIComponent(reportId)}` : ""}`;
   if (view === "examReport") return `${base}/exam-report${reportId ? `/${encodeURIComponent(reportId)}` : ""}`;
   return `${base}/${view}`;
-}
-
-export function pathForExam(examId: string, mode: "take" | "report", attemptId?: string | null) {
-  const base = `/exams/${encodeURIComponent(examId)}`;
-  if (mode === "report") return `${base}/report${attemptId ? `/${encodeURIComponent(attemptId)}` : ""}`;
-  return `${base}/take`;
 }
 
 export function withModal(path: string, modal: MobileModalKey | null) {

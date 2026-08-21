@@ -53,7 +53,8 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
     const total = tasks.length;
     const overdue = tasks.filter((t) => displayStatus(t) === "已逾期").length;
     const doing = tasks.filter((t) => displayStatus(t) === "进行中").length;
-    return { total, overdue, doing };
+    const completed = tasks.filter((t) => displayStatus(t) === "已完成").length;
+    return { total, overdue, doing, completed };
   }, [tasks]);
 
   return (
@@ -70,6 +71,10 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
         <div className="task-stat doing">
           <label>进行中</label>
           <strong id="taskDoing">{stats.doing}</strong>
+        </div>
+        <div className="task-stat done">
+          <label>已完成</label>
+          <strong id="taskCompleted">{stats.completed}</strong>
         </div>
         <div className="task-stat overdue">
           <label>已逾期</label>

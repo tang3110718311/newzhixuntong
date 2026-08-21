@@ -5,7 +5,6 @@ import { PageKey } from "./MobileApp";
 const TABS: { key: PageKey; icon: string; label: string }[] = [
   { key: "home", icon: "⌂", label: "首页" },
   { key: "tasks", icon: "✓", label: "我的任务" },
-  { key: "exams", icon: "▣", label: "我的考试" },
   { key: "ability", icon: "✦", label: "综合能力" },
   { key: "profile", icon: "☻", label: "个人中心" },
 ];

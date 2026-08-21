@@ -71,10 +71,6 @@ const IcoStudent = () => (
 const IcoTasks = () => (
   <svg {...iconProps}><rect x="4" y="3.5" width="16" height="17" rx="2" /><path d="m8 8 1.4 1.4L12 6.8M14 9h3M8 14l1.4 1.4 2.6-2.6M14 15h3" /></svg>
 );
-// 我的考试：文档+对勾
-const IcoExams = () => (
-  <svg {...iconProps}><path d="M6 3.5h9l3 3V20H6z" /><path d="M15 3.5V7h3M9 11h6M9 15h4" /><path d="m8.5 18 1.3 1.3L12.5 16" /></svg>
-);
 // 场景管理：星星
 const IcoScenes = () => (
   <svg {...iconProps}><path d="m12 3 1.7 5.1L19 10l-5.3 1.9L12 17l-1.7-5.1L5 10l5.3-1.9z" /><path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7zM5 3v3M3.5 4.5h3" /></svg>
@@ -396,7 +392,6 @@ type ActiveSection =
   | "student-home"
   | "my-tasks"
   | "task-detail"
-  | "my-exams"
   | "scenes"
   | "knowledge"
   | "tasks"
@@ -415,7 +410,7 @@ type ActiveSection =
 
 // 所有可导航的 section key（用于校验 URL ?section= 参数）
 const VALID_SECTIONS: ReadonlySet<string> = new Set([
-  "overview", "student-home", "my-tasks", "task-detail", "my-exams", "scenes", "knowledge",
+  "overview", "student-home", "my-tasks", "task-detail", "scenes", "knowledge",
   "tasks", "appeals", "statistics-dept", "statistics-learner", "materials", "settings",
   "sys-users", "sys-roles", "sys-menus", "sys-departments", "sys-posts", "sys-tenants",
   "records",
@@ -839,7 +834,6 @@ export function AdminDashboard() {
   const [showMaterialCreate, setShowMaterialCreate] = useState(false);
   const [showRecordCreate, setShowRecordCreate] = useState(false);
   const [taskFilter, setTaskFilter] = useState({ status: "all", type: "all", keyword: "" });
-  const [examFilter, setExamFilter] = useState({ status: "all", keyword: "" });
   const [showTaskManageSceneModal, setShowTaskManageSceneModal] = useState(false);
   const [taskManageSceneData, setTaskManageSceneData] = useState<{ task: Task; scenes: TaskScene[] } | null>(null);
   const [showTaskDataModal, setShowTaskDataModal] = useState(false);
@@ -873,7 +867,6 @@ export function AdminDashboard() {
   const [takeRemainingSeconds, setTakeRemainingSeconds] = useState(0);
   const [submittedAttempt, setSubmittedAttempt] = useState<ExamAttempt | null>(null);
   const [currentAttemptId, setCurrentAttemptId] = useState("");
-  const [viewingExamResult, setViewingExamResult] = useState<ExamAttempt | null>(null);
   const [viewExamBankId, setViewExamBankId] = useState("");
   const [examFormQuestions, setExamFormQuestions] = useState<ExamQuestion[]>([]);
 
@@ -2060,7 +2053,6 @@ export function AdminDashboard() {
     { id: "home", key: "overview", label: "首页", icon: <IcoHome /> },
     { id: "student-home", key: "student-home", label: "学员首页", icon: <IcoStudent /> },
     { id: "my-tasks", key: "my-tasks", label: "我的任务", icon: <IcoTasks />, badge: tasks.filter((task) => task.status !== "completed").length },
-    { id: "my-exams", key: "my-exams", label: "我的考试", icon: <IcoExams />, badge: 0 },
     { id: "scenes", key: "scenes", label: "场景管理", icon: <IcoScenes /> },
     { id: "knowledge", key: "knowledge", label: "企业知识库", icon: <IcoKnowledge /> },
     { id: "tasks", key: "tasks", label: "任务管理", icon: <IcoTaskManage /> },
@@ -2103,7 +2095,6 @@ export function AdminDashboard() {
   const currentNavChild = currentNavItem?.children?.find((c) => c.key === activeSection);
   const currentChildLabel = currentNavChild?.label;
   const learnerCount = users.filter((user) => user.roleCode === "learner").length;
-  const publishedExams = exams.filter((exam) => exam.status === "published");
   const publishedTaskCount = tasks.filter((task) => task.status === "published").length;
   const pendingAppealCount = appeals.filter((appeal) => appeal.status === "pending").length;
   const completedRecordCount = records.filter((record) => record.status === "completed").length;
@@ -2123,14 +2114,6 @@ export function AdminDashboard() {
     mixed: "混合模式",
   };
   const taskTypeLabel = (type: string) => TASK_TYPE_LABELS[type] || type || "任务";
-  // 考试类型标签（原型：固定考试/自由考试/结业考试/在线考试）
-  const examTypeLabel = (exam?: Exam | null) => {
-    if (!exam) return "在线考试";
-    if (exam.status === "final") return "结业考试";
-    if (exam.status === "stage") return "阶段考试";
-    const label = TASK_TYPE_LABELS[exam.status] || "";
-    return label || "在线考试";
-  };
   const myTaskStats = tasks.reduce(
     (stats, task) => {
       const runtimeStatus = getTaskRuntimeStatus(task);
@@ -2168,39 +2151,6 @@ export function AdminDashboard() {
     const record = sceneStudyMap[taskId];
     return !!record && Object.values(record).some(Boolean);
   };
-  // 我的考试（按 APP 端「我的考试」逻辑）：以已发布考试为列表主体，每个考试按最新考试记录判定状态
-  const myExamLatestAttempt = (examId: string): ExamAttempt | undefined => {
-    const list = examAttempts.filter((a) => a.examId === examId);
-    if (!list.length) return undefined;
-    return list.sort((x, y) => {
-      const xT = x.finishedAt || x.createdAt || "";
-      const yT = y.finishedAt || y.createdAt || "";
-      return xT < yT ? 1 : -1;
-    })[0];
-  };
-  const myExamStatus = (exam: Exam): { text: string; score: string; action: string } => {
-    const att = myExamLatestAttempt(exam.id);
-    if (!att) return { text: "待参加", score: "—", action: "开始考试" };
-    if (att.status === "passed") return { text: "已通过", score: `${att.score} 分`, action: "查看解析" };
-    if (att.status === "failed") return { text: "未通过", score: `${att.score} 分`, action: "重新考试" };
-    return { text: "进行中", score: "—", action: "继续考试" };
-  };
-  const EXAM_STATUS_KEY: Record<string, string> = { "待参加": "pending", "已通过": "passed", "未通过": "failed", "进行中": "in_progress" };
-  const filteredMyExams = publishedExams.filter((exam) => {
-    const st = myExamStatus(exam);
-    const matchesStatus = examFilter.status === "all" || EXAM_STATUS_KEY[st.text] === examFilter.status;
-    const keyword = examFilter.keyword.trim().toLowerCase();
-    const matchesKeyword = !keyword || exam.name.toLowerCase().includes(keyword);
-    return matchesStatus && matchesKeyword;
-  });
-  const myExamStats = (() => {
-    const total = publishedExams.length;
-    const pending = publishedExams.filter((e) => myExamStatus(e).text === "待参加").length;
-    const passed = publishedExams.filter((e) => myExamStatus(e).text === "已通过").length;
-    const failed = publishedExams.filter((e) => myExamStatus(e).text === "未通过").length;
-    const passRate = passed + failed ? Math.round((passed / (passed + failed)) * 100) : 0;
-    return { total, pending, passed, failed, passRate };
-  })();
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -3849,153 +3799,6 @@ export function AdminDashboard() {
           </section>
           );
         })()}
-        {activeSection === "my-exams" && (
-          <section className="page-section my-exams-mod home-dashboard">
-            <div className="home-grid">
-              <div className="home-main">
-                {/* 模块头（原型 .module-head） */}
-                <div className="module-head card">
-                  <div>
-                    <h1>我的考试</h1>
-                    <p className="muted">参加已发布考试，查看历史成绩与解析。</p>
-                  </div>
-                  <div className="module-actions">
-                    <button className="btn outline" type="button">导出记录</button>
-                  </div>
-                </div>
-
-                {/* 4统计卡（对齐 APP 端：全部/待参加/已通过/未通过） */}
-                <div className="summary-grid">
-                  <div className="summary-card card"><label>全部考试</label><strong>{myExamStats.total}</strong><small className="muted">已发布累计</small></div>
-                  <div className="summary-card card"><label>待参加</label><strong style={{ color: "#e49a38" }}>{myExamStats.pending}</strong><small className="muted">请按时完成</small></div>
-                  <div className="summary-card card"><label>已通过</label><strong className="blue">{myExamStats.passed}</strong><small className="muted">通过率 {myExamStats.passRate}%</small></div>
-                  <div className="summary-card card"><label>未通过</label><strong style={{ color: "#dc7662" }}>{myExamStats.failed}</strong><small className="muted">建议重新学习</small></div>
-                </div>
-
-                {/* 筛选区（原型 .module-filter） */}
-                <div className="module-filter card">
-                  <select className="field" value={examFilter.status === "all" ? "" : examFilter.status} onChange={(e) => setExamFilter({ ...examFilter, status: e.target.value || "all" })}>
-                    <option value="">全部考试状态</option>
-                    <option value="pending">待参加</option>
-                    <option value="passed">已通过</option>
-                    <option value="failed">未通过</option>
-                  </select>
-                  <input className="field" type="text" placeholder="搜索考试名称" value={examFilter.keyword || ""} onChange={(e) => setExamFilter({ ...examFilter, keyword: e.target.value })} />
-                  <button className="btn" type="button">查询</button>
-                  <button className="btn outline" type="button" onClick={() => setExamFilter({ status: "all", keyword: "" })}>重置</button>
-                </div>
-
-                {/* 考试表格（原型 .data-table） */}
-                <div className="card" style={{ overflow: "hidden" }}>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>考试名称</th>
-                        <th>考试类型</th>
-                        <th>考试时间</th>
-                        <th>成绩</th>
-                        <th>状态</th>
-                        <th>操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredMyExams.length > 0 ? filteredMyExams.map((exam) => {
-                        const st = myExamStatus(exam);
-                        const statusClass = st.text === "已通过" ? "green" : st.text === "未通过" ? "red" : st.text === "进行中" ? "blue" : "orange";
-                        const att = myExamLatestAttempt(exam.id);
-                        const examTime = att?.startedAt
-                          ? new Date(att.startedAt).toLocaleString("zh-CN", { hour12: false }).slice(0, 16)
-                          : exam.startAt
-                            ? new Date(exam.startAt).toLocaleString("zh-CN", { hour12: false }).slice(0, 16)
-                            : "—";
-                        return (
-                          <tr key={exam.id}>
-                            <td><strong>{exam.name}</strong></td>
-                            <td>{examTypeLabel(exam)}</td>
-                            <td>{examTime}</td>
-                            <td>{st.score === "—" ? "—" : st.score}</td>
-                            <td><span className={`tag ${statusClass}`}>{st.text}</span></td>
-                            <td>
-                              {st.text === "已通过" && att ? (
-                                <a onClick={() => setViewingExamResult(att)}>查看解析</a>
-                              ) : st.text === "进行中" ? (
-                                <a onClick={() => void resumeExamAttempt(exam.id)}>继续考试</a>
-                              ) : (
-                                <a onClick={() => void createExamAttemptAndStart(exam)}>{st.action}</a>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      }) : (
-                        <tr>
-                          <td colSpan={6} className="empty" style={{ padding: 40 }}>暂无考试，请联系管理员发布考试</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* 查看解析弹窗（学员成绩报告） */}
-                {viewingExamResult && (
-                  <div className="modal-overlay" onClick={() => setViewingExamResult(null)}>
-                    <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 620 }}>
-                      <div className="modal-head">
-                        <h2>学员成绩报告</h2>
-                        <button className="link-btn" type="button" onClick={() => setViewingExamResult(null)}>×</button>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 24px", padding: "16px 18px", background: "#f7faff", border: "1px solid #e8eff8", borderRadius: 12 }}>
-                        <div><span style={{ color: "#8494a8", fontSize: 12 }}>考试名称</span><b style={{ display: "block", marginTop: 5 }}>{viewingExamResult.examName || "考试"}</b></div>
-                        <div><span style={{ color: "#8494a8", fontSize: 12 }}>学员</span><b style={{ display: "block", marginTop: 5 }}>{viewingExamResult.userName || "—"}</b></div>
-                        <div><span style={{ color: "#8494a8", fontSize: 12 }}>完成时间</span><b style={{ display: "block", marginTop: 5 }}>{viewingExamResult.finishedAt ? new Date(viewingExamResult.finishedAt).toLocaleString("zh-CN", { hour12: false }) : "—"}</b></div>
-                        <div><span style={{ color: "#8494a8", fontSize: 12 }}>用时</span><b style={{ display: "block", marginTop: 5 }}>{viewingExamResult.durationSeconds ? `${Math.round(viewingExamResult.durationSeconds / 60)} 分钟` : "—"}</b></div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 18, padding: "14px 18px", borderRadius: 12, background: viewingExamResult.status === "passed" ? "#f0fbf5" : "#fff4f0", color: viewingExamResult.status === "passed" ? "#318b68" : "#dc7662" }}>
-                        <span>本次成绩</span>
-                        <strong style={{ fontSize: 20 }}>{viewingExamResult.score}{viewingExamResult.totalScore ? ` / ${viewingExamResult.totalScore}` : ""} 分</strong>
-                      </div>
-                      <div style={{ marginTop: 16, color: "#71849d", fontSize: 13, lineHeight: 1.8 }}>
-                        {viewingExamResult.status === "passed" ? "已通过本次考试，成绩合格。建议回顾错题解析，巩固薄弱知识点。" : "未通过本次考试。建议重新学习相关资料后再次参加考试。"}
-                      </div>
-                      <div className="modal-actions">
-                        <button className="btn" type="button" onClick={() => setViewingExamResult(null)}>关闭</button>
-                        {viewingExamResult.status === "failed" && (
-                          <button className="btn primary" type="button" onClick={() => { const exam = exams.find((e) => e.id === viewingExamResult.examId); setViewingExamResult(null); if (exam) void createExamAttemptAndStart(exam); }}>重新考试</button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 右侧栏（原型 .right：个人资料 / 培训概况 / 通知消息） */}
-              <aside className="right-rail">
-                <section className="profile card">
-                  <div className="profilehead">
-                    <div className="pic" />
-                    <div>
-                      <h3>{auth.user.name}</h3>
-                      <span className="tag">企业管理员</span>　<span className="tag">培训负责人</span>
-                    </div>
-                  </div>
-                </section>
-                <section className="sidecard card">
-                  <div className="row"><h3>培训概况</h3><span className="muted">本年度</span></div>
-                  <div className="score">{completedRecordCount.toLocaleString()}</div>
-                  <span className="muted">已完成培训任务</span>
-                  <div className="minis">
-                    <div><span className="muted">对练</span><b>{records.length.toLocaleString()}</b></div>
-                    <div><span className="muted">考试</span><b>{examAttempts.length.toLocaleString()}</b></div>
-                    <div><span className="muted">合格率</span><b>{records.length ? `${Math.round((records.filter((record) => record.score >= 80).length / records.length) * 100)}%` : "0%"}</b></div>
-                  </div>
-                </section>
-                <section className="sidecard card">
-                  <h3>通知消息</h3>
-                  <p className="muted" style={{ lineHeight: 1.8 }}>{pendingAppealCount ? `当前有 ${pendingAppealCount} 条申诉待处理，请及时跟进。` : "暂无新的通知消息。系统将及时推送任务派发、培训安排及学习进度提醒。"}</p>
-                </section>
-              </aside>
-            </div>
-          </section>
-        )}
         {activeSection === "knowledge" && (
           <KnowledgeSection
             auth={auth}
@@ -4642,5 +4445,4 @@ function LoginCaptchaModal({
     </div>
   );
 }
-
 

@@ -43,7 +43,7 @@ export default function MaterialView({ scene, sceneMeta, onBack, onDone, showToa
                 <p>{sceneDesc}</p>
               </div>
               <p className="material-tip">
-                建议先完成资料阅读，再进入 AI 对练。对练过程中请结合资料中的角色设定和沟通目标完成任务。
+                资料为可选学习内容。你可以先查看资料，也可以直接开始 AI 对练。
               </p>
             </>
           ) : (
@@ -57,7 +57,7 @@ export default function MaterialView({ scene, sceneMeta, onBack, onDone, showToa
         </div>
 
         <div className="material-modal-foot">
-          <span>阅读完成后可进入 AI 对练</span>
+          <span>查看资料可选，完成对练后即可参加考试</span>
           <button className="material-done-btn" type="button" onClick={markDone}>
             完成资料学习
           </button>

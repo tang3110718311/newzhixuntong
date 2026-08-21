@@ -6,7 +6,6 @@ import LoginScreen from "./LoginScreen";
 import HomePage from "./HomePage";
 import TasksPage from "./TasksPage";
 import TaskDetailPage from "./TaskDetailPage";
-import ExamsPage from "./ExamsPage";
 import AbilityPage from "./AbilityPage";
 import ProfilePage from "./ProfilePage";
 import TabBar from "./TabBar";
@@ -162,9 +161,6 @@ export default function MobileApp({ initialAuthenticated }: MobileAppProps) {
             onBack={closeTaskDetail}
             showToast={showToast}
           />
-        </section>
-        <section id="exams" className={`page ${page === "exams" ? "active" : ""}`}>
-          <ExamsPage showToast={showToast} routeState={route} />
         </section>
         <section id="ability" className={`page ability-page ${page === "ability" ? "active" : ""}`}>
           <AbilityPage showToast={showToast} onNavigate={navigateTo} />

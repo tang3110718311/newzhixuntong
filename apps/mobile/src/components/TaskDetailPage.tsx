@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { taskApi, sceneApi } from "@/lib/api";
-import { taskDisplayStatus, taskTypeText, taskFormText } from "@/lib/types";
+import { isTaskOverdue, isTaskStopped, taskDisplayStatus, taskTypeText, taskFormText } from "@/lib/types";
 import { isMaterialDone, markMaterialDone, getExamCount, getExamRecords } from "@/lib/sceneProgress";
 import { pathForTask, pathForTaskScene, type MobileRouteState, type TaskRouteView } from "@/lib/mobileRoutes";
 import PracticeReport from "./PracticeReport";
@@ -130,9 +130,9 @@ export default function TaskDetailPage({ taskId, routeState, onBack, showToast }
   const scenes = detail.scenes || [];
   const doneCount = scenes.filter((s: any) => (s.completedTrainCount || 0) > 0).length;
   const percent = scenes.length ? Math.round((doneCount / scenes.length) * 100) : 0;
-  const isStopped = task.status === "stopped";
+  const isStopped = isTaskStopped(task);
+  const isOverdue = isTaskOverdue(task);
   const runtimeStatus = taskDisplayStatus(task);
-  const isOverdue = runtimeStatus === "已逾期";
   const cls = runtimeStatus === "已停用" ? "stopped" : runtimeStatus === "已完成" ? "done" : runtimeStatus === "已逾期" ? "overdue" : "doing";
 
   const sceneMeta = scenes[sceneIndex];
@@ -319,7 +319,7 @@ export default function TaskDetailPage({ taskId, routeState, onBack, showToast }
         {isStopped && <div className="task-detail-description compact" style={{ color: "#b42318", marginTop: 12 }}>任务已停用，无法继续学习。</div>}
         <div className="scenario-section-head">
           <h3>学习场景</h3>
-          <span className="section-hint">资料 → 对练 → 考试</span>
+          <span className="section-hint">场景可自由学习 · 资料可选</span>
         </div>
         <div className="scenario-list">
           {scenes.map((sc: any, i: number) => {
@@ -353,7 +353,7 @@ export default function TaskDetailPage({ taskId, routeState, onBack, showToast }
                       {practiceDone ? "流程已完成" : "进行中"}
                     </span>
                     <span className="scenario-progress-text">
-                      {!materialDone ? "先学资料再对练" : practiceDone ? "可反复对练与考试" : `对练 ${sc.completedTrainCount || 0}/${required}`}
+                      {practiceDone ? "可反复对练与考试" : "资料可选，可直接对练"}
                     </span>
                     <div className="scenario-mini-progress">
                       <span style={{ width: `${practiceDone ? 100 : materialDone ? 55 : 20}%` }} />
@@ -379,14 +379,10 @@ export default function TaskDetailPage({ taskId, routeState, onBack, showToast }
                      </button>
                      <button
                        type="button"
-                       className={`practice-btn${(isOverdue || materialDone) ? "" : " locked"}`}
+                       className="practice-btn"
                        onClick={(e) => {
                          e.stopPropagation();
                          if (isStopped) return;
-                         if (!isOverdue && !materialDone) {
-                           showToast("请先完成资料学习，再开始 AI 对练");
-                           return;
-                         }
                          enterSceneView(i, "practice");
                        }}
                        disabled={isStopped}
@@ -395,11 +391,11 @@ export default function TaskDetailPage({ taskId, routeState, onBack, showToast }
                      </button>
                      <button
                        type="button"
-                       className={`exam-btn${(isOverdue || practiceDone) ? "" : " locked"}`}
+                       className="exam-btn"
                        onClick={(e) => {
                          e.stopPropagation();
                          if (isStopped) return;
-                         if (!isOverdue && !practiceDone) {
+                          if (!isOverdue && !practiceDone) {
                            showToast("请先完成 AI 对练，再进行考试");
                            return;
                          }

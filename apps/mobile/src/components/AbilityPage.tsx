@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { attemptApi, dashboardApi, recordApi, type ExamAttemptRow } from "@/lib/api";
+import { dashboardApi, recordApi } from "@/lib/api";
 
 interface AbilityPageProps {
   showToast: (msg: string) => void;
-  onNavigate: (page: "tasks" | "exams") => void;
+  onNavigate: (page: "tasks") => void;
 }
 
 const DIM_LABELS = ["专业知识", "执行效率", "问题解决", "沟通表达", "学习应用"];
@@ -17,16 +17,14 @@ function clampScore(n: number) {
 export default function AbilityPage({ showToast, onNavigate }: AbilityPageProps) {
   const [board, setBoard] = useState<any>(null);
   const [records, setRecords] = useState<any[]>([]);
-  const [examRecords, setExamRecords] = useState<ExamAttemptRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   function loadData(showSuccess = false) {
     setLoading(true);
-    Promise.all([dashboardApi.learner(), recordApi.list({ pageSize: 100 }), attemptApi.list()])
-      .then(([b, r, a]) => {
+    Promise.all([dashboardApi.learner(), recordApi.list({ pageSize: 100 })])
+      .then(([b, r]) => {
         setBoard(b);
         setRecords((r.items || []).filter((x: any) => x.status === "completed"));
-        setExamRecords((a || []).filter((x) => (x.status === "passed" || x.status === "failed") && x.score != null));
         if (showSuccess) showToast("能力数据已更新");
       })
       .catch(() => showToast("能力数据加载失败"))
@@ -41,9 +39,7 @@ export default function AbilityPage({ showToast, onNavigate }: AbilityPageProps)
   const d = useMemo(() => {
     const aiRows = records.filter((r: any) => r.score != null);
     const aiScores = aiRows.map((r: any) => Number(r.score) || 0);
-    const examScores = examRecords.map((x) => Number(x.score) || 0);
     const aiAvg = aiScores.length ? Math.round(aiScores.reduce((a, b) => a + b, 0) / aiScores.length) : 0;
-    const examAvg = examScores.length ? Math.round(examScores.reduce((a, b) => a + b, 0) / examScores.length) : 0;
 
     // 五维能力：优先取最近对练记录的维度得分，无则用平均分做合理偏移
     const latest = aiRows[0];
@@ -59,24 +55,18 @@ export default function AbilityPage({ showToast, onNavigate }: AbilityPageProps)
           : aiAvg > 0
             ? clampScore(aiAvg + [4, 1, -3, -5, 2][i])
             : 70 + [6, 2, -4, -6, 0][i];
-      const ev = examScores.length
-        ? examScores.reduce((sum, v) => sum + clampScore(v + [3, 1, 0, -1, 2][i]), 0) / examScores.length
-        : null;
-      const score = ev != null ? clampScore(base * 0.6 + ev * 0.4) : clampScore(base);
-      return { name, score, weight: 20 };
+      return { name, score: clampScore(base), weight: 20 };
     });
     const overall = clampScore(dims.reduce((sum, d) => sum + (d.score * d.weight) / 100, 0));
-    return { aiRows, aiScores, examScores, aiAvg, examAvg, dims, overall };
-  }, [records, examRecords, board]);
+    return { aiRows, aiScores, aiAvg, dims, overall };
+  }, [records, board]);
 
   const stats = useMemo(() => {
     const aiAttempts = d.aiScores.length;
     const aiPassRate = aiAttempts ? Math.round(d.aiScores.filter((s) => s >= 60).length / aiAttempts * 100) : 0;
-    const examAttempts = d.examScores.length;
-    const examPassRate = examAttempts ? Math.round(d.examScores.filter((s) => s >= 60).length / examAttempts * 100) : 0;
-    const currentHours = 18.5 + d.aiScores.length * 0.25 + examAttempts * 0.35;
+    const currentHours = 18.5 + d.aiScores.length * 0.25;
     const deltaHours = currentHours - 15.3;
-    return { aiAttempts, aiPassRate, examAttempts, examPassRate, currentHours, deltaHours };
+    return { aiAttempts, aiPassRate, currentHours, deltaHours };
   }, [d]);
 
   if (loading) {
@@ -85,7 +75,7 @@ export default function AbilityPage({ showToast, onNavigate }: AbilityPageProps)
         <div className="mobile-head">
           <div>
             <h1>综合能力</h1>
-            <p>汇总 AI 对练报告与考试报告，形成可追踪的成长画像</p>
+            <p>汇总 AI 对练报告，形成可追踪的成长画像</p>
           </div>
         </div>
         <div className="empty">加载中…</div>
@@ -108,7 +98,7 @@ export default function AbilityPage({ showToast, onNavigate }: AbilityPageProps)
   const trendDelta = trendVals[5] - trendVals[0];
   const advice = [
     ["1", `补齐${focus.name}`, "围绕最近报告中的低分维度完成 1 次专项 AI 对练，至少练习 3 轮。"],
-    ["2", "复盘考试失分点", "查看考试报告中的各轮表现，用“结论—依据—方案—下一步”重新组织回答。"],
+    ["2", "复盘最近对练表现", "查看最近报告中的表现，用“结论—依据—方案—下一步”重新组织回答。"],
     ["3", "完成一次迁移应用", "把对练中验证有效的表达方式带入当前任务，提交一次真实场景沟通。"],
   ];
 
@@ -117,7 +107,7 @@ export default function AbilityPage({ showToast, onNavigate }: AbilityPageProps)
       <div className="mobile-head">
         <div>
           <h1>综合能力</h1>
-          <p>汇总 AI 对练报告与考试报告，形成可追踪的成长画像</p>
+          <p>汇总 AI 对练报告，形成可追踪的成长画像</p>
         </div>
         <button className="head-action" onClick={() => loadData(true)} disabled={loading}>
           ↻
@@ -143,7 +133,7 @@ export default function AbilityPage({ showToast, onNavigate }: AbilityPageProps)
           <div>
             <strong>综合能力评分</strong>
             <span>
-              AI 对练 {d.aiAvg || "—"} 分 · 考试 {d.examAvg || "—"} 分
+              AI 对练 {d.aiAvg || "—"} 分
             </span>
           </div>
           <em>{delta}</em>
@@ -168,22 +158,6 @@ export default function AbilityPage({ showToast, onNavigate }: AbilityPageProps)
             查看最近对练报告 <i>›</i>
           </button>
         </article>
-        <article className="ability-source-card exam">
-          <div className="source-card-head">
-            <span className="source-icon">考</span>
-            <div>
-              <b>考试报告</b>
-              <small>{d.examScores.length} 份报告 · 结果校准</small>
-            </div>
-            <strong>{d.examAvg || "—"}</strong>
-          </div>
-          <div className="source-track">
-            <span style={{ width: `${d.examAvg || 0}%` }}></span>
-          </div>
-          <button type="button" onClick={() => d.examScores.length ? onNavigate("exams") : showToast("暂无可查看的考试报告")}>
-            查看最近考试报告 <i>›</i>
-          </button>
-        </article>
       </div>
 
       {/* 指标网格 */}
@@ -199,24 +173,14 @@ export default function AbilityPage({ showToast, onNavigate }: AbilityPageProps)
           <em>AI 对练</em>
         </div>
         <div className="metric">
-          <b>{stats.examAttempts}</b>
-          <span>考试次数</span>
-          <em>考试记录</em>
-        </div>
-        <div className="metric">
           <b>{stats.aiPassRate}%</b>
           <span>对练合格率</span>
           <em>≥60 分</em>
         </div>
         <div className="metric">
-          <b>{stats.examPassRate}%</b>
-          <span>考试合格率</span>
-          <em>≥60 分</em>
-        </div>
-        <div className="metric">
-          <b>{d.aiScores.length + d.examScores.length}</b>
+          <b>{d.aiScores.length}</b>
           <span>有效报告</span>
-          <em>AI + 考试</em>
+          <em>AI 对练</em>
         </div>
         <div className="metric">
           <b>{coverage}%</b>
@@ -289,7 +253,7 @@ export default function AbilityPage({ showToast, onNavigate }: AbilityPageProps)
         <TrendChart values={trendVals} />
         <div className="trend-desc">
           <strong style={{ color: "var(--blue)" }}>趋势解读：</strong>
-          最近一条综合记录为 {overall} 分。AI 对练用于观察表达过程，考试报告用于验证知识掌握与结果稳定性。
+          最近一条综合记录为 {overall} 分。AI 对练用于观察表达过程并记录结果稳定性。
         </div>
       </div>
 

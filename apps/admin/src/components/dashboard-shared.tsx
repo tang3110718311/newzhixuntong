@@ -62,7 +62,6 @@ export type ActiveSection =
   | "student-home"
   | "my-tasks"
   | "task-detail"
-  | "my-exams"
   | "scenes"
   | "knowledge"
   | "tasks"

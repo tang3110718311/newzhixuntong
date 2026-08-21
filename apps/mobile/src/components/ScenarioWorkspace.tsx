@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { recordApi } from "@/lib/api";
 import { isMaterialDone, getExamCount, getExamRecords, type ExamRecord } from "@/lib/sceneProgress";
-import { taskFormText, taskDisplayStatus } from "@/lib/types";
+import { isTaskOverdue, isTaskStopped, taskFormText } from "@/lib/types";
 import MobilePageAction from "./MobilePageAction";
 import UnifiedTabs from "./UnifiedTabs";
 
@@ -57,10 +57,9 @@ export default function ScenarioWorkspace({
   const examCount = sceneId ? getExamCount(sceneId) : 0;
   const sceneDone = practiceDone;
 
-  // 任务运行状态：停用态禁用按钮，逾期态放开前置校验
-  const runtimeStatus = task ? taskDisplayStatus(task) : "";
-  const isStopped = task?.status === "stopped";
-  const isOverdue = runtimeStatus === "已逾期";
+  const isStopped = isTaskStopped(task);
+  const isOverdue = isTaskOverdue(task);
+  // 资料可选；完成对练后即可考试，资料、对练和考试次数均不设上限。
 
   // ===== 历史记录（对练记录来自后端）=====
   const [recordTab, setRecordTab] = useState<"practice" | "exam">("practice");
@@ -84,10 +83,6 @@ export default function ScenarioWorkspace({
 
   const openPractice = () => {
     if (isStopped) return;
-    if (!isOverdue && !materialDone) {
-      showToast("请先完成资料学习，再开始 AI 对练");
-      return;
-    }
     onEnterPractice();
   };
 
@@ -130,8 +125,8 @@ export default function ScenarioWorkspace({
       <div className="scene-path-card">
         <div className="path-card-head">
           <div>
-            <h3>本场景完成路径</h3>
-            <span>按顺序完成资料、对练和考试</span>
+            <h3>本场景学习路径</h3>
+            <span>场景可自由学习，资料可看可不看；完成对练后即可考试，次数不限</span>
           </div>
           <span className="path-done-tag">{sceneDone ? "本场景已完成" : "进行中"}</span>
         </div>

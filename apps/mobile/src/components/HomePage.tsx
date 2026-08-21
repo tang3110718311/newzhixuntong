@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { taskApi, examApi, attemptApi, tenantApi, type AuthUser, type TaskRow, type ExamRow, type TenantRow } from "@/lib/api";
+import { taskApi, tenantApi, type AuthUser, type TaskRow, type TenantRow } from "@/lib/api";
 import { statusClass, taskStatusText, taskTypeText, taskDisplayStatus } from "@/lib/types";
 import type { PageKey } from "./MobileApp";
 import type { MobileModalKey } from "@/lib/mobileRoutes";
@@ -19,9 +19,6 @@ interface HomePageProps {
 
 export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSwitchTenant, modal, onOpenModal, onCloseModal }: HomePageProps) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
-  const [exams, setExams] = useState<ExamRow[]>([]);
-  const [attempts, setAttempts] = useState<Record<string, any>>({});
-  const [recentTab, setRecentTab] = useState<"tasks" | "exams">("tasks");
   const [loading, setLoading] = useState(true);
   // 切换企业弹窗
   const showTenantModal = modal === "tenant";
@@ -32,16 +29,10 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
 
   useEffect(() => {
     let alive = true;
-    Promise.all([taskApi.list({ pageSize: 100 }), examApi.list(), attemptApi.list()])
-      .then(([t, e, a]) => {
+    taskApi.list({ pageSize: 100 })
+      .then((t) => {
         if (!alive) return;
         setTasks(t.items || []);
-        setExams(e || []);
-        const map: Record<string, any> = {};
-        (a || []).forEach((x: any) => {
-          if (!map[x.examId] || (x.finishedAt && !map[x.examId].finishedAt)) map[x.examId] = x;
-        });
-        setAttempts(map);
       })
       .catch(() => showToast("数据加载失败"))
       .finally(() => alive && setLoading(false));
@@ -85,22 +76,7 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
   const pending = tasks.filter((t) => t.status !== "completed").length;
   const percent = total ? Math.round((done / total) * 100) : 0;
 
-  // 未参加考试数（待参加）
-  const pendingExams = exams.filter((e) => {
-    const att = attempts[e.id];
-    return !att || att.status === "failed";
-  }).length;
-
   const recentTasks = tasks.slice(0, 3);
-  const recentExams = exams.slice(0, 3);
-
-  const examStatusOf = (e: ExamRow) => {
-    const att = attempts[e.id];
-    if (!att) return { text: "待参加", score: "—" };
-    if (att.status === "passed") return { text: "已通过", score: `${att.score} 分` };
-    if (att.status === "failed") return { text: "未通过", score: `${att.score} 分` };
-    return { text: "进行中", score: "—" };
-  };
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -171,38 +147,12 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
           <small>查看培训与对练任务</small>
           <b id="homeTaskCount">{pending}</b>
         </button>
-        <button className="quick exam" onClick={() => onNavigate("exams")}>
-          <strong>我的考试</strong>
-          <small>参加考试与查看成绩</small>
-          <b id="homeExamCount">{pendingExams}</b>
-        </button>
       </div>
       <div className="recent-heading">
-        <div className="recent-tabs">
-          <button
-            className={`recent-tab ${recentTab === "tasks" ? "active" : ""}`}
-            type="button"
-            onClick={() => setRecentTab("tasks")}
-          >
-            最近任务
-          </button>
-          <button
-            className={`recent-tab ${recentTab === "exams" ? "active" : ""}`}
-            type="button"
-            onClick={() => setRecentTab("exams")}
-          >
-            最近考试
-          </button>
-        </div>
-        <a
-          className="recent-all"
-          onClick={() => onNavigate(recentTab === "tasks" ? "tasks" : "exams")}
-        >
-          全部 ›
-        </a>
+        <h2>最近任务</h2>
+        <a className="recent-all" onClick={() => onNavigate("tasks")}>全部 ›</a>
       </div>
-      {recentTab === "tasks" ? (
-        <div className="recent-panel active">
+      <div className="recent-panel active">
           <div className="recent-box">
             {recentTasks.length === 0 && (
               <div className="recent-item">
@@ -235,35 +185,7 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
               );
             })}
           </div>
-        </div>
-      ) : (
-        <div className="recent-panel active">
-          <div className="recent-box">
-            {recentExams.length === 0 && (
-              <div className="recent-item">
-                <span className="type-dot exam">试</span>
-                <div className="recent-main">
-                  <b>暂无考试</b>
-                  <small>考试发布后将在首页显示</small>
-                </div>
-              </div>
-            )}
-            {recentExams.map((e) => {
-              const st = examStatusOf(e);
-              return (
-                <div className="recent-item" key={e.id} style={{ cursor: "pointer" }} onClick={() => onNavigate("exams")}>
-                  <span className="type-dot exam">试</span>
-                  <div className="recent-main">
-                    <b>{e.name}</b>
-                    <small>{st.text}</small>
-                  </div>
-                  <span className={`status ${statusClass(st.text)}`}>{st.text}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* 切换企业弹窗 */}
       {showTenantModal && (

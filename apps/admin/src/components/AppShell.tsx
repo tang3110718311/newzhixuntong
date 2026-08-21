@@ -37,10 +37,6 @@ const IcoStudent = () => (
 const IcoTasks = () => (
   <svg {...iconProps}><rect x="4" y="3.5" width="16" height="17" rx="2" /><path d="m8 8 1.4 1.4L12 6.8M14 9h3M8 14l1.4 1.4 2.6-2.6M14 15h3" /></svg>
 );
-// 我的考试：文档+对勾
-const IcoExams = () => (
-  <svg {...iconProps}><path d="M6 3.5h9l3 3V20H6z" /><path d="M15 3.5V7h3M9 11h6M9 15h4" /><path d="m8.5 18 1.3 1.3L12.5 16" /></svg>
-);
 // 场景管理：星星
 const IcoScenes = () => (
   <svg {...iconProps}><path d="m12 3 1.7 5.1L19 10l-5.3 1.9L12 17l-1.7-5.1L5 10l5.3-1.9z" /><path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7zM5 3v3M3.5 4.5h3" /></svg>
@@ -79,7 +75,6 @@ const defaultNavItems: NavItem[] = [
   { id: "student-home", key: "student-home", label: "学员首页", icon: <IcoStudent /> },
   { id: "my-tasks", key: "my-tasks", label: "我的任务", icon: <IcoTasks /> },
   { id: "records", key: "records", label: "训练记录", icon: <ScrollText size={18} /> },
-  { id: "my-exams", key: "my-exams", label: "我的考试", icon: <IcoExams /> },
   { id: "scenes", key: "scenes", label: "场景管理", icon: <IcoScenes /> },
   { id: "knowledge", key: "knowledge", label: "企业知识库", icon: <IcoKnowledge /> },
   { id: "tasks", key: "tasks", label: "任务管理", icon: <IcoTaskManage /> },

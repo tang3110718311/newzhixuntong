@@ -219,6 +219,8 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
   const chatSubmittingRef = useRef(false);
   const voiceSubmitGuardRef = useRef(createAsyncSubmitGuard());
   const voiceTextSentRef = useRef(false);
+  const recordedVoiceBlobRef = useRef<Blob | null>(null);
+  const recorderStopResolveRef = useRef<((blob: Blob | null) => void) | null>(null);
   // 分段实时转写（Web Speech 不可用时的兜底：每 3s 把新增录音分片送后端 STT）
   const liveSttTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sttBusyRef = useRef(false);
@@ -242,6 +244,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
   const voiceAudioUrlsRef = useRef<string[]>([]);
   const speechFinalSegmentsRef = useRef<string[]>([]);
   const speechInterimRef = useRef("");
+  const streamFinalTranscriptRef = useRef("");
   const pauseBreakCommittedRef = useRef(false);
   const liveStreamRef = useRef<{
     ws: WebSocket;
@@ -264,6 +267,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
     speechFinalSegmentsRef.current = [];
     speechInterimRef.current = "";
     pauseBreakCommittedRef.current = false;
+    streamFinalTranscriptRef.current = "";
     liveTextRef.current = "";
     setLiveText("");
   };
@@ -832,7 +836,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
   };
 
   /** 与 PC 端统一使用 FunASR 流式识别；连接失败时继续走现有回退链路。 */
-  const startLiveStream = async (stream: MediaStream): Promise<boolean> => {
+  const startLiveStream = async (stream: MediaStream, recToken: number): Promise<boolean> => {
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx || typeof window.WebSocket === "undefined") return false;
@@ -847,13 +851,22 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
         const pcm = resampleVoiceToInt16(event.inputBuffer.getChannelData(0), ctx.sampleRate, 16000);
         if (pcm.byteLength > 0) ws.send(pcm);
       };
-      ws.onmessage = (event) => {
+       ws.onmessage = (event) => {
         try {
-          const msg = JSON.parse(event.data as string) as { asr_result?: string };
-          if (typeof msg.asr_result === "string" && msg.asr_result.trim()) {
-            speechActiveRef.current = true;
-            setLiveTranscript(restoreVoiceTranscriptPunctuation(msg.asr_result));
-          }
+          if (recordTokenRef.current !== recToken) return;
+          const msg = JSON.parse(event.data as string) as { asr_result?: string; text?: string; is_final?: boolean; mode?: string; type?: string };
+            const result = msg.asr_result || msg.text || "";
+            if (result.trim()) {
+              const isFinal = msg.is_final === true || msg.mode === "final" || msg.type === "final";
+              speechActiveRef.current = true;
+              if (isFinal) {
+                streamFinalTranscriptRef.current = mergeTranscriptWithPauseBreaks(streamFinalTranscriptRef.current, result);
+                speechInterimRef.current = "";
+              } else {
+                speechInterimRef.current = normalizeVoiceTranscriptText(result);
+              }
+              setLiveTranscript(restoreVoiceTranscriptPunctuation(`${streamFinalTranscriptRef.current}${speechInterimRef.current}`));
+            }
         } catch { /* 非 JSON 消息忽略 */ }
       };
       ws.onerror = () => { /* 超时后回退 */ };
@@ -903,6 +916,25 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
     }
   };
 
+  const waitForRecorderBlob = (rec: MediaRecorder): Promise<Blob | null> => new Promise((resolve) => {
+    if (rec.state === "inactive") {
+      const chunks = chunksRef.current.filter((chunk) => chunk.size > 0);
+      resolve(chunks.length ? new Blob(chunks, { type: rec.mimeType || "audio/webm" }) : null);
+      return;
+    }
+    let settled = false;
+    const settle = (blob: Blob | null) => {
+      if (settled) return;
+      settled = true;
+      if (recorderStopResolveRef.current === settle) recorderStopResolveRef.current = null;
+      resolve(blob);
+    };
+    recorderStopResolveRef.current = settle;
+    try { rec.stop(); } catch { settle(null); return; }
+    // 某些浏览器在录音器异常时不会派发 onstop，不能让提交链路永久等待。
+    window.setTimeout(() => settle(null), 2000);
+  });
+
   /** 获取麦克风流：关闭聆听后设备可能未完全释放，失败时短暂等待重试一次 */
   const getMicStream = async () => {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -929,8 +961,10 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
     // 学员开始说话：立即停止可能残留的 AI 播报，避免双音源
     stopAiSpeak();
     try {
+      const recToken = ++recordTokenRef.current;
       // 重置上次录音残留的实时识别文字，避免旧缓存显示/静音自动提交误用
       resetLiveTranscript();
+      recordedVoiceBlobRef.current = null;
       // 重置录音时长并启动计时
       setRecSec(0);
       if (recSecTimerRef.current) clearInterval(recSecTimerRef.current);
@@ -939,39 +973,26 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
       }, 1000);
       const stream = await getMicStream();
       streamRef.current = stream;
-      const liveStreamStarted = await startLiveStream(stream);
+      const liveStreamStarted = await startLiveStream(stream, recToken);
       // MediaRecorder（无实时识别能力时的 STT 回退录音）
       const rec = new MediaRecorder(stream);
-      chunksRef.current = [];
+      const recorderChunks: Blob[] = [];
+      chunksRef.current = recorderChunks;
       voiceTextSentRef.current = false;
       rec.ondataavailable = (e) => {
-        if (e.data?.size) chunksRef.current.push(e.data);
+        if (e.data?.size) recorderChunks.push(e.data);
       };
-      rec.onstop = async () => {
-        // 已通过实时识别文本直接发送 / 用户取消 → 不再走 STT
-        if (voiceTextSentRef.current) return;
-        // 已开启新的录音（再次点击开始录音）→ 忽略旧录音器的 onstop，避免误发旧音频
-        if (mediaRecorderRef.current !== rec) return;
-        try {
-          const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
-          showToast("语音识别中…");
-          const pcmBase64 = await blobToPcmBase64(blob);
-          const stt = await aiApi.stt(pcmBase64, "pcm");
-          if (stt.text) {
-            const voiceAudioUrl = makeVoiceAudioUrl(blob);
-            await sendText(restoreVoiceTranscriptPunctuation(stt.text), true, voiceAudioUrl);
-          } else {
-            showToast("未识别到有效语音");
-          }
-        } catch {
-          showToast("语音转写失败");
-        }
+      rec.onstop = () => {
+        const chunks = recorderChunks.filter((chunk) => chunk.size > 0);
+        const blob = chunks.length ? new Blob(chunks, { type: rec.mimeType || "audio/webm" }) : null;
+        recordedVoiceBlobRef.current = blob;
+        recorderStopResolveRef.current?.(blob);
+        recorderStopResolveRef.current = null;
       };
       // 每 1s 产生录音分片：供分段实时转写增量识别（无 timeslice 时只在 stop 时产出一次分片，
       // 录音过程中 chunks 为空，无法边说边显示）。
       rec.start(1000);
       mediaRecorderRef.current = rec;
-      const recToken = ++recordTokenRef.current;
       speechActiveRef.current = false;
 
       // 分段实时转写兜底：Web Speech 不可用/无结果时，每 3s 把新增录音分片送后端 STT，
@@ -1053,12 +1074,14 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
       const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (SR && !liveStreamStarted) {
         try {
-          const recog = new SR();
-          recog.lang = "zh-CN";
+           const recog = new SR();
+           const speechRecToken = recToken;
+           recog.lang = "zh-CN";
           recog.continuous = true;
           recog.interimResults = true;
-          recog.onresult = (e: any) => {
-            let interim = "";
+           recog.onresult = (e: any) => {
+             if (recordTokenRef.current !== speechRecToken) return;
+             let interim = "";
             for (let i = e.resultIndex; i < e.results.length; i++) {
               const r = e.results[i];
               if (r.isFinal) appendFinalSpeechSegment(r[0].transcript);
@@ -1070,9 +1093,9 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
             if (finalTranscript) speechActiveRef.current = true;
             setLiveTranscript(finalTranscript);
           };
-          recog.onend = () => {
-            // 浏览器偶发自动停止：仍在聆听状态则重启
-            if (recordingRef.current && !submittingRef.current) {
+           recog.onend = () => {
+             // 浏览器偶发自动停止：仍在聆听状态则重启
+             if (recordTokenRef.current === speechRecToken && recordingRef.current && !submittingRef.current) {
               try {
                 recog.start();
               } catch { /* ignore */ }
@@ -1106,16 +1129,32 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
       submittingRef.current = true;
       try {
         setRecording(false);
+        const rec = mediaRecorderRef.current;
+        const recToken = recordTokenRef.current;
+        const blob = rec ? await waitForRecorderBlob(rec) : recordedVoiceBlobRef.current;
+        // 停止后给流式识别一个短暂收敛窗口；旧会话结果不得回写当前录音。
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        if (recordTokenRef.current !== recToken) return;
         stopLiveRecognition();
-        const live = liveTextRef.current.trim();
+        const live = restoreVoiceTranscriptPunctuation(
+          `${streamFinalTranscriptRef.current}${speechInterimRef.current || liveTextRef.current}`,
+        ).trim();
         if (live) {
-          const voiceAudioUrl = await captureCurrentVoiceAudioUrl();
+          const voiceAudioUrl = blob ? makeVoiceAudioUrl(blob) : undefined;
           voiceTextSentRef.current = true;
           stopRecorderAndStream();
           await sendText(live, true, voiceAudioUrl);
-        } else {
-          stopRecorderAndStream(); // onstop 中走 STT
+        } else if (blob) {
+          showToast("语音识别中…");
+          const pcmBase64 = await blobToPcmBase64(blob);
+          const stt = await aiApi.stt(pcmBase64, "pcm");
+          if (recordTokenRef.current !== recToken) return;
+          if (stt.text) {
+            voiceTextSentRef.current = true;
+            await sendText(restoreVoiceTranscriptPunctuation(stt.text), true, makeVoiceAudioUrl(blob));
+          } else showToast("未识别到有效语音");
         }
+        stopRecorderAndStream();
         // 发送/提交后清空实时识别文字缓存，避免下一次录音残留
         resetLiveTranscript();
       } finally {
@@ -1128,6 +1167,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
   const closeListening = () => {
     if (submittingRef.current) return;
     submittingRef.current = true;
+    ++recordTokenRef.current;
     setRecording(false);
     stopLiveRecognition();
     voiceTextSentRef.current = true; // 取消本次，onstop 不再发送
@@ -1142,6 +1182,7 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
   const quitPractice = async () => {
     quitRequestedRef.current = true;
     chatSubmittingRef.current = true;
+    ++recordTokenRef.current;
     stopAiSpeak();
     setRecording(false);
     stopLiveRecognition();

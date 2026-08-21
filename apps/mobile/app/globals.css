@@ -71,13 +71,8 @@
 .page.page-slide-left{animation:pageSlideLeft .28s cubic-bezier(.2,.8,.2,1)}.page.page-slide-right{animation:pageSlideRight .28s cubic-bezier(.2,.8,.2,1)}
 @keyframes pageSlideLeft{from{opacity:.35;transform:translateX(24px)}to{opacity:1;transform:translateX(0)}}
 @keyframes pageSlideRight{from{opacity:.35;transform:translateX(-24px)}to{opacity:1;transform:translateX(0)}}
-.task-tabs,.exam-tabs{position:relative;isolation:isolate}
-.task-tabs:after,.exam-tabs:after{content:'';position:absolute;z-index:-1;top:4px;bottom:4px;left:4px;border-radius:8px;background:#fff;box-shadow:0 3px 9px rgba(91,113,190,.14);transition:transform .28s cubic-bezier(.2,.8,.2,1);pointer-events:none}
 .task-tabs:after{width:calc((100% - 48px)/6);transform:translateX(calc(var(--tab-index,0) * (100% + 8px)))}
 .task-tabs:has(.task-tab:nth-child(2).active):after{--tab-index:1}.task-tabs:has(.task-tab:nth-child(3).active):after{--tab-index:2}.task-tabs:has(.task-tab:nth-child(4).active):after{--tab-index:3}.task-tabs:has(.task-tab:nth-child(5).active):after{--tab-index:4}.task-tabs:has(.task-tab:nth-child(6).active):after{--tab-index:5}
-.exam-tabs:after{width:calc((100% - 32px)/4);transform:translateX(calc(var(--tab-index,0) * (100% + 8px)))}
-.exam-tabs:has(.exam-tab:nth-child(2).active):after{--tab-index:1}.exam-tabs:has(.exam-tab:nth-child(3).active):after{--tab-index:2}.exam-tabs:has(.exam-tab:nth-child(4).active):after{--tab-index:3}
-.task-tab.active,.exam-tab.active{position:relative;z-index:1;background:transparent;box-shadow:none}
 .practice-page .practice-topbar{height:86px;padding:10px 12px 10px;display:grid;grid-template-columns:38px minmax(0,1fr) 58px;grid-template-rows:22px 32px;column-gap:8px;row-gap:6px;align-items:center}
 .practice-page .practice-topbar:before{display:none}
 .practice-page .practice-navrow{grid-column:1/-1;grid-row:2;display:grid;grid-template-columns:38px minmax(0,1fr) 58px;align-items:center;column-gap:8px;min-width:0}
@@ -93,7 +88,7 @@
 .app:has(.practice-page)>.tabbar{display:none}
 
 /* exam dialogue and tab centering v21 */
-.task-tab,.exam-tab{display:flex;align-items:center;justify-content:center;text-align:center;line-height:1;padding:0 6px}
+.task-tab{display:flex;align-items:center;justify-content:center;text-align:center;line-height:1;padding:0 6px}
 .exam-page.practice-page .practice-role{background:linear-gradient(135deg,#fffaf2,#fff);border-color:#f0e2c9}
 .exam-page.practice-page .practice-role-tag{background:#fff2dd;color:#b5792d}
 .exam-page .practice-chat{bottom:168px}
@@ -241,14 +236,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei
 button,input,textarea,select{font-family:inherit}
 .content{padding-left:16px;padding-right:16px}
 /* 8px rhythm and card radius */
-.task-card,.exam-card,.profile-detail,.ability-preview,.ability-card,.trend-card,.recent-box,.menu-card,.metric,.task-detail-card,.scene-work-card,.learning-material-card,.practice-entry-card,.exam-entry-card,.scenario-intro-card,.scenario-role-card,.scene-process-guide,.task-detail-hero,.task-summary,.exam-summary,.report-panel,.material-preview-panel,.login-card{border-radius:12px}
-.task-card,.exam-card,.profile-detail,.ability-preview,.ability-card,.trend-card,.metric,.task-detail-card,.scene-work-card,.learning-material-card,.practice-entry-card,.exam-entry-card{padding:16px}
+.task-card,.profile-detail,.ability-preview,.ability-card,.trend-card,.recent-box,.menu-card,.metric,.task-detail-card,.scene-work-card,.learning-material-card,.practice-entry-card,.exam-entry-card,.scenario-intro-card,.scenario-role-card,.scene-process-guide,.task-detail-hero,.task-summary,.report-panel,.material-preview-panel,.login-card{border-radius:12px}
+.task-card,.profile-detail,.ability-preview,.ability-card,.trend-card,.metric,.task-detail-card,.scene-work-card,.learning-material-card,.practice-entry-card,.exam-entry-card{padding:16px}
 .section-title,.recent-heading,.task-page-head,.mobile-head{margin-top:16px;margin-bottom:16px}
 .section-title h2,.recent-tab{font-size:16px}
 .task-page-head h1,.mobile-head h1{font-size:20px}
 .task-page-head p,.mobile-head p,.hello{font-size:14px}
-.task-info h3,.exam-card h3,.task-detail-main h2,.scenario-workspace-head h2{font-size:16px}
-.task-info p,.exam-card p,.task-foot,.reference-footer,.score,.detail-department,.task-detail-main p,.task-detail-grid b,.task-detail-list li,.record-main b,.record-main span,.record-score,.process-step b,.process-step small{font-size:14px}
+.task-detail-main h2,.scenario-workspace-head h2{font-size:16px}
+.task-foot,.reference-footer,.score,.detail-department,.task-detail-main p,.task-detail-grid b,.task-detail-list li,.record-main b,.record-main span,.record-score,.process-step b,.process-step small{font-size:14px}
 .scenario-section-head h3,.scene-work-card h3,.learning-material-card h3,.practice-entry-card h3,.exam-entry-card h3{font-size:16px}
 .task-detail-card h3,.ability-card h3,.report-section h4{font-size:16px}
 .task-detail-grid small,.role-item small,.scenario-goal label,.scenario-role-card small{font-size:13px}
@@ -256,22 +251,20 @@ button,input,textarea,select{font-family:inherit}
 /* controls: visual radius 8px, at least 44px touch target */
 button{min-height:44px;border-radius:8px}
 input,textarea,select{border-radius:8px;font-size:14px}
-.search,.exam-search-wrap,.task-search-wrap,.filter-row select,.filter-row input,.login-field,.sms-field{border-radius:8px}
-.search,.exam-search-wrap,.task-search-wrap,.login-field,.sms-field{min-height:44px}
-.search,.exam-search-wrap,.task-search-wrap{height:44px}.task-search-wrap input,.exam-search-wrap input,.search input{height:44px;min-height:44px;font-size:14px}
+.search,.task-search-wrap,.filter-row select,.filter-row input,.login-field,.sms-field{border-radius:8px}
+.search,.task-search-wrap,.login-field,.sms-field{min-height:44px}
+.search,.task-search-wrap{height:44px}.task-search-wrap input,.search input{height:44px;min-height:44px;font-size:14px}
 .filter-row select,.filter-row input{height:44px;min-height:44px}
 /* text links keep a compact visual but receive a full touch target */
 .section-title a,.recent-all,.task-foot a,.reference-footer a,.login-link{display:inline-flex;align-items:center;min-height:44px}
 .task-foot a,.reference-footer a{padding:0 4px;margin:-4px}
 .login-link{padding:0 4px;margin:-4px}
-.task-search-btn,.exam-search-wrap button{min-width:52px;height:44px;border-radius:8px}
+.task-search-btn{min-width:52px;height:44px;border-radius:8px}
 .head-action,.task-detail-back,.task-detail-more,.report-close,.material-preview-head button,.captcha-close{width:44px;height:44px;min-width:44px}
-.task-tabs,.exam-tabs,.history-tabs,.report-view-tabs{gap:8px;border-radius:8px;padding:4px}
-.task-tab,.exam-tab,.history-tab,.report-view-tab{height:44px;min-height:44px;border-radius:8px;font-size:14px}
-.task-list,.exam-list,.scenario-list,.record-list,.history-list{gap:8px}
+.task-list,.scenario-list,.record-list,.history-list{gap:8px}
 .task-filter{margin-bottom:16px}
 .task-detail-actions,.scene-action-row,.scenario-card .scenario-actions,.modal-actions{gap:8px}
-.task-detail-actions button,.scene-action-row button,.scenario-card .scenario-actions button,.process-action,.exam-btn,.record-row button,.record-history-row button,.material-preview-foot button{min-height:44px;height:44px;border-radius:8px;font-size:14px}
+.task-detail-actions button,.scene-action-row button,.scenario-card .scenario-actions button,.process-action,.record-row button,.record-history-row button,.material-preview-foot button{min-height:44px;height:44px;border-radius:8px;font-size:14px}
 /* fixed navigation and practice page safe margins */
 .tabbar{height:80px;padding-left:16px;padding-right:16px}
 .tab{min-height:44px;font-size:14px}
@@ -298,10 +291,10 @@ input,textarea,select{border-radius:8px;font-size:14px}
 .toast{font-size:14px}
 @media(max-width:360px){.content{padding-left:16px;padding-right:16px}.practice-page .practice-navrow{grid-template-columns:44px minmax(0,1fr) 60px}.practice-page .practice-title b{font-size:14px}}
 /* v30 final specificity pass */
-.task-card,.task-card.reference-task,.exam-card,.profile-detail,.ability-preview,.ability-card,.trend-card,.recent-box,.menu-card,.metric,.task-detail-card,.scene-work-card,.learning-material-card,.practice-entry-card,.exam-entry-card,.scenario-intro-card,.scenario-role-card,.scene-process-guide,.task-detail-hero,.task-summary,.exam-summary{border-radius:12px!important}
-.task-card,.task-card.reference-task,.exam-card,.profile-detail,.ability-preview,.ability-card,.trend-card,.metric,.task-detail-card,.scene-work-card,.learning-material-card,.practice-entry-card,.exam-entry-card{padding:16px!important}
-.task-info h3,.reference-task .task-info h3,.exam-card h3,.task-detail-main h2,.scenario-workspace-head h2,.scenario-section-head h3,.scene-work-card h3,.learning-material-card h3,.practice-entry-card h3,.exam-entry-card h3,.task-detail-card h3,.ability-card h3{font-size:16px!important}
-.task-info p,.reference-task .task-info p,.exam-card p,.task-foot,.reference-footer,.task-detail-main p,.task-detail-grid b,.task-detail-list li,.scenario-main p,.scene-work-card .card-sub,.learning-material-card .card-sub,.practice-entry-card .card-sub,.exam-entry-card .card-sub,.report-panel p,.report-point,.report-round p{font-size:14px!important}
+.task-card,.task-card.reference-task,.profile-detail,.ability-preview,.ability-card,.trend-card,.recent-box,.menu-card,.metric,.task-detail-card,.scene-work-card,.learning-material-card,.practice-entry-card,.exam-entry-card,.scenario-intro-card,.scenario-role-card,.scene-process-guide,.task-detail-hero,.task-summary{border-radius:12px!important}
+.task-card,.task-card.reference-task,.profile-detail,.ability-preview,.ability-card,.trend-card,.metric,.task-detail-card,.scene-work-card,.learning-material-card,.practice-entry-card,.exam-entry-card{padding:16px!important}
+.task-info h3,.reference-task .task-detail-main h2,.scenario-workspace-head h2,.scenario-section-head h3,.scene-work-card h3,.learning-material-card h3,.practice-entry-card h3,.exam-entry-card h3,.task-detail-card h3,.ability-card h3{font-size:16px!important}
+.task-info p,.reference-task .task-foot,.reference-footer,.task-detail-main p,.task-detail-grid b,.task-detail-list li,.scenario-main p,.scene-work-card .card-sub,.learning-material-card .card-sub,.practice-entry-card .card-sub,.exam-entry-card .card-sub,.report-panel p,.report-point,.report-round p{font-size:14px!important}
 .task-detail-grid small,.role-item small,.scenario-goal label,.scenario-role-card small,.task-detail-progress-meta,.scenario-meta,.scenario-progress-text{font-size:13px!important}
 /* practice final controls */
 .practice-page .practice-title b{font-size:16px!important}
@@ -755,11 +748,228 @@ input, select, textarea { font-family: inherit; }
 .scenario-card.scene-layout .scenario-main p{font-size:14px}
 .scenario-state-row{margin-top:8px;gap:8px}
 .scenario-card.scene-layout .scenario-actions{gap:8px;margin-top:8px;padding-top:8px}
-.scenario-card.scene-layout .scenario-actions button{height:44px;min-height:44px;border-radius:8px;font-size:14px;padding:0 8px}
+.scenario-card.scene-layout .scenario-actions button{display:flex;align-items:center;justify-content:center;height:44px;min-height:44px;border-radius:8px;font-size:14px;line-height:1;padding:0 8px}
 .scenario-card.scene-layout .scenario-actions button.locked{background:#f0f3f7;color:#aab5c2;box-shadow:none}
 /* 对练/考试次数行 */
 .scenario-counts{display:flex;align-items:center;gap:8px;margin-top:8px;color:#8c9bb0;font-size:13px;line-height:1}
 .scenario-counts .counts-divider{width:1px;height:10px;background:#dde5ef}
+
+/* ===== 任务详情页视觉优化（仅作用于 #taskDetail） =====
+   参考原型：轻背景、白色信息卡、清晰层级、蓝青状态色。 */
+#taskDetail {
+  color: #243858;
+}
+#taskDetail > .task-detail-head {
+  margin: -2px 0 14px;
+  padding: 0 2px;
+}
+#taskDetail > .task-detail-head .task-detail-title h1 {
+  color: #1e3760;
+  font-size: 20px;
+  letter-spacing: .2px;
+}
+#taskDetail > .task-detail-head .task-detail-title p {
+  color: #8797ad;
+  font-size: 13px;
+}
+#taskDetailContent {
+  padding-bottom: 8px;
+}
+#taskDetailContent .task-detail-hero.compact {
+  margin: 0;
+  padding: 17px 16px 15px;
+  border: 1px solid #e2eaf5;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #ffffff 0%, #fbfdff 72%, #f1f8ff 100%);
+  box-shadow: 0 8px 22px rgba(44, 91, 150, .08);
+}
+#taskDetailContent .detail-kicker {
+  color: #7890b0;
+  font-size: 12px;
+  letter-spacing: .15px;
+}
+#taskDetailContent .detail-kicker .dot {
+  width: 6px;
+  height: 6px;
+  background: #35b9c9;
+  box-shadow: 0 0 0 4px #e6f8fa;
+}
+#taskDetailContent .task-detail-status {
+  padding: 5px 9px;
+  border: 1px solid #cfeee5;
+  border-radius: 999px;
+  background: #effaf6;
+  color: #159b73;
+  font-size: 12px;
+  line-height: 1;
+}
+#taskDetailContent .task-detail-status.overdue {
+  border-color: #f3d7ce;
+  background: #fff5f1;
+  color: #d46e5d;
+}
+#taskDetailContent .task-detail-status.stopped {
+  border-color: #e0e6ee;
+  background: #f3f5f8;
+  color: #8a98aa;
+}
+#taskDetailContent .task-detail-main h2 {
+  margin: 7px 0 0;
+  color: #1f3b69;
+  font-size: 20px;
+  line-height: 1.35;
+  letter-spacing: -.2px;
+}
+#taskDetailContent .task-detail-main > p:not(.task-detail-description) {
+  margin: 7px 0 0;
+  color: #617896;
+  font-size: 13px;
+  line-height: 1.5;
+}
+#taskDetailContent .task-detail-description.compact {
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top-color: #e9eff7;
+  color: #647995;
+  font-size: 13px;
+  line-height: 1.7;
+}
+#taskDetailContent .task-detail-progress.compact {
+  margin-top: 14px;
+  padding: 12px 13px;
+  border: 1px solid #e5edf7;
+  border-radius: 13px;
+  background: rgba(247, 250, 255, .9);
+}
+#taskDetailContent .task-detail-progress-head b {
+  color: #768aa6;
+  font-size: 12px;
+  font-weight: 700;
+}
+#taskDetailContent .task-detail-progress-head strong {
+  color: #3159b4;
+  font-size: 20px;
+}
+#taskDetailContent .task-detail-progress-bar {
+  height: 7px;
+  border-radius: 999px;
+  background: #e7eef8;
+}
+#taskDetailContent .task-detail-progress-bar span {
+  border-radius: inherit;
+  background: linear-gradient(90deg, #38c7cf 0%, #3979ed 100%);
+}
+#taskDetailContent .task-detail-progress-meta {
+  color: #8a9ab0;
+}
+#taskDetailContent .scenario-section-head {
+  margin: 22px 2px 11px;
+  align-items: center;
+}
+#taskDetailContent .scenario-section-head h3 {
+  color: #203b68;
+  font-size: 17px;
+  letter-spacing: -.1px;
+}
+#taskDetailContent .scenario-section-head .section-hint {
+  color: #8495aa;
+  font-size: 12px;
+}
+#taskDetailContent .scenario-list {
+  gap: 10px;
+}
+#taskDetailContent .scenario-card.scene-layout {
+  padding: 15px 14px 13px 9px;
+  border: 1px solid #e3ebf5;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 6px 16px rgba(44, 91, 150, .06);
+}
+#taskDetailContent .scenario-card.scene-layout:active {
+  transform: scale(.992);
+  box-shadow: 0 3px 10px rgba(44, 91, 150, .08);
+}
+#taskDetailContent .scenario-timeline .scenario-index {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: #edf4ff;
+  color: #3978dd;
+  box-shadow: inset 0 0 0 1px #dce9fb;
+}
+#taskDetailContent .scenario-card.done .scenario-timeline .scenario-index {
+  background: #e9f8f2;
+  color: #159b73;
+  box-shadow: inset 0 0 0 1px #d1eee3;
+}
+#taskDetailContent .scenario-timeline-line {
+  background: #dfe8f3;
+}
+#taskDetailContent .scenario-card.done .scenario-timeline-line {
+  background: #c9e9dc;
+}
+#taskDetailContent .scenario-heading .scenario-main b {
+  color: #2b436b;
+  font-size: 15px;
+  line-height: 1.4;
+}
+#taskDetailContent .scenario-card.scene-layout .scenario-main p {
+  color: #8798ad;
+  font-size: 12px;
+}
+#taskDetailContent .scenario-heading .scenario-arrow {
+  color: #a3b2c5;
+}
+#taskDetailContent .scenario-state-row {
+  margin-top: 11px;
+}
+#taskDetailContent .scenario-state {
+  font-size: 12px;
+}
+#taskDetailContent .scenario-progress-text,
+#taskDetailContent .scenario-counts {
+  color: #8798ad;
+  font-size: 12px;
+}
+#taskDetailContent .scenario-mini-progress {
+  height: 5px;
+  background: #edf2f8;
+}
+#taskDetailContent .scenario-mini-progress span {
+  background: linear-gradient(90deg, #54cdd0, #4b83e5);
+}
+#taskDetailContent .scenario-counts {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid #edf2f7;
+}
+#taskDetailContent .scenario-actions {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top-color: #edf2f7;
+}
+#taskDetailContent .scenario-actions button {
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 800;
+}
+#taskDetailContent .scenario-actions .material-btn {
+  background: #edf4ff;
+  color: #3978dd;
+}
+#taskDetailContent .scenario-actions .practice-btn {
+  background: #e9f8fa;
+  color: #218e9f;
+}
+#taskDetailContent .scenario-actions .exam-btn {
+  background: #fff3df;
+  color: #b5792d;
+}
+#taskDetailContent .scenario-actions button:disabled {
+  background: #f1f3f6;
+  color: #aab5c2;
+  box-shadow: none;
+}
 
 /* ===== 场景详情页（场景工作台 v2，参考图布局）===== */
 /* 场景基础信息栏 */
@@ -1258,37 +1468,6 @@ button.hello:active{opacity:.7}
 .material-modal-foot span{color:#86909c;font-size:13px;flex:1;min-width:0}
 .material-done-btn{height:44px;padding:0 18px;border:0;border-radius:10px;background:#4080ff;color:#fff;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(64,128,255,.3);flex:none}
 .material-done-btn:active{opacity:.85}
-
-/* ===== 我的考试页卡片（对齐原型）===== */
-.exam-card{border:1px solid #e3ebf6;border-radius:12px!important;background:rgba(255,255,255,.96);box-shadow:0 7px 20px rgba(56,113,177,.075);padding:16px!important;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
-.exam-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.exam-kind{display:flex;align-items:center;gap:6px;color:#8a9bb1;font-size:12px;font-weight:700}
-.exam-kind-icon{width:22px;height:22px;display:grid;place-items:center;border-radius:7px;background:#edf5ff;color:#4d82e5;font-size:13px}
-.exam-kind em{font-style:normal;margin-left:2px;padding-left:7px;border-left:1px solid #e4ebf4;color:#9aa8ba;font-weight:500}
-.exam-status{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap}
-.exam-status i{width:5px;height:5px;border-radius:50%;background:currentColor}
-.exam-status.wait{background:#eef3f8;color:#71849b}
-.exam-status.doing{background:#e6f1ff;color:#3f79da}
-.exam-status.done{background:#e9f8f1;color:#159b73}
-.exam-status.overdue{background:#fff0ed;color:#df6e5e}
-.exam-card-main{padding:11px 0 10px}
-.exam-card-main h3{font-size:16px!important;margin:0 0 5px;color:#2e466d}
-.exam-card-main p{font-size:14px!important;color:#8294ab;margin:0;line-height:1.6}
-.exam-card-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:0;padding-top:11px;border-top:1px solid #f0f3f7}
-.exam-score{display:flex;align-items:baseline;gap:6px;min-width:0}
-.exam-score small{color:#9aa8b8;font-size:11px;white-space:nowrap}
-.exam-score strong{color:#5276b8;font-size:17px;line-height:1;font-weight:900;white-space:nowrap}
-.exam-score strong.pass{color:#159b73}
-.exam-score strong.fail{color:#df6e5e}
-.exam-btn{display:inline-flex;align-items:center;gap:5px;border:0;background:transparent;box-shadow:none;padding:0;color:#3f79da;font-size:13px;font-weight:800;cursor:pointer}
-.exam-btn span{font-size:18px;line-height:10px}
-.exam-btn.done{color:#159b73}
-.exam-btn.overdue{color:#df6e5e}
-.exam-btn.wait,.exam-btn.doing{color:#3f79da}
-.exam-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:40px 20px;border:1px solid #e6edf7;box-shadow:none;border-radius:16px}
-.exam-empty span{font-size:26px;color:#9bb3d4}
-.exam-empty b{color:#5d7290;font-size:14px}
-.exam-empty small{color:#9aa8b8;font-size:12px}
 
 /* 任务状态：逾期深红、停用浅红 */
 .status.overdue{background:#fee2e2;color:#b91c1c}
