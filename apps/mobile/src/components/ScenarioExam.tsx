@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { addExamCount, addExamRecord, type ExamRoundRecord } from "@/lib/sceneProgress";
 import MobilePageAction from "./MobilePageAction";
+import VoiceAnswerInput from "./VoiceAnswerInput";
 
 interface ScenarioExamProps {
   scene: any;
@@ -35,7 +36,7 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
   const sceneId = scene?.scene?.id || scene?.sceneId || "";
   const aiRole = scene?.roles?.find((r: any) => r.roleType === "ai");
   const aiName = aiRole?.identity || "AI 考官";
-  const isTextMode = scene?.scene?.mode === "text";
+  const isTextMode = task?.answerForm ? task.answerForm === "text" : scene?.scene?.mode === "text";
 
   const questions = [
     "请进行开场沟通，说明来意并了解对方当前最关注的问题。",
@@ -54,13 +55,13 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
     setTimeout(() => chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" }), 50);
   };
 
-  const submitRound = () => {
-    if (!answer.trim()) {
+  const submitRound = (textOverride?: string) => {
+    const text = (textOverride ?? answer).trim();
+    if (!text) {
       showToast("请先输入你的回答");
       return;
     }
     setSending(true);
-    const text = answer.trim();
     // 用户消息
     pushMsg({ who: "user", text, time: now() });
     setAnswer("");
@@ -107,7 +108,7 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
           score: finalScore,
           passScore,
           passed: finalScore >= passScore,
-          mode: isTextMode ? "文本形式" : "语音形式",
+           mode: isTextMode ? "text" : "voice",
           rounds,
           finishedAt: new Date().toISOString(),
         });
@@ -122,7 +123,7 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
     <div className="exam-dialogue-page mobile-page-background">
       {/* ===== 顶部导航 ===== */}
       <header className="exam-dialogue-nav">
-        <MobilePageAction kind="back" variant="immersive" onClick={onBack} aria-label="返回场景工作台" />
+         <MobilePageAction kind="back" variant="immersive" onClick={onBack} aria-label="返回场景工作台" />
         <div className="exam-dialogue-nav-title">
           <h1>场景考试</h1>
         </div>
@@ -220,7 +221,7 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
           <button className="exam-submit exam-submit-dialogue" type="button" onClick={finishExam}>
             返回场景工作台
           </button>
-        ) : (
+        ) : isTextMode ? (
           <div className="exam-dialogue-text-bar">
             <input
               className="exam-dialogue-text-input"
@@ -232,13 +233,20 @@ export default function ScenarioExam({ scene, task, onBack, onFinished, showToas
               }}
               maxLength={500}
             />
-            <button className="exam-dialogue-text-send" type="button" onClick={submitRound} disabled={sending || !answer.trim()}>
+            <button className="exam-dialogue-text-send" type="button" onClick={() => submitRound()} disabled={sending || !answer.trim()}>
               <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
                 <path d="M3.5 11.8 20.5 3.5l-4.2 17-4.1-6.1-8.7-2.6Z" fill="#fff" stroke="none" />
                 <path d="m12.2 14.4 8.3-10.7" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" fill="none" />
               </svg>
             </button>
           </div>
+        ) : (
+           <VoiceAnswerInput
+             disabled={sending}
+             showToast={showToast}
+             autoSubmitAfterSilence={false}
+             onSubmit={(text) => submitRound(text)}
+           />
         )}
       </div>
     </div>

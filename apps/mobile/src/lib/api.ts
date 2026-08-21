@@ -189,7 +189,7 @@ export interface TaskRow {
   code: string;
   type: string;
   description: string | null;
-  status: "draft" | "published" | "stopped" | "completed";
+  status: "draft" | "published" | "stopped" | "completed" | "overdue";
   startAt: string | null;
   endAt: string | null;
   publishAt: string | null;
@@ -298,7 +298,7 @@ export const aiApi = {
 // ============ 训练记录 ============
 export const recordApi = {
   bySession: (sessionId: string) =>
-    request<any>(`/training-records/by-session/${encodeURIComponent(sessionId)}`),
+    request<any>(`/training-records/by-session/${encodeURIComponent(sessionId)}?t=${Date.now()}`),
   detail: (id: string) => request<any>(`/training-records/${id}`),
   list: (params: { page?: number; pageSize?: number; sceneId?: string } = {}) => {
     const qs = new URLSearchParams();

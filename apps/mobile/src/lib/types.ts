@@ -61,7 +61,7 @@ function toTime(value: string | null | undefined): number {
 
 export function taskHasExam(task: Pick<TaskStatusInput, "type" | "hasExam">): boolean {
   const type = (task.type || "").toLowerCase();
-  return Boolean(task.hasExam) || type === "exam" || type === "mixed" || type.endsWith("_exam");
+  return Boolean(task.hasExam) || type === "exam" || type === "mixed" || type === "free_exam" || type === "fixed_exam" || type.endsWith("_exam");
 }
 
 function normalizeTaskStatusInput(
@@ -73,8 +73,9 @@ function normalizeTaskStatusInput(
   return statusOrTask;
 }
 
-// 任务运行时状态：停用优先；超过截止时间为逾期；未到开始时间为待开始；
-// 在有效期内按学员完成进度判定：有考试需对练+考试完成，无考试只需对练完成。
+// 任务运行时状态：停用优先；当前时间超过截止时间为逾期；未到开始时间为待开始；
+// 在有效期内按当前学员完成进度判定：有考试需完成全部场景对练和考试，
+// 无考试任务只需完成全部场景对练。资料阅读不作为任务完成的前置条件。
 export function taskRuntimeStatus(
   statusOrTask: TaskStatusInput | string,
   endAt?: string | null,

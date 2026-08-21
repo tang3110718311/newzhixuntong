@@ -14,6 +14,7 @@ interface PracticeReportProps {
   scene: any;
   task: any;
   onClose: () => void;
+  onBackToTasks: () => void;
   showToast: (msg: string) => void;
 }
 
@@ -27,18 +28,6 @@ type PracticeReportPreview = {
   evaluatedDimensions: number;
   messages: PracticeChatMsg[];
 };
-
-function readReportPreview(sessionId?: string): PracticeReportPreview | null {
-  if (!sessionId || typeof window === "undefined") return null;
-  try {
-    const raw = sessionStorage.getItem(`zxt-practice-report-preview:${sessionId}`);
-    if (!raw) return null;
-    const preview = JSON.parse(raw) as PracticeReportPreview;
-    return preview?.version === 1 && preview.sessionId === sessionId && Array.isArray(preview.messages) ? preview : null;
-  } catch {
-    return null;
-  }
-}
 
 /** 格式化 ISO 时间为 YYYY-MM-DD HH:mm（参考图格式） */
 function fmtTimeFull(iso?: string | null): string {
@@ -136,9 +125,8 @@ function PassTag({ score, passScore }: { score: number; passScore: number }) {
   return <span className="pr-tag no">不合格</span>;
 }
 
-export default function PracticeReport({ sessionId, recordId, scene, task, onClose, showToast }: PracticeReportProps) {
+export default function PracticeReport({ sessionId, recordId, scene, task, onClose, onBackToTasks, showToast }: PracticeReportProps) {
   const [detail, setDetail] = useState<any>(null);
-  const [preview, setPreview] = useState<PracticeReportPreview | null>(null);
   const [failed, setFailed] = useState(false);
   const [tab, setTab] = useState<"report" | "transcript">("report");
 
@@ -174,12 +162,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
     return undefined;
   }, [recordId]);
 
-  // 刚完成时优先读取浏览器快照，保证不等待后台综合评分即可进入报告。
-  useEffect(() => {
-    if (!recordId) setPreview(readReportPreview(sessionId));
-  }, [sessionId, recordId]);
-
-  // 轮询 by-session：首屏展示本地统计与对话，最终综合评分完成后无刷新补齐。
+  // 轮询 by-session：报告生成完毕后自动替换中转页为完整报告。
   useEffect(() => {
     if (recordId || !sessionId) return;
     let cancelled = false;
@@ -189,7 +172,9 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
         .bySession(sessionId)
         .then((data: any) => {
           if (cancelled) return;
-          if (data?.record && data.record.status === "completed") {
+          const requiredScoreCount = Number(data?.record?.scoringRuleCount ?? scene?.scoringRules?.length ?? scene?.scene?.scoringRules?.length ?? 0);
+          const reportReady = data?.record?.status === "completed" && (requiredScoreCount === 0 || (data?.scores?.length ?? 0) >= requiredScoreCount);
+          if (reportReady) {
             setDetail(data);
             try { sessionStorage.removeItem(`zxt-practice-report-preview:${sessionId}`); } catch { /* ignore */ }
           } else if (tries < 60) {
@@ -281,38 +266,8 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
     );
   }
 
-  // 即时报告：展示前端已完成的对话与逐轮评分；综合评分完成后自动替换为完整报告。
-  if (!recordId && sessionId && !detail && preview) {
-    const durationMinutes = Math.floor(preview.durationSeconds / 60);
-    const durationSeconds = preview.durationSeconds % 60;
-    return (
-      <div className="pr-shell">
-        <header className="pr-head">
-          <MobilePageAction kind="back" onClick={onClose} />
-          <div className="pr-head-text"><h1>AI对练报告</h1><p>{task?.name ? `${task.name}·` : ""}{scene?.scene?.name || "场景对练"}</p></div>
-          <MobilePageAction kind="close" variant="overlay" onClick={onClose} aria-label="关闭报告" />
-        </header>
-        <UnifiedTabs ariaLabel="AI对练报告内容" className="unified-tabs--report" items={[{ value: "report", label: "AI对练报告" }, { value: "transcript", label: "对话记录" }]} onChange={setTab} value={tab} />
-        {tab === "report" ? (
-          <div className="pr-report-body">
-            <div className="pr-card">
-              <div className="pr-card-title"><i></i>本次对练统计</div>
-              <div className="pr-total-stats">练习时长 {durationMinutes}分{durationSeconds}秒　完成轮数 {preview.learnerRounds}　已评分 {preview.scoredRounds} 轮　评价维度 {preview.evaluatedDimensions}</div>
-            </div>
-            <div className="pr-card">
-              <div className="pr-card-title"><i></i>综合评分生成中</div>
-              <p className="pr-summary">已展示本次对练的对话记录和逐轮评分；AI 正在汇总整场能力表现，通常将在 10 秒内自动补齐完整报告。</p>
-            </div>
-          </div>
-        ) : (
-          <div className="pr-transcript">{preview.messages.length ? <PracticeChat messages={preview.messages} reportMode /> : <div className="pr-empty">暂无对话记录</div>}</div>
-        )}
-      </div>
-    );
-  }
-
-  // 报告中转页：与 PC 端同样先等待后台评分，期间提供返回场景详情操作。
-  if (!recordId && sessionId && !detail && !preview && !failed) {
+  // 报告中转页：对练结束后始终展示，完整报告生成完毕后自动刷新为正式报告。
+  if (!recordId && sessionId && !detail && !failed) {
     return (
       <div className="pr-shell">
         <header className="pr-head">
@@ -329,24 +284,7 @@ export default function PracticeReport({ sessionId, recordId, scene, task, onClo
             <h3>生成报告中</h3>
             <p>正在整理本次 AI 对练内容，请稍候…</p>
             <div className="report-generating-steps"><span className="active">整理对话记录</span><span>分析能力表现</span><span>生成对练报告</span></div>
-            <button className="pr-close-report report-generating-back" type="button" onClick={onClose}>返回场景详情</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 即时报告快照缺失时仍保留轻量兜底中转状态。
-  if (!recordId && sessionId && !detail && !failed) {
-    return (
-      <div className="pr-shell">
-        <div className="report-generating-page" role="status" aria-live="polite">
-          <div className="report-generating-panel">
-            <div className="report-generating-spinner"><i></i><i></i><i></i></div>
-            <h3>生成报告中</h3>
-            <p>正在整理本次 AI 对练内容，请稍候…</p>
-            <div className="report-generating-steps"><span className="active">整理对话记录</span><span>分析能力表现</span><span>生成对练报告</span></div>
-            <button className="pr-close-report report-generating-back" type="button" onClick={onClose}>返回场景详情</button>
+            <button className="pr-close-report report-generating-back" type="button" onClick={onBackToTasks}>返回我的任务</button>
           </div>
         </div>
       </div>

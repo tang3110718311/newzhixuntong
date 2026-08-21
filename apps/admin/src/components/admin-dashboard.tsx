@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import type { ApiResponse, AuthSession, DashboardOverview, PageResult } from "@zxt/shared";
+import { taskRuntimeStatus, type ApiResponse, type AuthSession, type DashboardOverview, type PageResult } from "@zxt/shared";
 import {
   AlertCircle,
   Ban,
@@ -196,6 +196,7 @@ type Task = {
   participantCount?: number;
   sceneCount?: number;
   completedSceneCount?: number;
+  completedExamSceneCount?: number;
   progressPercent?: number;
 };
 
@@ -2099,11 +2100,10 @@ export function AdminDashboard() {
   const pendingAppealCount = appeals.filter((appeal) => appeal.status === "pending").length;
   const completedRecordCount = records.filter((record) => record.status === "completed").length;
   const getTaskRuntimeStatus = (task: Task) => {
-    if (task.status === "completed" || task.status === "stopped") return task.status;
-    const endTime = task.endAt ? new Date(task.endAt).getTime() : Number.NaN;
-    if (Number.isFinite(endTime) && endTime < Date.now()) return "overdue";
-    if (task.status === "published") return "in_progress";
-    return task.status;
+    const runtime = taskRuntimeStatus(task);
+    if (runtime === "draft") return "not_started";
+    if (runtime === "published") return "in_progress";
+    return runtime;
   };
   const TASK_TYPE_LABELS: Record<string, string> = {
     free_practice: "自由对练",
@@ -2114,7 +2114,8 @@ export function AdminDashboard() {
     mixed: "混合模式",
   };
   const taskTypeLabel = (type: string) => TASK_TYPE_LABELS[type] || type || "任务";
-  const myTaskStats = tasks.reduce(
+  const myTasks = tasks.filter((task) => getTaskRuntimeStatus(task) !== "not_started");
+  const myTaskStats = myTasks.reduce(
     (stats, task) => {
       const runtimeStatus = getTaskRuntimeStatus(task);
       stats.total += 1;
@@ -2125,7 +2126,7 @@ export function AdminDashboard() {
     },
     { total: 0, overdue: 0, completed: 0, inProgress: 0 },
   );
-  const filteredMyTasks = tasks.filter((task) => {
+  const filteredMyTasks = myTasks.filter((task) => {
     const runtimeStatus = getTaskRuntimeStatus(task);
     const selectedStatus = taskFilter.status;
     const matchesStatus =
@@ -3051,9 +3052,9 @@ export function AdminDashboard() {
                     <small className="muted">完成率 {tasks.length ? Math.round((tasks.filter((t) => getTaskRuntimeStatus(t) === "completed").length / tasks.length) * 100) : 0}%</small>
                   </div>
                   <div className="summary-card card">
-                    <label>待发布</label>
-                    <strong style={{ color: "#e49a38" }}>{tasks.filter((t) => getTaskRuntimeStatus(t) === "draft").length}</strong>
-                    <small className="muted">等待确认</small>
+                    <label>待开始</label>
+                    <strong style={{ color: "#e49a38" }}>{tasks.filter((t) => getTaskRuntimeStatus(t) === "not_started").length}</strong>
+                    <small className="muted">尚未到开始时间</small>
                   </div>
                 </div>
 
@@ -3061,7 +3062,7 @@ export function AdminDashboard() {
                   <select className="field" value={taskFilter.status} onChange={(e) => setTaskFilter({ ...taskFilter, status: e.target.value })}>
                     <option value="all">全部任务状态</option>
                     <option value="in_progress">进行中</option>
-                    <option value="draft">待发布</option>
+                    <option value="not_started">待开始</option>
                     <option value="completed">已完成</option>
                     <option value="overdue">已逾期</option>
                     <option value="stopped">已停用</option>
@@ -3106,7 +3107,7 @@ export function AdminDashboard() {
                           const runtimeStatus = getTaskRuntimeStatus(task);
                           const statusMeta: Record<string, { label: string; cls: string }> = {
                             in_progress: { label: "进行中", cls: "blue" },
-                            draft: { label: "待发布", cls: "orange" },
+                            not_started: { label: "待开始", cls: "orange" },
                             completed: { label: "已完成", cls: "green" },
                             overdue: { label: "已逾期", cls: "red" },
                             stopped: { label: "已停用", cls: "red" },
@@ -3130,8 +3131,8 @@ export function AdminDashboard() {
                                 <a onClick={() => viewTaskDetail(task.id)}>详情</a>
                                 {runtimeStatus === "in_progress" && <a onClick={() => stopTask(task.id)}>停用</a>}
                                  {runtimeStatus === "stopped" && <a className="del" onClick={() => setTaskToDelete(task)}>删除</a>}
-                                 {runtimeStatus === "draft" && <a onClick={() => showTaskToast("请在创建任务页完善并发布该任务")}>编辑</a>}
-                                {runtimeStatus === "draft" && <a onClick={() => publishTask(task.id)}>发布</a>}
+                                 {task.status === "draft" && <a onClick={() => showTaskToast("请在创建任务页完善并发布该任务")}>编辑</a>}
+                                 {task.status === "draft" && <a onClick={() => publishTask(task.id)}>发布</a>}
                                 {(runtimeStatus === "completed" || runtimeStatus === "stopped") && <a onClick={() => duplicateTask(task)}>复制</a>}
                                 {runtimeStatus === "overdue" && <a onClick={() => extendTask(task)}>延长时间</a>}
                               </td>
@@ -3575,7 +3576,6 @@ export function AdminDashboard() {
                   <select className="field" value={taskFilter.status === "all" ? "" : taskFilter.status} onChange={(e) => setTaskFilter({ ...taskFilter, status: e.target.value || "all" })}>
                     <option value="">全部任务状态</option>
                     <option value="in_progress">进行中</option>
-                    <option value="not_started">待开始</option>
                     <option value="overdue">已逾期</option>
                     <option value="completed">已完成</option>
                   </select>
@@ -4445,4 +4445,3 @@ function LoginCaptchaModal({
     </div>
   );
 }
-

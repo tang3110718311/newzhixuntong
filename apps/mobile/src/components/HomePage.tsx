@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { taskApi, tenantApi, type AuthUser, type TaskRow, type TenantRow } from "@/lib/api";
-import { statusClass, taskStatusText, taskTypeText, taskDisplayStatus } from "@/lib/types";
+import { getExamCount } from "@/lib/sceneProgress";
+import { isTaskStopped, statusClass, taskTypeText, taskDisplayStatus } from "@/lib/types";
 import type { PageKey } from "./MobileApp";
 import type { MobileModalKey } from "@/lib/mobileRoutes";
 
@@ -10,6 +11,7 @@ interface HomePageProps {
   user: AuthUser | null;
   onNavigate: (p: PageKey) => void;
   onOpenTask: (taskId: string) => void;
+  onOpenExam: (taskId: string, sceneId: string) => void;
   showToast: (msg: string) => void;
   onSwitchTenant: (tenantCode: string) => Promise<boolean>;
   modal: MobileModalKey | null;
@@ -17,8 +19,11 @@ interface HomePageProps {
   onCloseModal: () => void;
 }
 
-export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSwitchTenant, modal, onOpenModal, onCloseModal }: HomePageProps) {
+interface RecentExam { taskId: string; taskName: string; sceneId: string; sceneName: string; }
+
+export default function HomePage({ user, onNavigate, onOpenTask, onOpenExam, showToast, onSwitchTenant, modal, onOpenModal, onCloseModal }: HomePageProps) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [recentExams, setRecentExams] = useState<RecentExam[]>([]);
   const [loading, setLoading] = useState(true);
   // 切换企业弹窗
   const showTenantModal = modal === "tenant";
@@ -26,13 +31,25 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
   const [selectedCode, setSelectedCode] = useState("");
   const [tenantOpen, setTenantOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [recentTab, setRecentTab] = useState<"tasks" | "exams">("tasks");
 
   useEffect(() => {
     let alive = true;
     taskApi.list({ pageSize: 100 })
       .then((t) => {
         if (!alive) return;
-        setTasks(t.items || []);
+        const items = t.items || [];
+        setTasks(items);
+        Promise.all(items.map(async (task) => {
+          if (isTaskStopped(task)) return [] as RecentExam[];
+          try {
+            const detail = await taskApi.detail(task.id);
+            return (detail.scenes || [])
+              .filter((scene: any) => (scene.completedTrainCount || 0) >= (scene.requiredTrainTimes || 1))
+              .filter((scene: any) => getExamCount(scene.sceneId) === 0)
+              .map((scene: any) => ({ taskId: task.id, taskName: task.name, sceneId: scene.sceneId, sceneName: scene.sceneName || "未命名场景" }));
+          } catch { return [] as RecentExam[]; }
+        })).then((groups) => alive && setRecentExams(groups.flat().slice(0, 3)));
       })
       .catch(() => showToast("数据加载失败"))
       .finally(() => alive && setLoading(false));
@@ -147,13 +164,39 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
           <small>查看培训与对练任务</small>
           <b id="homeTaskCount">{pending}</b>
         </button>
+        <button className="quick ability" onClick={() => onNavigate("ability")}>
+          <strong>综合能力</strong>
+          <small>查看能力评估与成长建议</small>
+          <b>›</b>
+        </button>
       </div>
       <div className="recent-heading">
-        <h2>最近任务</h2>
+        <div className="recent-tabs" role="tablist" aria-label="首页最近记录">
+          <button
+            type="button"
+            className={`recent-tab ${recentTab === "tasks" ? "active" : ""}`}
+            onClick={() => setRecentTab("tasks")}
+            role="tab"
+            aria-selected={recentTab === "tasks"}
+          >
+            最近任务
+          </button>
+          <button
+            type="button"
+            className={`recent-tab ${recentTab === "exams" ? "active" : ""}`}
+            onClick={() => setRecentTab("exams")}
+            role="tab"
+            aria-selected={recentTab === "exams"}
+          >
+            最近考试
+          </button>
+        </div>
         <a className="recent-all" onClick={() => onNavigate("tasks")}>全部 ›</a>
       </div>
       <div className="recent-panel active">
-          <div className="recent-box">
+          <div className="recent-box" role="tabpanel">
+            {recentTab === "exams" && (recentExams.length === 0 ? <div className="recent-item recent-empty"><span className="type-dot">▣</span><div className="recent-main"><b>暂无可参加考试</b><small>完成场景 AI 对练后，考试会显示在这里</small></div></div> : recentExams.map((exam) => <div className="recent-item" key={`${exam.taskId}-${exam.sceneId}`} onClick={() => onOpenExam(exam.taskId, exam.sceneId)} style={{ cursor: "pointer" }}><span className="type-dot exam">▣</span><div className="recent-main"><b>{exam.sceneName}</b><small>{exam.taskName} · AI 对练已完成</small></div><span className="status exam-ready">开始考试</span><span className="recent-arrow">›</span></div>))}
+            {recentTab === "tasks" && <>
             {recentTasks.length === 0 && (
               <div className="recent-item">
                 <span className="type-dot">✓</span>
@@ -184,6 +227,7 @@ export default function HomePage({ user, onNavigate, onOpenTask, showToast, onSw
                 </div>
               );
             })}
+            </>}
           </div>
       </div>
 

@@ -200,7 +200,6 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
   // 学员录音已进行秒数（实时录音进度）
   const [recSec, setRecSec] = useState(0);
   const [hintVisible, setHintVisible] = useState(false);
-  const [score, setScore] = useState<number | null>(null);
   // 进入本对练页面的次数仅用于本机展示，不作为服务端可信完成状态。
   const [practiceTimes, setPracticeTimes] = useState(0);
   const chatRef = useRef<HTMLDivElement>(null);
@@ -456,7 +455,6 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
         });
         messagesRef.current = messagesRef.current.map((message) => message.id === feedbackId ? feedback : message);
         setMessages(messagesRef.current);
-        setScore(feedback.score ?? null);
       // 评分卡必须先完成首帧渲染，再继续展示或播报 AI 的下一句。
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       if (quitRequestedRef.current) return;
@@ -497,6 +495,21 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
     if (sending) return;
     sendText(input);
   };
+
+  // 综合得分按每一轮实际获得分数与该轮参与评价维度满分汇总计算，
+  // 不再以最后一轮点评卡分数覆盖顶部展示。
+  const comprehensiveScore = (() => {
+    const feedbackMessages = messages.filter((message) => message.who === "feedback" && message.dimensions?.length);
+    const earned = feedbackMessages.reduce(
+      (total, message) => total + (message.dimensions ?? []).reduce((sum, dimension) => sum + (Number(dimension.score) || 0), 0),
+      0,
+    );
+    const possible = feedbackMessages.reduce(
+      (total, message) => total + (message.dimensions ?? []).reduce((sum, dimension) => sum + (Number(dimension.maxScore) || 0), 0),
+      0,
+    );
+    return possible > 0 ? Math.round((earned / possible) * 100) : null;
+  })();
 
   const endPractice = async () => {
     if (quitRequestedRef.current || sending || !sceneId || !sessionId) return;
@@ -1289,8 +1302,8 @@ export default function PracticeView({ scene, task, onBack, showToast, onReport,
           <b>第 {practiceTimes > 0 ? practiceTimes : 1} 次</b>
         </div>
         <div className="pv-scene-col score">
-          <span>本轮得分</span>
-          <b>{score != null ? `${score}分` : "—"}</b>
+          <span>综合得分</span>
+          <b>{comprehensiveScore != null ? `${comprehensiveScore}分` : "—"}</b>
         </div>
       </div>
 

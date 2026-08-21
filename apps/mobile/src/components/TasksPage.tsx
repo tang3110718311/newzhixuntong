@@ -38,8 +38,13 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const visibleTasks = useMemo(
+    () => tasks.filter((t) => displayStatus(t) !== "待开始"),
+    [tasks],
+  );
+
   const filtered = useMemo(() => {
-    let list = tasks;
+    let list = visibleTasks;
     if (statusTab) {
       list = list.filter((t) => displayStatus(t) === statusTab);
     }
@@ -47,15 +52,15 @@ export default function TasksPage({ onNavigate, onOpenTask, showToast }: TasksPa
       list = list.filter((t) => t.name.includes(keyword) || (t.code || "").includes(keyword));
     }
     return list;
-  }, [tasks, statusTab, keyword]);
+  }, [visibleTasks, statusTab, keyword]);
 
   const stats = useMemo(() => {
-    const total = tasks.length;
-    const overdue = tasks.filter((t) => displayStatus(t) === "已逾期").length;
-    const doing = tasks.filter((t) => displayStatus(t) === "进行中").length;
-    const completed = tasks.filter((t) => displayStatus(t) === "已完成").length;
+    const total = visibleTasks.length;
+    const overdue = visibleTasks.filter((t) => displayStatus(t) === "已逾期").length;
+    const doing = visibleTasks.filter((t) => displayStatus(t) === "进行中").length;
+    const completed = visibleTasks.filter((t) => displayStatus(t) === "已完成").length;
     return { total, overdue, doing, completed };
-  }, [tasks]);
+  }, [visibleTasks]);
 
   return (
     <>

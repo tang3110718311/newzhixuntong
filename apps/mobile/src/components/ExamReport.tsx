@@ -174,7 +174,7 @@ export default function ExamReport({ record, sceneName, taskName, onClose }: Exa
       ) : (
         /* ===== 对话记录 tab ===== */
         <div className="er-transcript">
-          <div className="er-tip">{record?.mode === "text" ? "文本形式考试：逐题作答，提交后自动评分" : "语音形式考试：实时听写，静音后自动提交"}</div>
+          <div className="er-tip">{record?.mode === "text" || record?.mode === "文本形式" ? "文本形式考试：逐题作答，提交后自动评分" : "语音形式考试：实时转写，确认后提交"}</div>
 
           {rounds.length === 0 ? (
             <div className="er-empty">暂无对话记录</div>

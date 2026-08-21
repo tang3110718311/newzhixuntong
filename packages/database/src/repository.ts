@@ -1471,7 +1471,7 @@ export function listTasks(
             (select count(*) from task_participants tp where tp.tenant_id = t.tenant_id and tp.task_id = t.id and tp.deleted_at is null) as participantCount,
             (select count(*) from task_scenes ts where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null) as sceneCount,
             (select count(distinct tr.scene_id) from training_records tr where tr.tenant_id = t.tenant_id and tr.task_id = t.id and tr.status = 'completed' and tr.deleted_at is null${progressUserClause}) as completedSceneCount,
-            (select count(distinct ea.scene_id) from exam_attempts ea where ea.tenant_id = t.tenant_id and ea.task_id = t.id and ea.status in ('passed', 'failed') and ea.scene_id is not null${options.assigneeUserId ? " and ea.user_id = ?" : ""}) as completedExamSceneCount,
+             (select count(distinct ea.scene_id) from exam_attempts ea where ea.tenant_id = t.tenant_id and ea.task_id = t.id and ea.status in ('passed', 'failed') and ea.scene_id is not null and ea.deleted_at is null${options.assigneeUserId ? " and ea.user_id = ?" : ""}) as completedExamSceneCount,
             (select s.scene_type from task_scenes ts left join scenes s on s.id = ts.scene_id and s.tenant_id = ts.tenant_id where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null order by ts.sort_order asc limit 1) as primarySceneType,
             (select s.mode from task_scenes ts left join scenes s on s.id = ts.scene_id and s.tenant_id = ts.tenant_id where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null order by ts.sort_order asc limit 1) as primaryMode,
             (select group_concat(ts.scene_id, ',') from task_scenes ts where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null) as sceneIds
@@ -1531,7 +1531,7 @@ export function getTaskDetail(
             (select count(*) from task_participants tp where tp.tenant_id = t.tenant_id and tp.task_id = t.id and tp.deleted_at is null) as participantCount,
             (select count(*) from task_scenes ts where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null) as sceneCount,
             (select count(distinct tr.scene_id) from training_records tr where tr.tenant_id = t.tenant_id and tr.task_id = t.id and tr.status = 'completed' and tr.deleted_at is null${progressUserClause}) as completedSceneCount,
-            (select count(distinct ea.scene_id) from exam_attempts ea where ea.tenant_id = t.tenant_id and ea.task_id = t.id and ea.status in ('passed', 'failed') and ea.scene_id is not null${options.viewerUserId ? " and ea.user_id = ?" : ""}) as completedExamSceneCount,
+             (select count(distinct ea.scene_id) from exam_attempts ea where ea.tenant_id = t.tenant_id and ea.task_id = t.id and ea.status in ('passed', 'failed') and ea.scene_id is not null and ea.deleted_at is null${options.viewerUserId ? " and ea.user_id = ?" : ""}) as completedExamSceneCount,
             (select s.scene_type from task_scenes ts left join scenes s on s.id = ts.scene_id and s.tenant_id = ts.tenant_id where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null order by ts.sort_order asc limit 1) as primarySceneType,
             (select s.mode from task_scenes ts left join scenes s on s.id = ts.scene_id and s.tenant_id = ts.tenant_id where ts.tenant_id = t.tenant_id and ts.task_id = t.id and ts.deleted_at is null order by ts.sort_order asc limit 1) as primaryMode
      from tasks t

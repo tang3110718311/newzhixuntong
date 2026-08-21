@@ -15,6 +15,7 @@ import {
   parseMobileRoute,
   pathForPage,
   pathForTask,
+  pathForTaskScene,
   withModal,
   type MobileModalKey,
   type MobilePageKey,
@@ -144,6 +145,7 @@ export default function MobileApp({ initialAuthenticated }: MobileAppProps) {
             user={user}
             onNavigate={navigateTo}
             onOpenTask={openTaskDetail}
+            onOpenExam={(examTaskId, sceneId) => router.push(pathForTaskScene(examTaskId, sceneId, "exam"))}
             showToast={showToast}
             onSwitchTenant={handleSwitchTenant}
             modal={route.modal}
