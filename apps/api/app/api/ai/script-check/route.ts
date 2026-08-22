@@ -1,4 +1,5 @@
 import { getDefaultAiProvider, getSceneDetail, logAiCall } from "@zxt/database";
+import { getInteractionPatternGuidance, INTERACTION_PATTERN_LABELS } from "@zxt/shared";
 import { z } from "zod";
 import { createTraceId, fail, handleRouteError, ok } from "@/lib/response";
 import { getTenantContext } from "@/lib/tenant";
@@ -64,7 +65,10 @@ export async function POST(request: Request) {
     parts.push(`\n## 场景：${scene.name}`);
     if (scene.description) parts.push(scene.description);
     if (learnerRole?.identity) parts.push(`\n学员角色：${learnerRole.identity}`);
-    if (aiRole?.identity) parts.push(`\n客户角色（AI 扮演场景中的对象）：${aiRole.identity}`);
+    if (aiRole?.identity) parts.push(`\nAI扮演角色（场景中的对练对象）：${aiRole.identity}`);
+    const interactionPattern = scene.interactionPattern || "customer_interaction";
+    parts.push(`\n关系类型：${INTERACTION_PATTERN_LABELS[interactionPattern as keyof typeof INTERACTION_PATTERN_LABELS] || "客户沟通型"}`);
+    parts.push(`关系类型检核重点：${getInteractionPatternGuidance(interactionPattern)}`);
     if (scoringRules.length) {
       parts.push(`\n## 检核依据（话术需覆盖的关键要求）`);
       scoringRules.forEach((r, i) => {

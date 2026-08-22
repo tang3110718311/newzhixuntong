@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ApiResponse, AuthSession } from "@zxt/shared";
+import { INTERACTION_PATTERN_DESCRIPTIONS, INTERACTION_PATTERN_LABELS, type ApiResponse, type AuthSession } from "@zxt/shared";
 import AppShell, { type RightRailData } from "@/components/AppShell";
 import { getPathId, navigateBackOr, navigateTo } from "@/lib/navigation";
+import { getSceneGenerationTargetRole } from "@/lib/scene-ai-draft";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -16,6 +17,9 @@ type SceneDetail = {
     industryPackageId?: string | null;
     industryPackageName?: string | null;
     sceneType: string;
+    interactionPattern: "customer_interaction" | "project_coordination";
+    aiRecommendedPattern?: string | null;
+    aiRecommendationReason?: string;
     mode: string;
     createMode?: string;
     status: string;
@@ -123,6 +127,7 @@ export default function SceneEditPage() {
   const [sceneMode, setSceneMode] = useState("");
   const [sceneDescInput, setSceneDescInput] = useState("");
   const [passScore, setPassScore] = useState(60);
+  const [interactionPattern, setInteractionPattern] = useState<"customer_interaction" | "project_coordination">("customer_interaction");
   const [aiIdentity, setAiIdentity] = useState("");        // AI扮演角色 → aiRole.identity
   const [aiPosition, setAiPosition] = useState("");        // 身份地位 → aiRole.goal
   const [aiBackground, setAiBackground] = useState("");    // 背景简介 → aiRole.background
@@ -176,6 +181,7 @@ export default function SceneEditPage() {
     setSceneMode(d.scene.createMode || d.scene.mode || "");
     setSceneDescInput(d.scene.description || "");
     setPassScore(d.scene.passScore || 60);
+    setInteractionPattern(d.scene.interactionPattern || "customer_interaction");
     setAiIdentity(ai?.identity || "");
     setAiPosition(ai?.goal || "");
     setAiBackground(ai?.background || "");
@@ -341,6 +347,8 @@ export default function SceneEditPage() {
           learnerRole?: { identity: string; goal: string };
           endCondition?: string;
           interruptCondition?: string;
+          interactionPattern?: "customer_interaction" | "project_coordination" | "pending";
+          interactionPatternReason?: string;
           scoringRules?: Array<{ name: string; score: number; criteria: string; deductionRule: string; evidenceRequired: string }>;
         };
       }>("/ai/scenes/generate", {
@@ -349,7 +357,7 @@ export default function SceneEditPage() {
           sceneDescription: sceneDescInput,
           createMode: sceneMode || detail.scene.createMode || "ai_practice",
           mode: detail.scene.mode || "voice",
-          targetRole: learnerIdentity || "客服坐席",
+          targetRole: getSceneGenerationTargetRole(learnerIdentity),
           attachmentFileIds: topAttachments.filter((a) => a.fileId && a.status === "done").map((a) => a.fileId as string),
         }),
       });
@@ -368,6 +376,7 @@ export default function SceneEditPage() {
       }
       if (draft.endCondition !== undefined) setDialogEndCondition(draft.endCondition);
       if (draft.interruptCondition !== undefined) setDialogInterrupt(draft.interruptCondition);
+      if (draft.interactionPattern && draft.interactionPattern !== "pending") setInteractionPattern(draft.interactionPattern);
       if (draft.scoringRules?.length) {
         setScoringRuleForms(draft.scoringRules.map((r) => ({ ...r })));
       }
@@ -407,6 +416,7 @@ export default function SceneEditPage() {
         body: JSON.stringify({
           name: sceneTitle || detail.scene.name,
           description: sceneDesc,
+          interactionPattern,
           passScore: passScore,
           createMode: sceneMode || detail.scene.createMode,
           aiRole: {
@@ -563,6 +573,17 @@ export default function SceneEditPage() {
                 </button>
               </div>
               <div className="form-grid config-grid">
+                <div className="form-item full">
+                  <label><i>*</i>关系类型</label>
+                  <select className="field" value={interactionPattern} onChange={(e) => setInteractionPattern(e.target.value as "customer_interaction" | "project_coordination")} disabled={detail.scene.status === "published"}>
+                    <option value="customer_interaction">客户沟通型</option>
+                    <option value="project_coordination">项目协调型</option>
+                  </select>
+                  <small>{INTERACTION_PATTERN_DESCRIPTIONS[interactionPattern]}</small>
+                  {detail.scene.aiRecommendedPattern && <small>AI 原始推荐：{INTERACTION_PATTERN_LABELS[detail.scene.aiRecommendedPattern as keyof typeof INTERACTION_PATTERN_LABELS] || "待判断"}{detail.scene.aiRecommendationReason ? `。${detail.scene.aiRecommendationReason}` : ""}{interactionPattern !== detail.scene.aiRecommendedPattern ? "（已由人工调整）" : ""}</small>}
+                  {detail.scene.status === "published" && <small>已发布场景不允许修改关系类型。</small>}
+                </div>
+                {/* 上传附件 */}
                 {/* 场景资料 */}
                 <div className="form-item full">
                   <label>场景资料</label>

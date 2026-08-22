@@ -25,6 +25,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       createdBy: user?.id ?? null,
       sceneType: detail.scene.sceneType,
       status: "disabled",
+      interactionPattern: detail.scene.interactionPattern || "customer_interaction",
       description: detail.scene.description || "",
       passScore: detail.scene.passScore,
       aiRole: aiRole ? {

@@ -104,6 +104,9 @@ export type SceneRow = {
   industryPackageId?: string | null;
   industryPackageName?: string | null;
   sceneType: string;
+  interactionPattern: string;
+  aiRecommendedPattern?: string | null;
+  aiRecommendationReason?: string;
   mode: string;
   createMode: string;
   status: string;
@@ -385,6 +388,8 @@ export type GeneratedSceneInput = {
   createMode?: string;
   createdBy?: string | null;
   sceneType: string;
+  interactionPattern: "customer_interaction" | "project_coordination";
+  aiRecommendationReason?: string;
   description: string;
   sourceType: string;
   aiRole: {
@@ -1051,7 +1056,7 @@ export function listScenes(tenantId: string, options: { page: number; pageSize: 
   )?.count ?? 0;
   const items = all<SceneRow>(
     `select s.id, s.name, s.code, s.industry_package_id as industryPackageId, ip.name as industryPackageName,
-            s.scene_type as sceneType, s.mode, coalesce(s.create_mode, 'ai_practice') as createMode, s.status,
+            s.scene_type as sceneType, coalesce(s.interaction_pattern, 'customer_interaction') as interactionPattern, s.ai_recommended_pattern as aiRecommendedPattern, coalesce(s.ai_recommendation_reason, '') as aiRecommendationReason, s.mode, coalesce(s.create_mode, 'ai_practice') as createMode, s.status,
             s.is_template as isTemplate, s.source_type as sourceType, s.description, coalesce(s.pass_score, 80) as passScore,
             s.created_at as createdAt, s.updated_at as updatedAt, u.name as creatorName, o.name as creatorOrgName,
             (select count(*) from task_scenes ts where ts.tenant_id = s.tenant_id and ts.scene_id = s.id and ts.deleted_at is null) as taskCount
@@ -1088,14 +1093,14 @@ function generateSceneCode(tenantId: string) {
   return `${prefix}${String(maxSequence + 1).padStart(3, "0")}`;
 }
 
-export function createScene(tenantId: string, input: { industryPackageId?: string | null; name: string; code: string; mode: string; createMode?: string; createdBy?: string | null; sceneType: string; description: string; aiRole?: { identity: string; background: string; personality: string; emotion: string; languageStyle?: string; goal: string }; learnerRole?: { identity: string; goal: string }; endCondition?: string; interruptCondition?: string; dialogueExample?: string; initiator?: string; scoringRules?: Array<{ name: string; score: number; criteria: string; deductionRule: string; evidenceRequired: string }>; attachmentFileIds?: string[]; passScore?: number; status?: "disabled" | "published" }) {
+export function createScene(tenantId: string, input: { industryPackageId?: string | null; name: string; code: string; mode: string; createMode?: string; createdBy?: string | null; sceneType: string; interactionPattern: string; aiRecommendedPattern?: string; aiRecommendationReason?: string; description: string; aiRole?: { identity: string; background: string; personality: string; emotion: string; languageStyle?: string; goal: string }; learnerRole?: { identity: string; goal: string }; endCondition?: string; interruptCondition?: string; dialogueExample?: string; initiator?: string; scoringRules?: Array<{ name: string; score: number; criteria: string; deductionRule: string; evidenceRequired: string }>; attachmentFileIds?: string[]; passScore?: number; status?: "disabled" | "published" }) {
   const id = createId("scene");
   // 优先使用前端传入的场景编号，未传入时才自动生成，保证与创建时展示的编号一致
   const code = input.code || generateSceneCode(tenantId);
   run(
-    `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, create_mode, scene_type, description, pass_score, status, source_type, is_template, version, created_by, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', 0, '1.0.0', ?, datetime('now'), datetime('now'))`,
-    [id, tenantId, input.industryPackageId ?? null, input.name, code, input.mode, input.createMode ?? "ai_practice", input.sceneType, input.description, input.passScore ?? 60, input.status ?? "published", input.createdBy ?? null],
+    `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, create_mode, scene_type, interaction_pattern, ai_recommended_pattern, ai_recommendation_reason, description, pass_score, status, source_type, is_template, version, created_by, created_at, updated_at)
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', 0, '1.0.0', ?, datetime('now'), datetime('now'))`,
+     [id, tenantId, input.industryPackageId ?? null, input.name, code, input.mode, input.createMode ?? "ai_practice", input.sceneType, input.interactionPattern, input.aiRecommendedPattern ?? null, input.aiRecommendationReason ?? "", input.description, input.passScore ?? 60, input.status ?? "published", input.createdBy ?? null],
   );
   // AI 角色
   if (input.aiRole?.identity) {
@@ -1131,19 +1136,22 @@ export function createScene(tenantId: string, input: { industryPackageId?: strin
   });
   replaceSceneAttachments(tenantId, id, input.attachmentFileIds ?? []);
   return get<SceneRow>(
-    "select id, name, code, industry_package_id as industryPackageId, scene_type as sceneType, mode, coalesce(create_mode, 'ai_practice') as createMode, status, is_template as isTemplate, source_type as sourceType, description, coalesce(pass_score, 80) as passScore, created_at as createdAt from scenes where id = ?",
+    "select id, name, code, industry_package_id as industryPackageId, scene_type as sceneType, coalesce(interaction_pattern, 'customer_interaction') as interactionPattern, ai_recommended_pattern as aiRecommendedPattern, coalesce(ai_recommendation_reason, '') as aiRecommendationReason, mode, coalesce(create_mode, 'ai_practice') as createMode, status, is_template as isTemplate, source_type as sourceType, description, coalesce(pass_score, 80) as passScore, created_at as createdAt from scenes where id = ?",
     [id],
   );
 }
 
 export function createGeneratedScene(tenantId: string, input: GeneratedSceneInput) {
+  if (input.interactionPattern !== "customer_interaction" && input.interactionPattern !== "project_coordination") {
+    throw new Error("AI generated scene requires interactionPattern to be customer_interaction or project_coordination; pending and invalid values cannot be created.");
+  }
   const id = createId("scene");
   // 优先使用前端传入的场景编号，未传入后再自动生成
   const code = input.code || generateSceneCode(tenantId);
   run(
-    `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, create_mode, scene_type, description, pass_score, status, source_type, is_template, version, created_by, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, 0, '1.0.0', ?, datetime('now'), datetime('now'))`,
-    [id, tenantId, input.industryPackageId ?? null, input.name, code, input.mode, input.createMode ?? "ai_practice", input.sceneType, input.description, input.passScore ?? 60, input.sourceType, input.createdBy ?? null],
+    `insert into scenes (id, tenant_id, industry_package_id, name, code, mode, create_mode, scene_type, interaction_pattern, ai_recommended_pattern, ai_recommendation_reason, description, pass_score, status, source_type, is_template, version, created_by, created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, 0, '1.0.0', ?, datetime('now'), datetime('now'))`,
+    [id, tenantId, input.industryPackageId ?? null, input.name, code, input.mode, input.createMode ?? "ai_practice", input.sceneType, input.interactionPattern, input.interactionPattern, input.aiRecommendationReason ?? "", input.description, input.passScore ?? 60, input.sourceType, input.createdBy ?? null],
   );
   run(
     `insert into scene_roles (id, tenant_id, scene_id, role_type, identity, background, personality, emotion, language_style, goal, created_at, updated_at)
@@ -1170,7 +1178,7 @@ export function createGeneratedScene(tenantId: string, input: GeneratedSceneInpu
   replaceSceneAttachments(tenantId, id, input.attachmentFileIds ?? []);
 
   return get<SceneRow>(
-    "select id, name, code, industry_package_id as industryPackageId, scene_type as sceneType, mode, coalesce(create_mode, 'ai_practice') as createMode, status, is_template as isTemplate, source_type as sourceType, description, coalesce(pass_score, 80) as passScore, created_at as createdAt from scenes where id = ?",
+    "select id, name, code, industry_package_id as industryPackageId, scene_type as sceneType, coalesce(interaction_pattern, 'customer_interaction') as interactionPattern, ai_recommended_pattern as aiRecommendedPattern, coalesce(ai_recommendation_reason, '') as aiRecommendationReason, mode, coalesce(create_mode, 'ai_practice') as createMode, status, is_template as isTemplate, source_type as sourceType, description, coalesce(pass_score, 80) as passScore, created_at as createdAt from scenes where id = ?",
     [id],
   );
 }
@@ -1178,7 +1186,7 @@ export function createGeneratedScene(tenantId: string, input: GeneratedSceneInpu
 export function getSceneDetail(tenantId: string, sceneId: string): SceneDetail | undefined {
   const scene = get<SceneRow & { industryPackageName: string | null }>(
     `select s.id, s.name, s.code, s.industry_package_id as industryPackageId, ip.name as industryPackageName,
-            s.scene_type as sceneType, s.mode, coalesce(s.create_mode, 'ai_practice') as createMode, s.status, s.is_template as isTemplate, s.source_type as sourceType, s.description,
+             s.scene_type as sceneType, coalesce(s.interaction_pattern, 'customer_interaction') as interactionPattern, s.ai_recommended_pattern as aiRecommendedPattern, coalesce(s.ai_recommendation_reason, '') as aiRecommendationReason, s.mode, coalesce(s.create_mode, 'ai_practice') as createMode, s.status, s.is_template as isTemplate, s.source_type as sourceType, s.description,
             coalesce(s.pass_score, 80) as passScore, s.created_at as createdAt, s.updated_at as updatedAt,
             u.name as creatorName, o.name as creatorOrgName,
             (select count(*) from task_scenes ts where ts.tenant_id = s.tenant_id and ts.scene_id = s.id and ts.deleted_at is null) as taskCount
@@ -1261,7 +1269,7 @@ export function replaceSceneScoringRules(
 export function updateSceneStatus(tenantId: string, sceneId: string, status: "draft" | "published" | "disabled") {
   run("update scenes set status = ?, updated_at = datetime('now') where tenant_id = ? and id = ? and deleted_at is null", [status, tenantId, sceneId]);
   return get<SceneRow>(
-    "select id, name, code, industry_package_id as industryPackageId, scene_type as sceneType, mode, coalesce(create_mode, 'ai_practice') as createMode, status, is_template as isTemplate, source_type as sourceType, description, coalesce(pass_score, 80) as passScore from scenes where tenant_id = ? and id = ?",
+    "select id, name, code, industry_package_id as industryPackageId, scene_type as sceneType, coalesce(interaction_pattern, 'customer_interaction') as interactionPattern, ai_recommended_pattern as aiRecommendedPattern, coalesce(ai_recommendation_reason, '') as aiRecommendationReason, mode, coalesce(create_mode, 'ai_practice') as createMode, status, is_template as isTemplate, source_type as sourceType, description, coalesce(pass_score, 80) as passScore from scenes where tenant_id = ? and id = ?",
     [tenantId, sceneId],
   );
 }
@@ -1272,6 +1280,7 @@ export function updateSceneDetail(
   input: {
     name?: string;
     description?: string;
+    interactionPattern?: "customer_interaction" | "project_coordination";
     aiRole?: { identity: string; background: string; personality: string; emotion: string; languageStyle?: string; goal: string };
     learnerRole?: { identity: string; goal: string };
     endCondition?: string;
@@ -1284,11 +1293,14 @@ export function updateSceneDetail(
     status?: "disabled" | "published";
   },
 ): SceneDetail | undefined {
-  const exists = get<{ id: string }>(
-    "select id from scenes where tenant_id = ? and id = ? and deleted_at is null limit 1",
+  const exists = get<{ id: string; status: string; interactionPattern: string }>(
+    "select id, status, coalesce(interaction_pattern, 'customer_interaction') as interactionPattern from scenes where tenant_id = ? and id = ? and deleted_at is null limit 1",
     [tenantId, sceneId],
   );
   if (!exists) return undefined;
+  if (input.interactionPattern !== undefined && exists.status === "published" && input.interactionPattern !== exists.interactionPattern) {
+    throw new Error("已发布场景不允许修改关系类型，请先停用场景后再调整。");
+  }
   run("update scenes set updated_at = datetime('now') where tenant_id = ? and id = ?", [tenantId, sceneId]);
   if (input.status !== undefined) {
     run("update scenes set status = ?, updated_at = datetime('now') where tenant_id = ? and id = ?", [input.status, tenantId, sceneId]);
@@ -1300,6 +1312,12 @@ export function updateSceneDetail(
     run(
       "update scenes set name = ?, description = ?, pass_score = ?, updated_at = datetime('now') where tenant_id = ? and id = ?",
       [input.name ?? scene.name, input.description ?? scene.description, input.passScore ?? scene.passScore, tenantId, sceneId],
+    );
+  }
+  if (input.interactionPattern !== undefined) {
+    run(
+      "update scenes set interaction_pattern = ?, updated_at = datetime('now') where tenant_id = ? and id = ?",
+      [input.interactionPattern, tenantId, sceneId],
     );
   }
   // 角色：整体替换（先软删旧角色，再按当前表单插入）

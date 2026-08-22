@@ -266,6 +266,9 @@ export const createSceneSchema = z.object({
   mode: z.enum(["voice", "text"]).default("voice"),
   createMode: sceneCreateModeSchema.default("ai_practice"),
   sceneType: z.string().min(1).max(80),
+  interactionPattern: z.enum(["customer_interaction", "project_coordination"]),
+  aiRecommendedPattern: z.enum(["customer_interaction", "project_coordination", "pending"]).optional(),
+  aiRecommendationReason: z.string().max(500).optional(),
   description: z.string().min(1).max(2000),
   aiRole: z.object({
     identity: z.string().max(200).optional().default(""),
@@ -299,6 +302,7 @@ export const createSceneSchema = z.object({
 export const updateSceneSchema = z.object({
   name: z.string().min(2).max(120).optional(),
   description: z.string().max(2000).optional(),
+  interactionPattern: z.enum(["customer_interaction", "project_coordination"]).optional(),
   aiRole: z.object({
     identity: z.string().max(200).optional().default(""),
     background: z.string().max(300).optional().default(""),
@@ -539,4 +543,3 @@ export const updateKnowledgeFolderSchema = z.object({
   name: z.string().min(2).max(120).optional(),
   description: z.string().max(1000).optional(),
 });
-

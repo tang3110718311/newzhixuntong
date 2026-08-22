@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ApiResponse, AuthSession } from "@zxt/shared";
+import { INTERACTION_PATTERN_DESCRIPTIONS, INTERACTION_PATTERN_LABELS, type ApiResponse, type AuthSession } from "@zxt/shared";
 import AppShell, { type RightRailData } from "@/components/AppShell";
 import { navigateBackOr, navigateTo } from "@/lib/navigation";
+import { buildSupplementedSceneDescription, getSceneGenerationTargetRole, mergeSceneAiDraft, type SceneAiDraft } from "@/lib/scene-ai-draft";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
 const AUTH_STORAGE_KEY = "zxt-admin-auth";
@@ -83,6 +84,10 @@ export default function SceneNewPage() {
   const [sceneMode, setSceneMode] = useState("");
   const [sceneDescInput, setSceneDescInput] = useState("");
   const [passScore, setPassScore] = useState(60);
+  const [interactionPattern, setInteractionPattern] = useState<"customer_interaction" | "project_coordination" | "">("");
+  const [aiRecommendation, setAiRecommendation] = useState<{ pattern: string; reason: string } | null>(null);
+  const [aiFollowUpQuestions, setAiFollowUpQuestions] = useState<string[] | null>(null);
+  const [aiFollowUpAnswers, setAiFollowUpAnswers] = useState<Record<number, string>>({});
   const [aiIdentity, setAiIdentity] = useState("");
   const [aiPosition, setAiPosition] = useState("");
   const [aiBackground, setAiBackground] = useState("");
@@ -253,8 +258,8 @@ export default function SceneNewPage() {
     && !topAttachments.some((item) => item.status === "uploading");
 
   // 重新生成场景（基于当前场景说明和附件，调用 AI 重新生成配置）
-  async function handleRegenerateScene() {
-    if (!sceneDescInput.trim()) {
+  async function handleRegenerateScene(sceneDescription = sceneDescInput) {
+    if (!sceneDescription.trim()) {
       setError("场景说明不能为空，请先填写场景描述");
       return;
     }
@@ -275,35 +280,44 @@ export default function SceneNewPage() {
           learnerRole?: { identity: string; goal: string };
           endCondition?: string;
           interruptCondition?: string;
+          interactionPattern?: "customer_interaction" | "project_coordination" | "pending";
+           interactionPatternReason?: string;
+           followUpQuestions?: string[];
           scoringRules?: Array<{ name: string; score: number; criteria: string; deductionRule: string; evidenceRequired: string }>;
         };
       }>("/ai/scenes/generate", {
         method: "POST",
         body: JSON.stringify({
-          sceneDescription: sceneDescInput,
+          sceneDescription,
           createMode: sceneMode || mode,
           mode: "voice",
-          targetRole: learnerIdentity || "客服坐席",
+          targetRole: getSceneGenerationTargetRole(learnerIdentity),
           attachmentFileIds: topAttachments.filter((a) => a.fileId && a.status === "done").map((a) => a.fileId as string),
         }),
       });
-      const draft = result.draft;
+       const draft = result.draft as SceneAiDraft;
+       if (draft.interactionPattern === "pending" && draft.followUpQuestions?.length) {
+         setAiFollowUpQuestions(draft.followUpQuestions);
+         setAiFollowUpAnswers({});
+         return;
+       }
+       const merged = mergeSceneAiDraft({ interactionPattern, aiRecommendation, aiIdentity, aiBackground, aiPersonality, aiEmotion, aiPosition, learnerIdentity, dialogGoal, dialogEndCondition, dialogInterrupt, scoringRules: scoringRuleForms }, draft);
       if (draft.aiRole) {
-        setAiIdentity(draft.aiRole.identity || "");
-        setAiBackground(draft.aiRole.background || "");
-        setAiPersonality(draft.aiRole.personality || "");
-        setAiEmotion(draft.aiRole.emotion || "calm");
-        setAiPosition(draft.aiRole.goal || "");
+         setAiIdentity(merged.aiIdentity || "");
+         setAiBackground(merged.aiBackground || "");
+         setAiPersonality(merged.aiPersonality || "");
+         setAiEmotion(merged.aiEmotion || "calm");
+         setAiPosition(merged.aiPosition || "");
       }
       if (draft.learnerRole) {
-        setLearnerIdentity(draft.learnerRole.identity || "");
-        setDialogGoal(draft.learnerRole.goal || "");
+         setLearnerIdentity(merged.learnerIdentity || "");
+         setDialogGoal(merged.dialogGoal || "");
       }
-      if (draft.endCondition !== undefined) setDialogEndCondition(draft.endCondition);
-      if (draft.interruptCondition !== undefined) setDialogInterrupt(draft.interruptCondition);
-      if (draft.scoringRules?.length) {
-        setScoringRuleForms(draft.scoringRules.map((r) => ({ ...r })));
-      }
+        setDialogEndCondition(merged.dialogEndCondition || "");
+        setDialogInterrupt(merged.dialogInterrupt || "");
+       setAiRecommendation(merged.aiRecommendation || null);
+       if (draft.interactionPattern && draft.interactionPattern !== "pending" && !interactionPattern) setInteractionPattern(draft.interactionPattern);
+       if (merged.scoringRules.length) setScoringRuleForms(merged.scoringRules.map((r) => ({ ...r })));
       setRegenerationAttachmentIds([]);
       setMessage("场景已重新生成，请确认内容后保存。");
     } catch (err) {
@@ -313,9 +327,24 @@ export default function SceneNewPage() {
     }
   }
 
+  async function handleRegenerateWithAnswers() {
+    try {
+      const supplemented = buildSupplementedSceneDescription(sceneDescInput, aiFollowUpQuestions || [], aiFollowUpAnswers);
+      setAiFollowUpQuestions(null);
+      setSceneDescInput(supplemented);
+      await handleRegenerateScene(supplemented);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "请补充追问答案后再试。");
+    }
+  }
+
   async function handleSave(status: "disabled" | "published") {
     if (!aiIdentity.trim() || !learnerIdentity.trim() || !aiEmotion || !dialogGoal.trim()) {
       setError("请完整填写 AI扮演角色、学员角色扮演、AI情绪设置和对话目标");
+      return;
+    }
+    if (!interactionPattern) {
+      setError("请选择关系类型，用于决定对练规则和话术检核方式。");
       return;
     }
     if (scoringRuleForms.some((r) => !r.name.trim() || !r.criteria.trim() || Number(r.score) <= 0)) {
@@ -343,6 +372,9 @@ export default function SceneNewPage() {
           mode: "voice",
           createMode: sceneMode || mode,
           sceneType: "对话",
+          interactionPattern,
+          aiRecommendedPattern: aiRecommendation?.pattern,
+          aiRecommendationReason: aiRecommendation?.reason,
           description: sceneDesc || dialogGoal,
           passScore: passScore,
           aiRole: {
@@ -411,6 +443,11 @@ export default function SceneNewPage() {
       <div className="page-section sc-mod">
         {error && <div className="notice">{error}</div>}
         {message && <div className="success">{message}</div>}
+        {aiFollowUpQuestions && <div className="notice">
+          <strong>AI 需要补充信息</strong>
+          {aiFollowUpQuestions.map((question, index) => <label key={question} style={{ display: "block", marginTop: 8 }}>问题{index + 1}：{question}<input className="field" value={aiFollowUpAnswers[index] || ""} onChange={(e) => setAiFollowUpAnswers((prev) => ({ ...prev, [index]: e.target.value }))} /></label>)}
+          <button className="btn" type="button" onClick={handleRegenerateWithAnswers} disabled={regenerating}>提交补充答案</button>
+        </div>}
 
         <div className="scene-form">
           {/* 头部 */}
@@ -478,6 +515,17 @@ export default function SceneNewPage() {
               </button>
             </div>
             <div className="form-grid config-grid">
+              <div className="form-item full">
+                <label><i>*</i>关系类型</label>
+                <select className="field" value={interactionPattern} onChange={(e) => setInteractionPattern(e.target.value as "customer_interaction" | "project_coordination" | "")}>
+                  <option value="">请选择关系类型</option>
+                  <option value="customer_interaction">客户沟通型</option>
+                  <option value="project_coordination">项目协调型</option>
+                </select>
+                <small>{interactionPattern ? INTERACTION_PATTERN_DESCRIPTIONS[interactionPattern] : "该设置会影响场景生成、对练规则和话术检核方式。"}</small>
+                {aiRecommendation && <small>AI 已推荐：{INTERACTION_PATTERN_LABELS[aiRecommendation.pattern as keyof typeof INTERACTION_PATTERN_LABELS] || "待判断"}{aiRecommendation.reason ? `。${aiRecommendation.reason}` : ""}{interactionPattern && interactionPattern !== aiRecommendation.pattern ? "（已由人工调整）" : ""}</small>}
+              </div>
+              {/* 上传附件 */}
               {/* 场景资料 */}
               <div className="form-item full">
                 <label>场景资料</label>
@@ -490,7 +538,7 @@ export default function SceneNewPage() {
                     <button
                       type="button"
                       className="btn outline goal-ai-button"
-                      onClick={handleRegenerateScene}
+                      onClick={() => handleRegenerateScene()}
                       disabled={!canRegenerateScene}
                     >
                       {regenerating ? "重新生成中…" : "✦ 重新生成场景"}

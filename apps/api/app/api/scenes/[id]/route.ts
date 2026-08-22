@@ -27,6 +27,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     const detail = updateSceneDetail(tenantId, id, {
       name: body.name,
       description: body.description,
+      interactionPattern: body.interactionPattern,
       aiRole: body.aiRole,
       learnerRole: body.learnerRole,
       endCondition: body.endCondition,

@@ -550,6 +550,7 @@ const initialAiGenerateForm = {
   targetRole: "客服坐席",
   mode: "voice",
   createMode: "ai_practice",
+  interactionPattern: "customer_interaction",
   sceneDescription: "客户投诉网络故障反复未解决，要求客服明确处理时限并给出闭环反馈。",
 };
 
@@ -820,7 +821,7 @@ export function AdminDashboard() {
     dialogueExample: "",
     sceneDescription: "",
   });
-  const [aiGenerateDraft, setAiGenerateDraft] = useState<{ name: string; sceneType: string; description: string; aiRole: { identity: string; background: string; personality: string; emotion: string; goal: string }; learnerRole: { identity: string; goal: string }; endCondition: string; interruptCondition: string; scoringRules: ScoringRuleDraft[] } | null>(null);
+  const [aiGenerateDraft, setAiGenerateDraft] = useState<{ name: string; sceneType: string; description: string; interactionPattern: string; aiRecommendedPattern?: string | null; aiRecommendationReason?: string | null; aiRole: { identity: string; background: string; personality: string; emotion: string; goal: string }; learnerRole: { identity: string; goal: string }; endCondition: string; interruptCondition: string; scoringRules: ScoringRuleDraft[] } | null>(null);
   // P2 主动追问：AI 返回的追问问题及学员补充答案
   const [aiFollowUpQuestions, setAiFollowUpQuestions] = useState<string[] | null>(null);
   const [aiFollowUpAnswers, setAiFollowUpAnswers] = useState<Record<number, string>>({});
@@ -1312,7 +1313,7 @@ export function AdminDashboard() {
     setShowSceneKbPicker(false);
   }
 
-  async function handleAiGenerateAndNext() {
+  async function handleAiGenerateAndNext(sceneDescription?: string) {
     if (sceneAttachmentsUploading || sceneAttachments.some((item) => item.status === "uploading")) {
       setError("附件仍在上传解析中，请等待上传完成后再提交。");
       return;
@@ -1323,15 +1324,15 @@ export function AdminDashboard() {
     setSubmitting(true);
     setError("");
     try {
-      const result = await apiFetch<{ scene: Scene | null; draft: { name: string; sceneType: string; description: string; aiRole: { identity: string; background: string; personality: string; emotion: string; goal: string }; learnerRole: { identity: string; goal: string }; endCondition: string; interruptCondition: string; scoringRules: ScoringRuleDraft[]; followUpQuestions?: string[] } }> ("/ai/scenes/generate", {
+      const result = await apiFetch<{ scene: Scene | null; draft: { name: string; sceneType: string; description: string; interactionPattern: string; aiRecommendedPattern?: string | null; aiRecommendationReason?: string | null; aiRole: { identity: string; background: string; personality: string; emotion: string; goal: string }; learnerRole: { identity: string; goal: string }; endCondition: string; interruptCondition: string; scoringRules: ScoringRuleDraft[]; followUpQuestions?: string[] } }>("/ai/scenes/generate", {
         method: "POST",
         body: JSON.stringify({
           ...aiGenerateForm,
+          ...(sceneDescription === undefined ? {} : { sceneDescription }),
           attachmentFileIds,
         }),
       });
       const draft = result.draft;
-      setAiGenerateDraft(draft);
       // 主动追问模式：描述信息不足，AI 返回追问问题，停留在第1步等待补充
       if (draft.followUpQuestions?.length) {
         setAiFollowUpQuestions(draft.followUpQuestions);
@@ -1340,6 +1341,7 @@ export function AdminDashboard() {
         setMessage("");
         return;
       }
+      setAiGenerateDraft(draft);
       // 正常生成：记录原始描述（改前改后对照），进入第2步
       setAiFollowUpQuestions(null);
       setAiGeneratedOriginal({ ...aiGenerateForm });
@@ -1371,12 +1373,6 @@ export function AdminDashboard() {
       // 对齐原型：生成成功后关闭弹窗，进入独立表单页继续完善配置
       setShowSceneWizard(false);
       if (result.scene?.id) {
-        if (attachmentFileIds.length) {
-          await apiFetch(`/scenes/${result.scene.id}`, {
-            method: "PUT",
-            body: JSON.stringify({ attachmentFileIds }),
-          });
-        }
         navigateTo(`/scenes/${result.scene.id}/edit`);
       } else {
         const industryId = aiGenerateForm.industryPackageId || industries[0]?.id || "";
@@ -1388,6 +1384,9 @@ export function AdminDashboard() {
             code: makeCode("CJ"),
             mode: aiGenerateForm.mode,
             createMode: aiGenerateForm.createMode || "ai_practice",
+            interactionPattern: draft.interactionPattern,
+            aiRecommendedPattern: draft.aiRecommendedPattern,
+            aiRecommendationReason: draft.aiRecommendationReason,
             sceneType: "对话",
             description: aiGenerateForm.sceneDescription,
             aiRole: {
@@ -1424,14 +1423,17 @@ export function AdminDashboard() {
 
   // 补充追问答案后重新生成
   async function handleAiRegenerateWithAnswers() {
-    const answers = Object.values(aiFollowUpAnswers).filter((a) => (a || "").trim()).join("；");
+    const answers = (aiFollowUpQuestions || [])
+      .map((question, index) => `${index + 1}. ${question}\n答案：${(aiFollowUpAnswers[index] || "").trim()}`)
+      .filter((_, index) => (aiFollowUpAnswers[index] || "").trim())
+      .join("\n");
     if (!answers) {
       setError("请至少回答一个问题后再试。");
       return;
     }
     const supplemented = `${aiGenerateForm.sceneDescription}\n【补充信息】${answers}`;
     setAiGenerateForm((prev) => ({ ...prev, sceneDescription: supplemented }));
-    await handleAiGenerateAndNext();
+    await handleAiGenerateAndNext(supplemented);
   }
 
   async function handleGenerateScene(event: FormEvent<HTMLFormElement>) {
@@ -1862,6 +1864,7 @@ export function AdminDashboard() {
             code: makeCode("CJ"),
             mode: aiGenerateForm.mode,
             createMode: aiGenerateForm.createMode || "fixed_practice",
+            interactionPattern: aiGenerateForm.interactionPattern,
             sceneType: wizardRoleForm.aiIdentity ? "对话" : "常规对话",
             description: aiGenerateForm.sceneDescription,
             aiRole: {
@@ -2577,7 +2580,7 @@ export function AdminDashboard() {
                     )}
                     <div className="prompt-actions">
                       <button className="btn outline" type="button" onClick={() => setShowSceneWizard(false)}>取消</button>
-                      <button className="btn" type="button" onClick={handleAiGenerateAndNext} disabled={submitting || sceneAttachmentsUploading || sceneAttachments.some((item) => item.status === "uploading") || !aiGenerateForm.sceneDescription.trim() || aiGenerateForm.sceneDescription.trim().length < 10}>{submitting ? "AI 生成中..." : sceneAttachmentsUploading ? "附件上传中..." : "提交"}</button>
+                      <button className="btn" type="button" onClick={() => void handleAiGenerateAndNext()} disabled={submitting || sceneAttachmentsUploading || sceneAttachments.some((item) => item.status === "uploading") || !aiGenerateForm.sceneDescription.trim() || aiGenerateForm.sceneDescription.trim().length < 10}>{submitting ? "AI 生成中..." : sceneAttachmentsUploading ? "附件上传中..." : "提交"}</button>
                     </div>
                   </div>
                 </div>

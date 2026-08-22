@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ApiResponse, AuthSession } from "@zxt/shared";
+import { INTERACTION_PATTERN_LABELS, type ApiResponse, type AuthSession } from "@zxt/shared";
 import AppShell, { type RightRailData } from "@/components/AppShell";
 import { getPathId, navigateTo } from "@/lib/navigation";
 
@@ -16,6 +16,9 @@ type SceneDetail = {
     industryPackageId?: string | null;
     industryPackageName?: string | null;
     sceneType: string;
+    interactionPattern: string;
+    aiRecommendedPattern?: string | null;
+    aiRecommendationReason?: string;
     mode: string;
     createMode?: string;
     status: string;
@@ -388,6 +391,14 @@ export default function SceneDetailPage() {
                     <span>当前状态</span>
                     <b>{statusLabel(scene.status)}</b>
                   </div>
+                  <div>
+                    <span>关系类型</span>
+                    <b>{INTERACTION_PATTERN_LABELS[scene.interactionPattern as keyof typeof INTERACTION_PATTERN_LABELS] || "客户沟通型"}</b>
+                  </div>
+                  {scene.aiRecommendationReason && <div>
+                    <span>AI 推荐说明</span>
+                    <b>{scene.aiRecommendationReason}</b>
+                  </div>}
                 </div>
               </section>
               <section className="preview-side-card card">

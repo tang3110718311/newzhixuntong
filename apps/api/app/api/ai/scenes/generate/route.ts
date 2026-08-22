@@ -54,6 +54,23 @@ export async function POST(request: Request) {
           knowledgeSummaries.map((k) => `【${k.folderName}】${k.name}\n${k.summary}`).join("\n\n"),
       ],
     });
+
+    if (draft.interactionPattern === "pending" && draft.followUpQuestions?.length) {
+      logAiCall({
+        tenantId,
+        providerType: "llm",
+        modelName: config.modelName,
+        bizType: "scene_generation",
+        durationMs: Date.now() - started,
+        success: true,
+        traceId,
+      });
+      return ok({ scene: null, draft, followUpQuestions: draft.followUpQuestions }, traceId);
+    }
+    if (draft.interactionPattern !== "customer_interaction" && draft.interactionPattern !== "project_coordination") {
+      throw new Error("AI 未返回有效的关系类型，无法创建场景，请补充场景说明后重新生成。");
+    }
+
     const scene = createGeneratedScene(tenantId, {
       industryPackageId: body.industryPackageId,
       name: draft.name,
@@ -61,6 +78,8 @@ export async function POST(request: Request) {
       createMode: body.createMode,
       createdBy: ctxUser?.id ?? null,
       sceneType: draft.sceneType,
+      interactionPattern: draft.interactionPattern,
+      aiRecommendationReason: draft.interactionPatternReason,
       description: draft.description,
       sourceType: "ai",
       aiRole: draft.aiRole,
@@ -82,7 +101,7 @@ export async function POST(request: Request) {
       traceId,
     });
 
-    return ok({ scene, draft }, traceId, 201);
+    return ok({ scene, draft: { ...draft, aiRecommendationReason: draft.interactionPatternReason } }, traceId, 201);
   } catch (error) {
     if (tenantIdForLog) {
       try {

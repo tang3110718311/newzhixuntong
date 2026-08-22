@@ -304,6 +304,9 @@ function applyMigrations() {
   ensureColumn("score_details", "advice_json", "text not null default '[]'");
   ensureColumn("training_records", "capability_profile", "text not null default '[]'");
   ensureColumn("training_turns", "emotion", "text not null default ''");
+  ensureColumn("scenes", "interaction_pattern", "text not null default 'customer_interaction'");
+  ensureColumn("scenes", "ai_recommended_pattern", "text");
+  ensureColumn("scenes", "ai_recommendation_reason", "text not null default ''");
   // 核心表索引（已有库同样补齐，与 init.mjs 保持一致）
   db.run("create index if not exists idx_tr_tenant_user_status on training_records(tenant_id, user_id, status)");
   db.run("create index if not exists idx_tr_tenant_scene on training_records(tenant_id, scene_id)");
