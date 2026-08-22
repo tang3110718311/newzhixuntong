@@ -936,7 +936,9 @@ export default function PracticePage() {
 
   // ===== 再来一次 =====
   const restartChat = useCallback(() => {
-    if (selectedScene) void enterChat(selectedScene);
+    if (selectedScene) {
+      void enterChat(selectedScene);
+    }
   }, [enterChat, selectedScene]);
 
   // ===== 历史记录 =====
@@ -1289,11 +1291,11 @@ export default function PracticePage() {
                         <span className="pc-brief-duration-ico">⏱</span>
                         <span>预计时长 3-5 分钟，AI 实时对练，结束后自动评分</span>
                       </div>
-                      <button className="pc-btn-primary pc-brief-start" type="button" onClick={() => void startTraining()}>
+                      <button className="pc-btn-primary pc-brief-start" type="button" onClick={startTraining}>
                         开始训练
                       </button>
                       {chatRound > 0 && !chatFinished && (
-                        <button className="pc-btn-ghost pc-brief-restart" type="button" onClick={() => void restartChat()}>
+                        <button className="pc-btn-ghost pc-brief-restart" type="button" onClick={restartChat}>
                           重新训练
                         </button>
                       )}
@@ -1312,8 +1314,8 @@ export default function PracticePage() {
                           passScore={selectedScene.passScore}
                           scenes={scenes}
                           onBack={backToHistory}
-                          onRestart={() => void enterChat(selectedScene)}
-                          onRetrainWeak={(target) => void enterChat(target)}
+                          onRestart={() => enterChat(selectedScene)}
+                          onRetrainWeak={(target) => enterChat(target)}
                         />
                       </>
                     ) : (
