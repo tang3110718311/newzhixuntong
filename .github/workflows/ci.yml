@@ -12,11 +12,16 @@ on:
 
 jobs:
   check:
-    name: Build And Review
+    name: Quality Gate
     runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL || secrets.SONAR_HOST_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -37,3 +42,25 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Business Red Line Scan
+        run: npm run quality-gate:ci
+
+      - name: SonarQube Scan
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
+        uses: SonarSource/sonarqube-scan-action@v2
+        with:
+          args: >
+            -Dsonar.projectKey=zxt-next
+            -Dsonar.projectName=zxt-next
+            -Dsonar.sources=apps/admin/src,apps/admin/app,apps/mobile/src,apps/mobile/app,apps/api/app,apps/api/src,packages
+            -Dsonar.exclusions=**/node_modules/**,**/.next/**,**/dist/**,**/build/**,**/.worktrees/**,**/.scannerwork/**,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/__pycache__/**,**/*.py
+            -Dsonar.sourceEncoding=UTF-8
+            -Dsonar.scm.disabled=true
+
+      - name: Quality Gate Check
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
+        uses: SonarSource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+        with:
+          scan-metadata-file: .scannerwork/report-task.txt

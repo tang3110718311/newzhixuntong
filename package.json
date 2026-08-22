@@ -18,6 +18,8 @@
     "build:admin": "node scripts/build.mjs admin",
     "build:mobile": "node scripts/build.mjs mobile",
     "smoke:p1:exam": "node scripts/smoke-p1-exam.mjs",
+    "quality-gate": "node scripts/quality-gate.mjs",
+    "quality-gate:ci": "node scripts/quality-gate.mjs --baseline quality-gate.baseline.json --max-warnings 0",
     "lint": "npm --workspaces --if-present run lint",
     "typecheck": "npm --workspaces --if-present run typecheck",
     "db:generate": "prisma generate --schema packages/database/prisma/schema.prisma",

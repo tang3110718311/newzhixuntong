@@ -1,0 +1,120 @@
+{
+  "passed": true,
+  "total": 12,
+  "newTotal": 12,
+  "baselineTotal": 12,
+  "suppressed": 0,
+  "blocker": 0,
+  "critical": 11,
+  "major": 1,
+  "findings": [
+    {
+      "code": "ZXT-QG-002",
+      "severity": "CRITICAL",
+      "title": "假AI：setTimeout 模拟异步处理",
+      "file": "apps/admin/app/scenes/new/page.tsx",
+      "line": 204,
+      "snippet": "await new Promise((resolve) => setTimeout(resolve, 800));",
+      "hint": "setTimeout 模拟延迟不是真实 AI 调用。应调用真实 AI 接口或后端 API。"
+    },
+    {
+      "code": "ZXT-QG-002",
+      "severity": "CRITICAL",
+      "title": "假AI：setTimeout 模拟异步处理",
+      "file": "apps/admin/app/scenes/[id]/edit/page.tsx",
+      "line": 270,
+      "snippet": "await new Promise((resolve) => setTimeout(resolve, 800));",
+      "hint": "setTimeout 模拟延迟不是真实 AI 调用。应调用真实 AI 接口或后端 API。"
+    },
+    {
+      "code": "ZXT-QG-003",
+      "severity": "CRITICAL",
+      "title": "localStorage 存业务数据",
+      "file": "apps/admin/app/tasks/[id]/page.tsx",
+      "line": 127,
+      "snippet": "window.localStorage.setItem(STUDY_STORAGE_KEY, JSON.stringify(map));",
+      "hint": "业务数据（成绩、分数、进度等）不应存 localStorage。应通过 API 存数据库。"
+    },
+    {
+      "code": "ZXT-QG-004",
+      "severity": "CRITICAL",
+      "title": "硬编码默认密码",
+      "file": "apps/admin/src/components/admin-dashboard.tsx",
+      "line": 514,
+      "snippet": "initialPassword: \"Zxt@2026\",",
+      "hint": "密码不应硬编码在源码中。应通过环境变量或用户输入传入。"
+    },
+    {
+      "code": "ZXT-QG-004",
+      "severity": "CRITICAL",
+      "title": "硬编码默认密码",
+      "file": "apps/admin/src/components/admin-dashboard.tsx",
+      "line": 837,
+      "snippet": "const [resetPwdForm, setResetPwdForm] = useState({ newPassword: \"Zxt@2026\" });",
+      "hint": "密码不应硬编码在源码中。应通过环境变量或用户输入传入。"
+    },
+    {
+      "code": "ZXT-QG-004",
+      "severity": "CRITICAL",
+      "title": "硬编码默认密码",
+      "file": "apps/admin/src/components/admin-dashboard.tsx",
+      "line": 1531,
+      "snippet": "setResetPwdForm({ newPassword: \"Zxt@2026\" });",
+      "hint": "密码不应硬编码在源码中。应通过环境变量或用户输入传入。"
+    },
+    {
+      "code": "ZXT-QG-004",
+      "severity": "CRITICAL",
+      "title": "硬编码默认密码",
+      "file": "apps/admin/src/components/admin-dashboard.tsx",
+      "line": 2957,
+      "snippet": "initialPassword: \"Zxt@2026\",",
+      "hint": "密码不应硬编码在源码中。应通过环境变量或用户输入传入。"
+    },
+    {
+      "code": "ZXT-QG-004",
+      "severity": "CRITICAL",
+      "title": "硬编码默认密码",
+      "file": "apps/admin/src/components/admin-dashboard.tsx",
+      "line": 2964,
+      "snippet": "<button className=\"link-btn\" type=\"button\" onClick={() => { setResetPwdUser(user); setResetPwdForm({ newPassword: \"Zxt@2",
+      "hint": "密码不应硬编码在源码中。应通过环境变量或用户输入传入。"
+    },
+    {
+      "code": "ZXT-QG-003",
+      "severity": "CRITICAL",
+      "title": "localStorage 存业务数据",
+      "file": "apps/mobile/src/lib/sceneProgress.ts",
+      "line": 54,
+      "snippet": "localStorage.setItem(`${MATERIAL_DONE_KEY}-${currentUserId()}-${sceneId}`, \"1\");",
+      "hint": "业务数据（成绩、分数、进度等）不应存 localStorage。应通过 API 存数据库。"
+    },
+    {
+      "code": "ZXT-QG-003",
+      "severity": "CRITICAL",
+      "title": "localStorage 存业务数据",
+      "file": "apps/mobile/src/lib/sceneProgress.ts",
+      "line": 71,
+      "snippet": "localStorage.setItem(`${EXAM_COUNT_KEY}-${currentUserId()}-${sceneId}`, String(next));",
+      "hint": "业务数据（成绩、分数、进度等）不应存 localStorage。应通过 API 存数据库。"
+    },
+    {
+      "code": "ZXT-QG-003",
+      "severity": "CRITICAL",
+      "title": "localStorage 存业务数据",
+      "file": "apps/mobile/src/lib/sceneProgress.ts",
+      "line": 100,
+      "snippet": "localStorage.setItem(`${EXAM_RECORDS_KEY}-${currentUserId()}-${sceneId}`, JSON.stringify(list.slice(0, 50)));",
+      "hint": "业务数据（成绩、分数、进度等）不应存 localStorage。应通过 API 存数据库。"
+    },
+    {
+      "code": "ZXT-QG-005",
+      "severity": "MAJOR",
+      "title": "演示租户硬编码",
+      "file": "packages/shared/src/domain.ts",
+      "line": 16,
+      "snippet": "export const defaultTenantCode = \"zxt-demo\";",
+      "hint": "演示租户标识不应硬编码在生产源码中。应通过数据库配置或环境变量管理。"
+    }
+  ]
+}

@@ -27,6 +27,8 @@ storage/
 deploy/*.local
 deploy/*.secret
 .worktrees/
+.scannerwork/
+*.tar.gz
 .DS_Store
 
 # AI 内部协作文档（不纳入版本控制）
